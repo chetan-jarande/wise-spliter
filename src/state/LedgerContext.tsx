@@ -13,6 +13,7 @@ import {
   GroupMember,
   GroupRecord,
   MockLedgerDataset,
+  ReceiptAttachment,
   SettlementItem,
   SplitMode,
 } from '../types/ledger';
@@ -23,6 +24,7 @@ import {
   clearSyncOutbox,
   enqueueSyncOutboxMutation,
   saveDatasetToIndexedDb,
+  saveReceiptBlobLocally,
 } from '../storage/local-db';
 import { wiseSpliterSyncEngine } from '../sync-engine/supabase-sync';
 
@@ -44,6 +46,7 @@ export interface UpsertExpenseInput {
   splitMode: SplitMode;
   payers: ExpensePayer[];
   splits: ExpenseSplitShare[];
+  receipts?: ReceiptAttachment[];
 }
 
 export interface ExpenseModalState {
@@ -706,6 +709,17 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       dateIso: input.expenseDate,
     });
 
+    const resolvedReceipts: ReceiptAttachment[] = (
+      input.receipts ??
+      existing?.receipts ??
+      []
+    ).map((r) => ({
+      ...r,
+      expenseId: expId,
+      storageBucket: r.storageBucket ?? 'wise-spliter-receipts',
+      storagePath: r.storagePath ?? `receipts/${expId}.webp`,
+    }));
+
     const newExpense: ExpenseItem = {
       id: expId,
       groupId: isDirectSplit ? null : grp!.id,
@@ -737,8 +751,40 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       deletedAt: null,
       hlc,
       comments: existing?.comments ?? [],
-      receipts: existing?.receipts ?? [],
+      receipts: resolvedReceipts,
     };
+
+    if (input.receipts && input.receipts.length > 0) {
+      for (const r of resolvedReceipts) {
+        void saveReceiptBlobLocally({
+          id: r.id,
+          expenseId: expId,
+          groupId: newExpense.groupId,
+          fileName: r.fileName,
+          mimeType: r.mimeType,
+          sizeKb: r.sizeKb,
+          dataUrl: r.dataUrl ?? '',
+          storageBucket: r.storageBucket ?? 'wise-spliter-receipts',
+          storagePath: r.storagePath ?? `receipts/${expId}.webp`,
+          uploadedToCloud: isOnline,
+          createdAt: r.createdAt || nowIso,
+        });
+        if (isOnline && r.dataUrl) {
+          void wiseSpliterSyncEngine.uploadReceiptAttachment({
+            id: r.id,
+            expenseId: expId,
+            groupId: newExpense.groupId,
+            fileName: r.fileName,
+            mimeType: r.mimeType,
+            sizeKb: r.sizeKb,
+            uploadedByName: r.uploadedByName,
+            previewNote: r.previewNote,
+            dataUrl: r.dataUrl,
+            hlc,
+          });
+        }
+      }
+    }
 
     const changes = existing
       ? [

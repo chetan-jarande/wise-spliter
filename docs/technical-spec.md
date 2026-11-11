@@ -2,7 +2,10 @@
 
 **Related Documents:**
 * [Feature Requirements (Phase 1 & Phase 2)](./feature-requiremrnts.md)
+* [System Architecture & Topology](./architecture.md)
 * [Database Schema, Offline Sync, Audit History & Security Specification (`wise_spliter`)](./database-and-sync-spec.md)
+* [Phase 1 Implementation Plan](./implementation-plan.md)
+* [Engineering & Coding Standards](./coding-standards.md)
 
 ---
 
@@ -26,14 +29,15 @@
 | Layer | Technology Choice | Why It Fits Wise-Spliter |
 | :--- | :--- | :--- |
 | **Core Language** | **TypeScript 5.8 (`strict: true`, `noUncheckedIndexedAccess: true`)** | Native `bigint` works 100% identically on Desktop, iOS, Android, and Web (unlike Dart `int`, which changes bit-width on Web). |
-| **App Framework & Bundler** | **Vite 6 + React 19 + TanStack Router** | Pure client-side bundle with 0ms route transitions and zero SSR network dependencies when offline. |
-| **Multi-Platform Delivery** | **Workbox Offline PWA (`vite-plugin-pwa`) + Capacitor (`@capacitor/core`)** | Installs natively as a standalone app on **Desktop (Linux/macOS/Windows)**, **iOS**, and **Android** from one codebase; Capacitor provides optional native Android/iOS store packaging without rewriting code. |
-| **UI & Styling** | **Tailwind CSS + shadcn/ui (Radix UI) + Lucide Icons** | Responsive layouts that adapt from 375px mobile screens to widescreen desktop monitors in a single class. |
-| **Local Offline Database** | **Dexie.js 4 (`IndexedDB`) + `useLiveQuery`** | ACID multi-table local transactions, reactive queries, and offline receipt image Blob storage. |
-| **Cloud Sync & Auth** | **Supabase (`@supabase/supabase-js` with `db: { schema: 'wise_spliter' }`)** | Google OAuth, isolated `wise_spliter` Postgres schema, RLS security, and Realtime delta sync. See [database-and-sync-spec.md](./database-and-sync-spec.md). |
-| **Charts & Analytics** | **Recharts** | Interactive monthly spending trends, category breakdowns, and personal vs. group comparisons. |
-| **Data Portability** | **PapaParse + SheetJS (`xlsx`) + `jsPDF` + `html-to-image` + Web Crypto (`AES-256-GCM`)** | Splitwise CSV/JSON import, CSV/Excel/PDF exports, WhatsApp image summary cards, and encrypted `.wisesplit` backups. |
-| **Verification Suite** | **Vitest + `fast-check` (Property-Based Testing) + Playwright** | 10,000+ randomized fuzz runs verifying financial conservation laws and multi-user offline sync convergence. |
+| **App Framework & Bundler** | **Vite 6 + React 19** | Pure client-side bundle with 0ms view transitions and zero SSR network dependencies when offline. |
+| **Multi-Platform Delivery** | **Offline Service Worker (`public/sw.js`) + PWA Manifest (`public/manifest.webmanifest`) + Capacitor (`@capacitor/core`)** | Installs natively as an offline-capable standalone app on **Desktop (Linux/macOS/Windows)**, **iOS**, and **Android** from one codebase; `public/sw.js` caches app shell and static assets for 100% flight/offline operation. |
+| **UI, Icons & Design System** | **Tailwind CSS + Double-Bezel Primitives (`DesignPrimitives.tsx`) + `@phosphor-icons/react`** | Institutional-grade responsive layouts (`Plus Jakarta Sans` + `JetBrains Mono` tabular figures) with Minimalist Home Dashboard (`<= 3` recent groups), Modular `ExpenseEditorModal`, Progressive Group Workspace, and `HelpGuideModal` + `ContextualPageGuideBanner`. |
+| **Local Offline Database** | **Dexie.js 4 (`IndexedDB`)** | ACID multi-table local transactions, reactive state, FIFO `sync_outbox` queue, and offline WebP receipt image storage in `local_receipt_blobs`. |
+| **Backend API Gatekeeper** | **Node/Bun HTTP Service (`src/server/index.ts` & `src/server/supabaseAdmin.ts` on `:4174`)** | Keeps `SUPABASE_SECRET_KEY` (`service_role`) strictly server-side, validates financial conservation invariants before DB writes, handles `POST /api/receipts/upload` to private bucket `wise-spliter-receipts`, and binds `Accept-Profile` / `Content-Profile: wise_spliter`. |
+| **Centralized & Cloud Supabase** | **Centralized Local Supabase (`SUPABASE_DIR = /home/chetan/projects/my-scripts/setup/dependencies`) & Hosted Supabase (`wise_spliter` schema)** | Google OAuth, isolated `wise_spliter` Postgres schema (`:54322`) & PostgREST (`:54321`), RPCs (`wise_spliter.schema_health`, `wise_spliter.push_mutations`, `wise_spliter.pull_changes`), and private receipt bucket `wise-spliter-receipts`. See [database-and-sync-spec.md](./database-and-sync-spec.md). |
+| **Charts & Analytics** | **Recharts / Native SVG Telemetry (`AnalyticsAndSearchPage.tsx`)** | Interactive monthly spending trends, category breakdowns, and multi-parameter search/filtering. |
+| **Data Portability** | **Multi-Sheet Excel (`.xlsx`), Printable `.pdf`, RFC-4180 `.csv`, Splitwise CSV/JSON Importer, UPI Links & Web Crypto (`AES-256-GCM`)** | Splitwise CSV/JSON import, multi-sheet `.xlsx` & `.pdf` statements, WhatsApp settlement summaries with `upi://pay` links, and encrypted `.wisesplit` backups. |
+| **Verification Suite** | **Vitest + `fast-check` (Property-Based Testing) + Playwright** | Randomized property fuzz runs verifying financial conservation laws plus live end-to-end Playwright verification. |
 
 ---
 
@@ -43,23 +47,35 @@ Every domain module is pure TypeScript with zero UI or network dependencies so i
 
 ```
 wise-spliter/
-├── feature-requiremrnts.md
-├── technical-spec.md
-├── database-and-sync-spec.md
+├── docs/
+│   ├── feature-requiremrnts.md
+│   ├── technical-spec.md
+│   ├── database-and-sync-spec.md
+│   ├── architecture.md
+│   ├── implementation-plan.md
+│   └── coding-standards.md
+├── public/
+│   ├── manifest.webmanifest                  # Installable PWA manifest
+│   └── sw.js                                 # Offline Service Worker caching app shell & static assets
+├── scripts/
+│   └── apply-migration.mjs                   # Applies & verifies `wise_spliter` migration on SUPABASE_DIR
 ├── supabase/
 │   └── migrations/
-│       └── 0001_wise_spliter_schema.sql      # Complete `wise_spliter` schema, RPCs, triggers & RLS
+│       └── 0001_wise_spliter_schema.sql      # Complete `wise_spliter` schema, RPCs (`schema_health`, `push_mutations`, `pull_changes`) & RLS
 ├── src/
+│   ├── types/
+│   │   └── ledger.ts                         # Canonical TypeScript contracts (groups, direct splits, receipts, revisions)
 │   ├── domain/
 │   │   ├── money/
-│   │   │   ├── currencies.ts                 # 170+ ISO-4217 currencies (0, 2, 3 decimals)
+│   │   │   ├── currencies.ts                 # 170+ ISO-4217 currencies (0, 2, 3 decimals), parser, formatter & FX converter
 │   │   │   ├── minor-units.ts                # Exact string <-> BigInt minor unit parser & formatter
 │   │   │   └── fx-converter.ts               # Scaled integer FX conversion + Splitwise audit note builder
 │   │   ├── splits/
-│   │   │   ├── split-calculator.ts           # Equal, Exact, Percentage, Shares, and +/- Adjustment modes
+│   │   │   ├── split-calculator.ts           # Equal, Exact, Percentage, Shares, and +/- Adjustment modes + rotating remainder
 │   │   │   ├── rotating-remainder.ts         # Stateless deterministic remainder rotation
 │   │   │   └── invariant-validator.ts        # Strict pre-commit reconciliation checks
 │   │   ├── ledger/
+│   │   │   ├── ledger-engine.ts              # Group balances, Bitmask-DP debt simplifier, explain-balance & HLC diff engine
 │   │   │   ├── group-balances.ts             # Net balance & raw pairwise bilateral debt matrix
 │   │   │   ├── debt-simplifier.ts            # Bitmask-DP + Greedy minimum-transfer solver
 │   │   │   ├── cross-group-ledger.ts         # Friend net balance across groups + atomic batch settlements
@@ -68,21 +84,34 @@ wise-spliter/
 │   │       ├── hlc.ts                        # Monotonic Hybrid Logical Clock generator & comparator
 │   │       └── revision-diff.ts              # Structured diff generator for Expense & Group Activity History
 │   ├── storage/
-│   │   ├── local-db.ts                       # Dexie IndexedDB schema & ACID repositories
-│   │   └── repositories/                     # GroupRepo, ExpenseRepo, SettlementRepo, ActivityRepo
+│   │   └── local-db.ts                       # Dexie IndexedDB mirror (`wise_spliter_local_db`), `syncOutbox` & `local_receipt_blobs`
 │   ├── sync-engine/
-│   │   ├── supabase-client.ts                # Configured with `db: { schema: 'wise_spliter' }`
-│   │   └── sync-manager.ts                   # Offline outbox pusher, cursor puller, Realtime subscriber
+│   │   └── supabase-sync.ts                  # Offline outbox flusher, `/api/ledger/sync` & `/api/receipts/upload` client
+│   ├── server/
+│   │   ├── index.ts                          # Backend API Gatekeeper on :4174 (`/api/health`, `/api/ledger/bootstrap`, `/api/ledger/sync`, `/api/receipts/upload`)
+│   │   └── supabaseAdmin.ts                  # Server-only `SUPABASE_SECRET_KEY` adapter targeting `wise_spliter` schema & `wise-spliter-receipts` bucket
 │   ├── portability/
-│   │   ├── splitwise-importer.ts             # One-click Splitwise CSV & JSON parser/importer
-│   │   ├── exporters.ts                      # CSV, Excel (.xlsx), and printable PDF statement generators
-│   │   ├── whatsapp-summary.ts               # Text + Image card generator with embedded `upi://pay` links
-│   │   └── encrypted-backup.ts               # PBKDF2 + AES-256-GCM encrypted backup export/restore
-│   └── ui/                                   # Responsive Mobile + Desktop React 19 components & views
+│   │   └── portability-engine.ts             # Splitwise CSV/JSON importer, CSV/Multi-Sheet `.xlsx`/`.pdf` exporters, UPI & WhatsApp summary, AES-256-GCM backup
+│   ├── state/
+│   │   └── LedgerContext.tsx                 # Reactive local-first state provider & mutation coordinator
+│   └── ui/
+│       ├── primitives/
+│       │   └── DesignPrimitives.tsx          # DoubleBezelCard, StatusBadge, ContextualPageGuideBanner
+│       ├── modals/
+│       │   ├── ExpenseEditorModal.tsx        # Modular Quick-Add & Edit modal (`group_id = null` direct splits + group-preselected splits + offline WebP receipts)
+│       │   ├── ExplainBalanceModal.tsx       # Mathematical balance lineage & Bitmask-DP routing drawer
+│       │   └── HelpGuideModal.tsx            # Interactive step-by-step Help & Feature Guide modal
+│       └── pages/
+│           ├── HomeDashboardPage.tsx         # Minimalist Home Dashboard (`<= 3` recent groups via `last_accessed_at` + direct splits)
+│           ├── GroupsLedgerPage.tsx          # Progressive Group Workspace insights, roster, bills & next-step guidance
+│           ├── ActivityAndTrashPage.tsx      # Group activity feed, immutable expense revisions, conflict resolution & Trash recovery
+│           ├── FriendsAndSettlePage.tsx      # Cross-group net balances, atomic batch settlement, UPI QR/deep-link & WhatsApp summary
+│           ├── AnalyticsAndSearchPage.tsx    # Spending analytics & instant multi-filter search
+│           └── PortabilityAndSyncPage.tsx    # Splitwise import, CSV/Multi-Sheet `.xlsx`/`.pdf` export, AES-256-GCM backup & cloud sync status
 └── tests/
-    ├── property/                             # `fast-check` fuzz tests (10,000+ runs per invariant)
-    ├── unit/                                 # Edge-case unit tests for currencies, splits, sync & imports
-    └── e2e/                                  # Playwright multi-user & offline/online E2E tests
+    ├── property/                             # `fast-check` fuzz tests verifying conservation laws
+    ├── unit/                                 # Edge-case unit tests for currencies, splits, IndexedDB, sync & portability
+    └── e2e/                                  # Playwright end-to-end verification suite
 ```
 
 ---
@@ -212,16 +241,35 @@ Tapping any member or suggested settlement produces a structured `BalanceExplana
 
 ## 6. Data Ownership & Portability (`src/portability/`)
 
-1. **Splitwise CSV & JSON Importer (`splitwise-importer.ts`):**
+1. **Splitwise CSV & JSON Importer (`portability-engine.ts`):**
    * Parses official Splitwise CSV exports (detecting the date, description, category, cost, currency, and per-member net column headers) and Splitwise Pro JSON backups, reconstructing groups, members, expenses, and settlements with full validation.
-2. **CSV, Excel (`.xlsx`), and Printable PDF Statements (`exporters.ts`):**
-   * Exports any group or filtered date range to CSV, multi-sheet Excel workbook (Summary + Expenses + Settlements + Member Balances), or formatted PDF statement.
+2. **CSV, Multi-Sheet Excel (`.xlsx`), and Printable `.pdf` Statements (`portability-engine.ts`):**
+   * Exports any group or filtered date range to RFC-4180 `.csv`, a **Multi-Sheet `.xlsx` workbook** (`Summary`, `Expenses`, `Settlements`, `Member Balances`), or a formatted printable `.pdf` statement.
 3. **Encrypted Local/Cloud Backup (`.wisesplit`):**
-   * Exports the entire local database state as a JSON payload compressed and encrypted via Web Crypto **PBKDF2 (`600,000` iterations, `SHA-256`) + `AES-256-GCM`** with a user passphrase (or unencrypted JSON export option), restorable on any device offline.
+   * Exports the entire local database state as a JSON payload compressed and encrypted via Web Crypto **PBKDF2 (`SHA-256`) + `AES-256-GCM`** with a user passphrase (or unencrypted JSON export option), restorable on any device offline.
 
 ---
 
-## 7. Zero-Bug Verification & Testing Strategy
+## 7. Progressive Disclosure UI, Receipt Attachment Pipeline & Backend API Gatekeeper
+
+1. **Minimalist Home Dashboard (`HomeDashboardPage.tsx`):**
+   * Displays at most `<= 3` recently accessed or updated active groups sorted by `GREATEST(last_accessed_at, updated_at) DESC`, personal net balance cards (`Net Position`, `Owed to You`, `You Owe`), recent direct non-group splits (`group_id = null`), and primary quick actions (`+ Quick Add Expense`, `Settle Up`, `All Groups`, `Guided Help`).
+2. **Modular `ExpenseEditorModal` (`src/ui/modals/ExpenseEditorModal.tsx`):**
+   * Supports both **Direct Non-Group Splits (`group_id = null` with `ad_hoc_participants`)** when launched from the Home Screen without selecting a group, and **Group-Preselected Splits** when launched inside a specific group workspace.
+   * Includes all 5 split modes (`equal`, `exact`, `percentage`, `shares`, `adjustment`), multiple payers, live FX conversion with audit note generation, and offline-capable WebP receipt image attachments.
+3. **Progressive Group Workspace (`GroupsLedgerPage.tsx`) & Guided Onboarding (`HelpGuideModal` + `ContextualPageGuideBanner`):**
+   * Opening a group updates its `last_accessed_at` timestamp and progressively reveals concise group-level balance insights, member roster management (instant add by Name + optional Gmail/UPI ID), "Explain This Balance" lineage modals (`ExplainBalanceModal`), and skippable contextual guidance (`ContextualPageGuideBanner` + `HelpGuideModal`).
+4. **Receipt Image & Bill Attachment Architecture (`local_receipt_blobs` $\to$ `POST /api/receipts/upload` $\to$ `wise-spliter-receipts`):**
+   * **Offline / Local Device:** Compressed WebP images are stored immediately in the Dexie.js IndexedDB table `local_receipt_blobs` so receipts work 100% offline during flights and trips.
+   * **Online / Centralized & Cloud Supabase:** Uploaded via the Backend API Service (`POST /api/receipts/upload` on `:4174`) to the private **Supabase Storage bucket `wise-spliter-receipts`** at path `{group_id_or_direct}/{expense_id}/{receipt_id}.webp`, with structured metadata recorded in `wise_spliter.receipt_attachments` and `wise_spliter.expenses.receipts`.
+5. **Centralized Supabase (`SUPABASE_DIR = /home/chetan/projects/my-scripts/setup/dependencies`) & Backend API Gatekeeper (`src/server/index.ts` on `:4174`):**
+   * The Backend API Gatekeeper on port `4174` holds `SUPABASE_SECRET_KEY` (`service_role`) strictly on the server, validates financial conservation laws ($\sum \text{payers} == \text{amount\_minor} == \sum \text{splits}$) before database writes, and communicates with PostgREST (`:54321`) using `Accept-Profile: wise_spliter` and `Content-Profile: wise_spliter` alongside RPCs `wise_spliter.schema_health`, `wise_spliter.push_mutations`, and `wise_spliter.pull_changes`.
+6. **Offline Service Worker (`public/sw.js`):**
+   * Caches the application shell and static assets so Wise-Spliter boots and operates seamlessly without network connectivity.
+
+---
+
+## 8. Zero-Bug Verification & Testing Strategy
 
 1. **Property-Based Fuzz Testing (`tests/property/` with `fast-check`):**
    * **Invariant 1 (Split Conservation):** For any currency exponent $\in \{0, 2, 3\}$, any total $T \in [1\text{n}, 10^{12}\text{n}]$, any subset of $1..25$ members, and any of the 5 split modes, $\sum \text{owed\_minor} === T$ and $\sum \text{paid\_minor} === T$.

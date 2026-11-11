@@ -40,6 +40,65 @@ test.describe('Wise-Spliter Phase 1 Full Acceptance & E2E Suite', () => {
     expect(healthBody.schemaHealth?.groups_count).toBeGreaterThanOrEqual(4);
     expect(healthBody.schemaHealth?.expenses_count).toBeGreaterThanOrEqual(10);
 
+    // Verify POST /api/receipts/upload, POST /api/ledger/push-mutations, and GET /api/ledger/pull-changes?sinceSeq=0
+    const receiptUploadRes = await request.post('/api/receipts/upload', {
+      data: {
+        id: 'rcpt_e2e_test_01',
+        expenseId: mockData.expenses[0]!.id,
+        groupId: mockData.groups[0]!.id,
+        fileName: 'e2e-receipt.webp',
+        mimeType: 'image/webp',
+        sizeKb: 18,
+        uploadedByName: 'Arjun Mehta',
+        previewNote: 'E2E WebP Receipt Upload Verification',
+        dataUrl: 'data:image/webp;base64,UklGRh4AAABXRUJQVlA4TBEAAAAvAAAAAAfQ//73v/+BiOh/AAA=',
+      },
+    });
+    expect(receiptUploadRes.ok()).toBe(true);
+    const receiptUploadBody = (await receiptUploadRes.json()) as {
+      ok: boolean;
+      bucket: string;
+      receiptId: string;
+    };
+    expect(receiptUploadBody.ok).toBe(true);
+    expect(receiptUploadBody.bucket).toBe('wise-spliter-receipts');
+    expect(receiptUploadBody.receiptId).toBe('rcpt_e2e_test_01');
+
+    const pushMutRes = await request.post('/api/ledger/push-mutations', {
+      data: {
+        ops: [
+          {
+            id: 'mut_e2e_01',
+            entityType: 'expense',
+            action: 'expense_updated',
+            hlc: '2026-11-11T15:00:00.000Z-0001-usr_arjun_01',
+          },
+        ],
+      },
+    });
+    expect(pushMutRes.ok()).toBe(true);
+    const pushMutBody = (await pushMutRes.json()) as {
+      ok: boolean;
+      schema: string;
+      processed_count: number;
+    };
+    expect(pushMutBody.ok).toBe(true);
+    expect(pushMutBody.schema).toBe('wise_spliter');
+    expect(pushMutBody.processed_count).toBeGreaterThanOrEqual(1);
+
+    const pullChangesRes = await request.get('/api/ledger/pull-changes?sinceSeq=0');
+    expect(pullChangesRes.ok()).toBe(true);
+    const pullChangesBody = (await pullChangesRes.json()) as {
+      ok: boolean;
+      schema: string;
+      groups: unknown[];
+      expenses: unknown[];
+    };
+    expect(pullChangesBody.ok).toBe(true);
+    expect(pullChangesBody.schema).toBe('wise_spliter');
+    expect(Array.isArray(pullChangesBody.groups)).toBe(true);
+    expect(Array.isArray(pullChangesBody.expenses)).toBe(true);
+
     await page.goto('/');
 
     // 1. Home Screen Minimalism & Contextual Help Guide
@@ -143,6 +202,11 @@ test.describe('Wise-Spliter Phase 1 Full Acceptance & E2E Suite', () => {
     await expect(page.getByText('+1 paise/cents rotated').first()).toBeVisible();
 
     await expect(page.getByTestId('split-reconciliation-bar')).toContainText('100% Reconciled');
+
+    // Attach a sample WebP receipt inside ExpenseEditorModal and verify badge is visible
+    await page.getByTestId('attach-sample-receipt-btn').click();
+    await expect(page.getByTestId('attached-receipt-badge').first()).toBeVisible();
+
     await page.getByTestId('save-expense-btn').click();
 
     await expect(page.getByText('Beach Shack Sunset Snacks').first()).toBeVisible();
@@ -230,6 +294,10 @@ test.describe('Wise-Spliter Phase 1 Full Acceptance & E2E Suite', () => {
     await expect(syncPanel).toContainText('Offline IndexedDB Mode');
     await page.getByTestId('toggle-offline-btn').click();
     await expect(syncPanel).toContainText('Online & Synced');
+
+    await page.getByTestId('google-oauth-btn').click();
+    await page.getByTestId('download-xlsx-btn').click();
+    await page.getByTestId('download-pdf-btn').click();
 
     await page.getByTestId('load-sample-splitwise-btn').click();
     await page.getByTestId('confirm-splitwise-import-btn').click();

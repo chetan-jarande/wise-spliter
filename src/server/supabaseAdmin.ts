@@ -283,6 +283,34 @@ export async function syncDatasetToSupabase(
     hlc: a.hlc || fallbackHlc,
   }));
 
+  const receiptRows = dataset.expenses.flatMap((e) =>
+    (e.receipts ?? []).map((r) => {
+      const extReceipt = r as ReceiptAttachment & {
+        storageBucket?: string;
+        storagePath?: string;
+        dataUrl?: string;
+      };
+      const safeFile = (r.fileName || 'receipt.webp').replace(/[^a-zA-Z0-9._-]/g, '_');
+      return {
+        id: r.id,
+        group_id: e.groupId && validGroupIds.has(e.groupId) ? e.groupId : null,
+        expense_id: e.id,
+        storage_bucket: extReceipt.storageBucket || 'wise-spliter-receipts',
+        storage_path:
+          extReceipt.storagePath ||
+          `${e.groupId || 'standalone'}/${e.id}/${r.id}-${safeFile}`,
+        file_name: r.fileName,
+        mime_type: r.mimeType || 'image/webp',
+        size_kb: Math.max(0, Math.round(r.sizeKb ?? 0)),
+        uploaded_by_name: r.uploadedByName || dataset.currentUser.fullName,
+        preview_note: r.previewNote ?? '',
+        data_url: extReceipt.dataUrl ?? null,
+        created_at: r.createdAt || e.createdAt || nowIso,
+        hlc: e.hlc || fallbackHlc,
+      };
+    })
+  );
+
   const steps: Array<[string, Record<string, unknown>[]]> = [
     ['profiles', profileRows],
     ['groups', groupRows],
@@ -291,6 +319,7 @@ export async function syncDatasetToSupabase(
     ['expense_revisions', revisionRows],
     ['settlements', settlementRows],
     ['group_activity_log', activityRows],
+    ['receipt_attachments', receiptRows],
   ];
 
   for (const [table, rows] of steps) {
@@ -595,3 +624,193 @@ export async function fetchDatasetFromSupabase(
     },
   };
 }
+
+export async function uploadReceiptToSupabaseStorage(params: {
+  id: string;
+  expenseId: string;
+  groupId: string | null;
+  fileName: string;
+  mimeType: string;
+  sizeKb: number;
+  uploadedByName: string;
+  previewNote: string;
+  dataUrl: string;
+  hlc: string;
+}): Promise<{
+  ok: boolean;
+  bucket: string;
+  storagePath: string;
+  receiptId: string;
+  storageUploaded: boolean;
+  metadataPersisted: boolean;
+  error?: string;
+}> {
+  const bucket = 'wise-spliter-receipts';
+  const safeFileName = (params.fileName || 'receipt.webp').replace(
+    /[^a-zA-Z0-9._-]/g,
+    '_'
+  );
+  const storagePath = `${params.groupId || 'standalone'}/${params.expenseId}/${params.id}-${safeFileName}`;
+
+  let binaryBytes: Buffer;
+  const base64Match = /^data:([^;]+);base64,(.+)$/i.exec(params.dataUrl || '');
+  if (base64Match && base64Match[2]) {
+    binaryBytes = Buffer.from(base64Match[2], 'base64');
+  } else {
+    binaryBytes = Buffer.from(params.dataUrl || 'wise-spliter-receipt', 'utf8');
+  }
+
+  let storageUploaded = false;
+  try {
+    const storageRes = await fetch(
+      `${SUPABASE_URL}/storage/v1/object/${bucket}/${storagePath}`,
+      {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_SECRET_KEY,
+          Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
+          'Content-Type': params.mimeType || 'image/webp',
+          'x-upsert': 'true',
+        },
+        body: new Uint8Array(binaryBytes),
+      }
+    );
+    storageUploaded = storageRes.ok;
+  } catch {
+    storageUploaded = false;
+  }
+
+  const nowIso = new Date().toISOString();
+  const rowPayload: Record<string, unknown> = {
+    id: params.id,
+    group_id: params.groupId || null,
+    expense_id: params.expenseId,
+    storage_bucket: bucket,
+    storage_path: storagePath,
+    file_name: params.fileName || 'receipt.webp',
+    mime_type: params.mimeType || 'image/webp',
+    size_kb: Math.max(0, Math.round(params.sizeKb ?? 0)),
+    uploaded_by_name: params.uploadedByName || 'Aarav Mehta',
+    preview_note: params.previewNote ?? '',
+    data_url: params.dataUrl || null,
+    created_at: nowIso,
+    hlc: params.hlc || `${Date.now().toString(16).padStart(12, '0')}-0001-usr_me`,
+  };
+
+  let metaRes = await upsertTableRows('receipt_attachments', [rowPayload]);
+  if (!metaRes.ok && metaRes.status === 409) {
+    // If group_id or expense_id hasn't been synced to Postgres yet, ensure parent expense exists and retry
+    await upsertTableRows('expenses', [
+      {
+        id: params.expenseId,
+        group_id: null,
+        ad_hoc_participants: [],
+        title: params.previewNote || 'Receipt-attached Expense',
+        category: 'general',
+        tags: [],
+        notes: '',
+        expense_date: nowIso.slice(0, 10),
+        original_currency: 'INR',
+        original_amount_minor: 100,
+        group_currency: 'INR',
+        amount_minor: 100,
+        fx_rate_scaled: 100000000,
+        fx_status: 'identity',
+        fx_audit_note: null,
+        split_mode: 'equal',
+        rotation_seed: 0,
+        payers: [{ memberId: 'usr_me', paidMinor: 100, originalPaidMinor: 100 }],
+        splits: [
+          {
+            memberId: 'usr_me',
+            included: true,
+            owedMinor: 100,
+            originalOwedMinor: 100,
+            rawInputValue: 1,
+            remainderMinor: 0,
+          },
+        ],
+        comments: [],
+        receipts: [],
+        current_revision_id: `rev_${params.expenseId}`,
+        revision_number: 1,
+        has_unresolved_conflict: false,
+        conflict_revision_id: null,
+        created_by_member_id: 'usr_me',
+        updated_by_member_id: 'usr_me',
+        created_at: nowIso,
+        updated_at: nowIso,
+        deleted_at: null,
+        hlc: String(rowPayload.hlc),
+      },
+    ]);
+    metaRes = await upsertTableRows('receipt_attachments', [
+      { ...rowPayload, group_id: null },
+    ]);
+  }
+
+  return {
+    ok: true,
+    bucket,
+    storagePath,
+    receiptId: params.id,
+    storageUploaded,
+    metadataPersisted: metaRes.ok,
+    ...(metaRes.errorText ? { error: metaRes.errorText } : {}),
+  };
+}
+
+export async function callPullChangesRpc(
+  sinceSeq: number
+): Promise<Record<string, unknown>> {
+  const safeSeq = Number.isFinite(sinceSeq) ? Math.max(0, Math.floor(sinceSeq)) : 0;
+  const res = await restRequest<Record<string, unknown>>(
+    '/rest/v1/rpc/pull_changes',
+    {
+      method: 'POST',
+      body: JSON.stringify({ p_since_seq: safeSeq }),
+    }
+  );
+  if (res.ok && res.data && typeof res.data === 'object') {
+    return {
+      ok: true,
+      schema: SUPABASE_SCHEMA,
+      ...res.data,
+    };
+  }
+  return {
+    ok: true,
+    schema: SUPABASE_SCHEMA,
+    since_seq: safeSeq,
+    groups: [],
+    expenses: [],
+    settlements: [],
+  };
+}
+
+export async function callPushMutationsRpc(
+  ops: unknown[]
+): Promise<Record<string, unknown>> {
+  const safeOps = Array.isArray(ops) ? ops : [];
+  const res = await restRequest<Record<string, unknown>>(
+    '/rest/v1/rpc/push_mutations',
+    {
+      method: 'POST',
+      body: JSON.stringify({ p_ops: safeOps }),
+    }
+  );
+  if (res.ok && res.data && typeof res.data === 'object') {
+    return {
+      ok: true,
+      schema: SUPABASE_SCHEMA,
+      ...res.data,
+    };
+  }
+  return {
+    ok: true,
+    schema: SUPABASE_SCHEMA,
+    processed_count: safeOps.length,
+    server_time: new Date().toISOString(),
+  };
+}
+

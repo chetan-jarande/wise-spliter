@@ -6,10 +6,13 @@ import {
   Coins,
   FloppyDisk,
   FolderOpen,
+  Image,
+  Paperclip,
   Plus,
   Sparkle,
   Tag,
   Trash,
+  UploadSimple,
   UserPlus,
   Users,
   WarningCircle,
@@ -21,9 +24,11 @@ import {
   ExpenseItem,
   ExpensePayer,
   FxStatus,
+  ReceiptAttachment,
   SplitMode,
 } from '../../types/ledger';
 import { useLedger } from '../../state/LedgerContext';
+import { createSampleWebpReceiptAttachment } from '../../portability/portability-engine';
 import {
   CurrencyAmount,
   CurrencyPrecisionPill,
@@ -164,6 +169,7 @@ export function ExpenseEditorModal({
 
   const [includedMembers, setIncludedMembers] = useState<Record<string, boolean>>({});
   const [memberInputStrings, setMemberInputStrings] = useState<Record<string, string>>({});
+  const [attachedReceipts, setAttachedReceipts] = useState<ReceiptAttachment[]>([]);
 
   const isDirectSplit = selectedGroupId === '';
 
@@ -281,6 +287,7 @@ export function ExpenseEditorModal({
       }
       setIncludedMembers(incMap);
       setMemberInputStrings(strMap);
+      setAttachedReceipts(initialExpense.receipts ?? []);
     } else {
       setTitle('');
       setCategory('food');
@@ -293,6 +300,7 @@ export function ExpenseEditorModal({
       setTagsInput('');
       setSplitMode('equal');
       setIsMultiPayer(false);
+      setAttachedReceipts([]);
       const defaultPayer = targetGroup
         ? targetGroup.members.find((m) => m.userId === dataset.currentUser.id)?.id ??
           targetGroup.members[0]?.id ??
@@ -712,6 +720,83 @@ export function ExpenseEditorModal({
     [totalConvertedMinor, splitMode, computedPayers, computedSplits]
   );
 
+  const handleAttachSampleReceipt = () => {
+    const draftExpId = initialExpense?.id ?? `exp_${Date.now()}`;
+    const sampleReceipt = createSampleWebpReceiptAttachment(
+      draftExpId,
+      title.trim() || 'Shared Bill Receipt',
+      dataset.currentUser.fullName
+    );
+    setAttachedReceipts((prev) => [...prev, sampleReceipt]);
+  };
+
+  const handleReceiptFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const draftExpId = initialExpense?.id ?? `exp_${Date.now()}`;
+    const baseName = file.name.replace(/\.[^.]+$/, '') || 'receipt';
+    const webpFileName = file.type === 'application/pdf' ? file.name : `${baseName}.webp`;
+    const sizeKb = Math.max(1, Math.round(file.size / 1024));
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rawDataUrl = typeof reader.result === 'string' ? reader.result : '';
+      const appendAttachment = (finalDataUrl: string, finalMime: string) => {
+        const attachment: ReceiptAttachment = {
+          id: `rcp_${draftExpId}_${Date.now()}`,
+          expenseId: draftExpId,
+          fileName: webpFileName,
+          mimeType: finalMime,
+          sizeKb,
+          uploadedByName: dataset.currentUser.fullName,
+          createdAt: new Date().toISOString(),
+          previewNote:
+            'Compressed WebP receipt stored in Local IndexedDB (local_receipt_blobs) & Supabase Storage (wise-spliter-receipts)',
+          storageBucket: 'wise-spliter-receipts',
+          storagePath: `receipts/${draftExpId}.webp`,
+          dataUrl: finalDataUrl,
+        };
+        setAttachedReceipts((prev) => [...prev, attachment]);
+      };
+
+      if (file.type.startsWith('image/') && typeof document !== 'undefined') {
+        const img = new window.Image();
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            const maxDim = 960;
+            const scale = Math.min(1, maxDim / Math.max(img.width || 320, img.height || 180));
+            canvas.width = Math.max(1, Math.round((img.width || 320) * scale));
+            canvas.height = Math.max(1, Math.round((img.height || 180) * scale));
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              const compressedUrl = canvas.toDataURL('image/webp', 0.82);
+              appendAttachment(compressedUrl || rawDataUrl, 'image/webp');
+              return;
+            }
+          } catch {
+            // Fallback to raw DataURL
+          }
+          appendAttachment(rawDataUrl, 'image/webp');
+        };
+        img.onerror = () => {
+          appendAttachment(rawDataUrl, 'image/webp');
+        };
+        img.src = rawDataUrl;
+      } else {
+        appendAttachment(rawDataUrl, file.type || 'image/webp');
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleRemoveReceipt = (receiptId: string) => {
+    setAttachedReceipts((prev) => prev.filter((r) => r.id !== receiptId));
+  };
+
   const handleSaveDefaultSplit = () => {
     if (!selectedGroup) return;
     const memberValues: Record<string, number> = {};
@@ -764,6 +849,7 @@ export function ExpenseEditorModal({
       splitMode,
       payers: computedPayers,
       splits: computedSplits,
+      receipts: attachedReceipts,
     };
 
     upsertExpense(payload as unknown as Parameters<typeof upsertExpense>[0]);
@@ -1357,6 +1443,93 @@ export function ExpenseEditorModal({
               placeholder="Add context on shares, adjustments, or receipt details..."
               className="w-full rounded-xl border border-slate-300 dark:border-white/15 bg-slate-50 dark:bg-slate-900/90 px-3.5 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#059669]"
             />
+          </div>
+
+          {/* Receipt Attachment Section (WebP Local IndexedDB + Supabase Storage Bucket) */}
+          <div
+            data-testid="expense-receipt-section"
+            className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/50 p-4 space-y-3"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Paperclip className="w-4 h-4 text-[#059669]" weight="bold" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                    Receipt &amp; Bill Image Attachments (WebP)
+                  </span>
+                </div>
+                <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
+                  Local IndexedDB: <span className="text-sky-600 dark:text-sky-400">local_receipt_blobs</span> + Supabase Storage Bucket: <span className="text-emerald-600 dark:text-emerald-400">wise-spliter-receipts</span>
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="inline-flex items-center gap-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-white/10 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer transition-colors">
+                  <UploadSimple className="w-3.5 h-3.5 text-[#059669]" weight="bold" />
+                  <span>Upload Image / PDF</span>
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    data-testid="receipt-file-input"
+                    onChange={handleReceiptFileChange}
+                    className="hidden"
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  data-testid="attach-sample-receipt-btn"
+                  onClick={handleAttachSampleReceipt}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-500/30 px-3 py-1.5 text-xs font-semibold cursor-pointer transition-colors"
+                >
+                  <Image className="w-3.5 h-3.5" weight="duotone" />
+                  <span>Attach Sample Receipt (WebP)</span>
+                </button>
+              </div>
+            </div>
+
+            {attachedReceipts.length > 0 && (
+              <div className="space-y-2 pt-1">
+                {attachedReceipts.map((rcp) => (
+                  <div
+                    key={rcp.id}
+                    data-testid="attached-receipt-badge"
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white dark:bg-slate-900 border border-emerald-500/30 px-3 py-2 text-xs"
+                  >
+                    <div className="flex items-center gap-3">
+                      {rcp.dataUrl && rcp.dataUrl.startsWith('data:image/') && (
+                        <img
+                          src={rcp.dataUrl}
+                          alt={rcp.fileName}
+                          className="h-9 w-14 rounded-lg object-cover border border-slate-200 dark:border-white/10"
+                        />
+                      )}
+                      <div>
+                        <div className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                          <span>{rcp.fileName}</span>
+                          <span className="font-mono text-[10px] text-emerald-600 dark:text-emerald-400">
+                            ({rcp.sizeKb} KB / {rcp.mimeType})
+                          </span>
+                        </div>
+                        <div className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
+                          Bucket: {rcp.storageBucket ?? 'wise-spliter-receipts'} | Path:{' '}
+                          {rcp.storagePath ?? `receipts/${rcp.expenseId}.webp`}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveReceipt(rcp.id)}
+                      className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 p-1 transition-colors"
+                      title="Remove receipt"
+                    >
+                      <Trash className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Live Reconciliation Status Bar */}

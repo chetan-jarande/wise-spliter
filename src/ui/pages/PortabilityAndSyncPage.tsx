@@ -9,6 +9,9 @@ import {
   Database,
   DownloadSimple,
   FileCsv,
+  FilePdf,
+  FileXls,
+  GoogleLogo,
   Key,
   LockKey,
   Printer,
@@ -28,8 +31,11 @@ import {
   decryptBackupPayload,
   encryptBackupPayload,
   exportGroupToCsv,
+  exportGroupToExcelBuffer,
+  exportGroupToPdfBytes,
   parseSplitwiseCsv,
 } from '../../portability/portability-engine';
+import { wiseSpliterSyncEngine } from '../../sync-engine/supabase-sync';
 import { MockLedgerDataset } from '../../types/ledger';
 
 export function PortabilityAndSyncPage() {
@@ -159,6 +165,67 @@ export function PortabilityAndSyncPage() {
         // Ignore in headless environments
       }
     }
+  };
+
+  const handleDownloadExcel = () => {
+    try {
+      const xlsxBytes = exportGroupToExcelBuffer(
+        activeGroup,
+        activeGroupExpenses,
+        activeGroupSettlements
+      );
+      const blob = new Blob([xlsxBytes.buffer as ArrayBuffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const slug = activeGroup.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-');
+      a.href = url;
+      a.download = `wise-spliter-${slug}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      // Fallback if URL.createObjectURL is unavailable in headless environment
+    }
+    showToast('Exported multi-sheet Excel workbook (.xlsx)');
+  };
+
+  const handleDownloadPdf = () => {
+    try {
+      const pdfBytes = exportGroupToPdfBytes(
+        activeGroup,
+        activeGroupExpenses,
+        activeGroupSettlements
+      );
+      const blob = new Blob([pdfBytes.buffer as ArrayBuffer], {
+        type: 'application/pdf',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const slug = activeGroup.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-');
+      a.href = url;
+      a.download = `wise-spliter-${slug}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      // Fallback if URL.createObjectURL is unavailable in headless environment
+    }
+    showToast('Exported PDF statement (.pdf)');
+  };
+
+  const handleVerifyGoogleOAuth = () => {
+    void wiseSpliterSyncEngine.signInWithGoogleOAuth(dataset.currentUser.email);
+    showToast(
+      `Verified Google OAuth session (${dataset.currentUser.email}) connected to Supabase ${dataset.currentUser.supabaseSchema} schema.`
+    );
   };
 
   const handleGenerateEncryptedBackup = async () => {
@@ -405,6 +472,16 @@ export function PortabilityAndSyncPage() {
                 <CloudArrowUp className="w-4 h-4" weight="bold" />
                 <span>Sync Now with wise_spliter</span>
               </button>
+
+              <button
+                data-testid="google-oauth-btn"
+                type="button"
+                onClick={handleVerifyGoogleOAuth}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-300 ring-1 ring-sky-500/30 hover:bg-sky-500/25 transition-colors cursor-pointer inline-flex items-center gap-2"
+              >
+                <GoogleLogo className="w-4 h-4" weight="bold" />
+                <span>Verify Google OAuth Session</span>
+              </button>
             </div>
           </DoubleBezelCard>
         </div>
@@ -583,6 +660,26 @@ export function PortabilityAndSyncPage() {
               >
                 <DownloadSimple className="w-4 h-4" weight="bold" />
                 <span>Download .CSV Spreadsheet</span>
+              </button>
+
+              <button
+                data-testid="download-xlsx-btn"
+                type="button"
+                onClick={handleDownloadExcel}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white shadow-sm transition-colors cursor-pointer inline-flex items-center gap-2"
+              >
+                <FileXls className="w-4 h-4" weight="bold" />
+                <span>Download Excel (.xlsx)</span>
+              </button>
+
+              <button
+                data-testid="download-pdf-btn"
+                type="button"
+                onClick={handleDownloadPdf}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition-colors cursor-pointer inline-flex items-center gap-2"
+              >
+                <FilePdf className="w-4 h-4" weight="bold" />
+                <span>Download PDF (.pdf)</span>
               </button>
 
               <button

@@ -2,7 +2,10 @@
 
 **Related Documents:**
 * [Feature Requirements](./feature-requiremrnts.md)
+* [System Architecture & Topology](./architecture.md)
 * [Main Technical Architecture & Algorithms Specification](./technical-spec.md)
+* [Phase 1 Implementation Plan](./implementation-plan.md)
+* [Engineering & Coding Standards](./coding-standards.md)
 
 ---
 
@@ -163,7 +166,9 @@ CREATE TABLE wise_spliter.expenses (
     ]
   */
 
-  -- Revision & Conflict Tracking
+  -- Revision, Comments, Receipts & Conflict Tracking
+  comments JSONB NOT NULL DEFAULT '[]',
+  receipts JSONB NOT NULL DEFAULT '[]', -- Structured receipt metadata mirrored with wise_spliter.receipt_attachments
   current_revision_id UUID NOT NULL,
   revision_number INTEGER NOT NULL DEFAULT 1,
   has_unresolved_conflict BOOLEAN NOT NULL DEFAULT false,
@@ -297,11 +302,11 @@ CREATE TABLE wise_spliter.comments (
 
 CREATE TABLE wise_spliter.receipt_attachments (
   id UUID PRIMARY KEY,
-  group_id UUID NOT NULL REFERENCES wise_spliter.groups(id) ON DELETE CASCADE,
+  group_id UUID REFERENCES wise_spliter.groups(id) ON DELETE CASCADE, -- NULL for direct non-group splits
   expense_id UUID NOT NULL REFERENCES wise_spliter.expenses(id) ON DELETE CASCADE,
-  storage_path TEXT NOT NULL, -- Path inside private bucket `wise-spliter-receipts`
+  storage_path TEXT NOT NULL, -- Path inside private bucket `wise-spliter-receipts`: {group_id_or_direct}/{expense_id}/{receipt_id}.webp
   file_name TEXT NOT NULL,
-  mime_type TEXT NOT NULL,
+  mime_type TEXT NOT NULL DEFAULT 'image/webp',
   size_bytes INTEGER NOT NULL,
   uploaded_by UUID NOT NULL REFERENCES wise_spliter.profiles(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -324,11 +329,41 @@ CREATE TABLE wise_spliter.fx_rates_cache (
 CREATE TABLE wise_spliter.applied_sync_ops (
   op_id UUID PRIMARY KEY, -- Client mutation UUIDv7 from sync_outbox
   user_id UUID NOT NULL REFERENCES wise_spliter.profiles(id),
-  group_id UUID NOT NULL,
+  group_id UUID, -- Nullable when mutation applies to a direct non-group expense
   applied_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   result_status TEXT NOT NULL -- 'applied' | 'conflict_superseded' | 'noop_duplicate'
 );
 ```
+
+### 2.3 Core Schema RPC Functions (`wise_spliter.schema_health`, `wise_spliter.push_mutations`, `wise_spliter.pull_changes`)
+
+All synchronization and schema health verification operations execute through three dedicated RPC functions inside the `wise_spliter` schema:
+
+1. **`wise_spliter.schema_health()`:**
+   * Invoked by `scripts/apply-migration.mjs` and the Backend API (`GET /api/health`) via `POST /rest/v1/rpc/schema_health` (`Accept-Profile: wise_spliter`) to confirm the schema and tables are online.
+   ```sql
+   CREATE OR REPLACE FUNCTION wise_spliter.schema_health()
+   RETURNS JSONB
+   LANGUAGE sql
+   SECURITY DEFINER
+   STABLE
+   SET search_path = wise_spliter
+   AS $$
+     SELECT jsonb_build_object(
+       'ok', true,
+       'schema', 'wise_spliter',
+       'groups_count', (SELECT count(*) FROM wise_spliter.groups),
+       'expenses_count', (SELECT count(*) FROM wise_spliter.expenses)
+     );
+   $$;
+   ```
+
+2. **`wise_spliter.push_mutations(p_ops JSONB)`:**
+   * Ingests an ordered array of offline outbox mutations (`op_id`, `entity_type`, `action`, `base_revision_id`, `hlc`, `payload`).
+   * Checks `wise_spliter.applied_sync_ops` for `op_id` idempotency (`noop_duplicate` on replay), enforces strict financial conservation ($\sum \text{payers} == \text{amount\_minor} == \sum \text{splits}$), resolves concurrent offline edits atomically by comparing `base_revision_id` and `hlc` (preserving both versions in `wise_spliter.expense_revisions` and setting `has_unresolved_conflict = true` when a conflict occurs), and logs all mutations to `wise_spliter.group_activity_log`.
+
+3. **`wise_spliter.pull_changes(p_cursor BIGINT, p_group_ids TEXT[])`:**
+   * Performs cursor-based incremental delta synchronization, returning all rows in `groups`, `group_members`, `expenses`, `expense_revisions`, `settlements`, `group_activity_log`, and `receipt_attachments` where `server_seq > p_cursor` for the caller's groups and direct non-group splits (`group_id IS NULL`), along with the new high-water `max_server_seq`.
 
 ---
 
@@ -353,9 +388,21 @@ export class WiseSpliterLocalDB extends Dexie {
   // Local-only stores for 100% offline operation:
   sync_outbox!: Table<SyncOutboxEntry, string>; // Pending offline mutations in FIFO order
   sync_cursors!: Table<SyncCursorState, string>; // Tracks last_pulled_server_seq per group/table
-  local_receipt_blobs!: Table<LocalReceiptBlob, string>; // Stores compressed image Blobs until uploaded
+  local_receipt_blobs!: Table<LocalReceiptBlob, string>; // Stores compressed WebP image Blobs offline until uploaded
 }
 ```
+
+### 3.1 Receipt Image & Bill Attachment Architecture (`local_receipt_blobs` $\to$ `wise-spliter-receipts`)
+
+1. **Offline / Local Device (`local_receipt_blobs` in Dexie.js IndexedDB):**
+   * When a user attaches a receipt or bill image to an expense (either a group bill or a direct non-group split with `group_id = null`), the client compresses the image into **WebP** format and immediately stores the binary blob in the Dexie.js IndexedDB table `local_receipt_blobs`.
+   * Because the compressed WebP blob lives on-device in `local_receipt_blobs`, viewing and managing receipts works **100% offline** during flights and remote trips.
+2. **Online / Centralized & Cloud Supabase (`POST /api/receipts/upload` $\to$ `wise-spliter-receipts`):**
+   * When network connectivity is available, the sync engine uploads pending entries from `local_receipt_blobs` via the Backend API Service (`POST /api/receipts/upload` on port `:4174`).
+   * The Backend API stores the WebP file in the private **Supabase Storage bucket `wise-spliter-receipts`** at path:
+     `{group_id_or_direct}/{expense_id}/{receipt_id}.webp`
+     (using `'direct'` as the folder prefix when `group_id IS NULL`).
+   * Structured receipt metadata (`id`, `group_id`, `expense_id`, `storage_path`, `file_name`, `mime_type`, `size_bytes`, `uploaded_by`, `created_at`, `hlc`) is recorded in `wise_spliter.receipt_attachments` and mirrored in `wise_spliter.expenses.receipts`.
 
 ---
 
@@ -368,14 +415,14 @@ Every device maintains a monotonic **Hybrid Logical Clock** formatted as a lexic
 Example: "019a73e4c210-0001-9f8b2c"
 ```
 
-### 4.2 Atomic Expense Invariant Enforcement (Client + Database Trigger)
-Before any expense write is accepted (both locally in Dexie and in Postgres `wise_spliter.apply_sync_batch`), a strict validation function verifies:
+### 4.2 Atomic Expense Invariant Enforcement (Client + Backend API + `wise_spliter.push_mutations`)
+Before any expense write is accepted (locally in Dexie, in the Backend API Gatekeeper on `:4174`, and in Postgres `wise_spliter.push_mutations`), a strict validation function verifies:
 1. $\sum_{p \in \text{payers}} p.\text{paid\_minor} == \text{expense.amount\_minor}$
 2. $\sum_{s \in \text{splits}, s.\text{included}} s.\text{owed\_minor} == \text{expense.amount\_minor}$
-3. Every `member_id` in `payers` and `splits` belongs to `expense.group_id`.
+3. Every `member_id` in `payers` and `splits` belongs to `expense.group_id` (or `expense.ad_hoc_participants` when `group_id IS NULL`).
 
 ### 4.3 Step-by-Step Resolution When Multiple Group Members Edit Offline & Online
-When a device comes online and pushes its `sync_outbox` entries via `wise_spliter.apply_sync_batch(ops JSONB)`:
+When a device comes online and pushes its `sync_outbox` entries via `wise_spliter.push_mutations(p_ops JSONB)` (and pulls remote deltas via `wise_spliter.pull_changes(p_cursor BIGINT, p_group_ids TEXT[])`):
 
 1. **Idempotency Check (`op_id`):**
    * If `op.op_id` already exists in `wise_spliter.applied_sync_ops`, skip immediately (`noop_duplicate`). This guarantees flaky travel Wi-Fi retries never create duplicate bills or settlements.
@@ -435,7 +482,7 @@ AS $$
 $$;
 ```
 
-### 5.2 Table Policies
+### 5.2 Table & Storage Bucket Policies
 * **`wise_spliter.groups`:** `SELECT`, `UPDATE` allowed only when `wise_spliter.is_group_member(id)` is true; `INSERT` allowed when `created_by = auth.uid()`.
-* **`wise_spliter.group_members`, `expenses`, `expense_revisions`, `settlements`, `group_activity_log`, `comments`, `receipt_attachments`:** `SELECT`, `INSERT`, `UPDATE` allowed only when `wise_spliter.is_group_member(group_id)` is true.
-* **`Storage Bucket (wise-spliter-receipts)`:** Private bucket; object paths follow `{group_id}/{expense_id}/{attachment_id}.webp` and storage RLS verifies `wise_spliter.is_group_member((storage.foldername(name))[1]::uuid)`.
+* **`wise_spliter.group_members`, `expenses`, `expense_revisions`, `settlements`, `group_activity_log`, `comments`, `receipt_attachments`:** `SELECT`, `INSERT`, `UPDATE` allowed when `wise_spliter.is_group_member(group_id)` is true (or `created_by_member_id` / `uploaded_by` matches the authenticated user for direct non-group splits where `group_id IS NULL`).
+* **`Storage Bucket (wise-spliter-receipts)`:** Private Supabase Storage bucket; compressed WebP receipt images are uploaded via the Backend API Service (`POST /api/receipts/upload` on `:4174`) to object paths following `{group_id_or_direct}/{expense_id}/{receipt_id}.webp`, with structured metadata recorded in `wise_spliter.receipt_attachments` and `wise_spliter.expenses.receipts`. Storage RLS verifies `wise_spliter.is_group_member((storage.foldername(name))[1]::uuid)` for group receipts or owner identity for `'direct'` non-group receipts.

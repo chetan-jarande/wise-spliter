@@ -69,8 +69,18 @@
   * All database objects live inside `CREATE SCHEMA IF NOT EXISTS wise_spliter;`. Never create tables or functions in `public`.
   * Enforce `REVOKE ALL ON SCHEMA wise_spliter FROM PUBLIC, anon;` and enable Row-Level Security (`ALTER TABLE ... ENABLE ROW LEVEL SECURITY;`) on every table in `wise_spliter`.
   * All PostgREST calls from `src/server/supabaseAdmin.ts` must explicitly set `Accept-Profile: wise_spliter` and `Content-Profile: wise_spliter`.
+  * Database readiness and delta synchronization use the dedicated schema RPCs: `wise_spliter.schema_health()`, `wise_spliter.push_mutations`, and `wise_spliter.pull_changes`.
+* **Receipt Image & Bill Attachment Storage Rules:**
+  * **Offline / Local Device:** Compressed WebP images are stored immediately in the Dexie.js IndexedDB table `local_receipt_blobs` so receipt attachments work 100% offline during flights and trips.
+  * **Online / Centralized & Cloud Supabase:** Uploaded via the Backend API Service (`POST /api/receipts/upload` on `:4174`) to the private **Supabase Storage bucket `wise-spliter-receipts`** at path `{group_id_or_direct}/{expense_id}/{receipt_id}.webp`, with structured metadata recorded in `wise_spliter.receipt_attachments` and `wise_spliter.expenses.receipts`.
 * **XSS & Code Execution Prevention:**
   * Never use `eval()`, `new Function()`, or `dangerouslySetInnerHTML`. All imported CSV/JSON/backup payloads must be parsed as structured data and validated before rendering.
+
+### 2.5 Git Author & Commit Hygiene Rule
+* **Sole Author on All Commits:** Every commit in this repository must be authored exclusively by:
+  * `Chetan Jarande <chetanjarande@gmail.com>`
+* **Zero Co-Author Trailers:** Never include `Co-authored-by:` trailers (or any AI/assistant attribution trailers) in commit messages.
+* **Canonical Remote Repository:** `https://github.com/chetan-jarande/wise-spliter`
 
 ---
 

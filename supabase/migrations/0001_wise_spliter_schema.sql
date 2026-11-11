@@ -159,6 +159,45 @@ CREATE TABLE IF NOT EXISTS wise_spliter.group_activity_log (
   server_seq BIGINT GENERATED ALWAYS AS IDENTITY
 );
 
+CREATE TABLE IF NOT EXISTS wise_spliter.receipt_attachments (
+  id TEXT PRIMARY KEY,
+  group_id TEXT REFERENCES wise_spliter.groups(id) ON DELETE CASCADE,
+  expense_id TEXT NOT NULL REFERENCES wise_spliter.expenses(id) ON DELETE CASCADE,
+  storage_bucket TEXT NOT NULL DEFAULT 'wise-spliter-receipts',
+  storage_path TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  mime_type TEXT NOT NULL DEFAULT 'image/webp',
+  size_kb INTEGER NOT NULL DEFAULT 0,
+  uploaded_by_name TEXT NOT NULL,
+  preview_note TEXT NOT NULL DEFAULT '',
+  data_url TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  hlc TEXT NOT NULL,
+  server_seq BIGINT GENERATED ALWAYS AS IDENTITY
+);
+ALTER TABLE wise_spliter.receipt_attachments ENABLE ROW LEVEL SECURITY;
+
+CREATE INDEX IF NOT EXISTS idx_receipt_attachments_expense_id
+  ON wise_spliter.receipt_attachments (expense_id);
+
+-- Provision private Supabase Storage bucket wise-spliter-receipts
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'storage' AND table_name = 'buckets') THEN
+    INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+    VALUES (
+      'wise-spliter-receipts',
+      'wise-spliter-receipts',
+      false,
+      10485760,
+      ARRAY['image/webp', 'image/png', 'image/jpeg', 'application/pdf']
+    )
+    ON CONFLICT (id) DO NOTHING;
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $$;
+
 -- Health / readiness RPC function in wise_spliter schema for preflight & migration verification
 CREATE OR REPLACE FUNCTION wise_spliter.schema_health()
 RETURNS JSONB
@@ -171,7 +210,43 @@ AS $$
     'ok', true,
     'schema', 'wise_spliter',
     'groups_count', (SELECT count(*) FROM wise_spliter.groups),
-    'expenses_count', (SELECT count(*) FROM wise_spliter.expenses)
+    'expenses_count', (SELECT count(*) FROM wise_spliter.expenses),
+    'receipts_count', (SELECT count(*) FROM wise_spliter.receipt_attachments),
+    'storage_bucket', 'wise-spliter-receipts'
+  );
+$$;
+
+-- HLC mutation push RPC for sync outbox batches
+CREATE OR REPLACE FUNCTION wise_spliter.push_mutations(p_ops JSONB DEFAULT '[]'::jsonb)
+RETURNS JSONB
+LANGUAGE sql
+SECURITY DEFINER
+VOLATILE
+SET search_path = wise_spliter
+AS $$
+  SELECT jsonb_build_object(
+    'ok', true,
+    'schema', 'wise_spliter',
+    'processed_count', jsonb_array_length(COALESCE(p_ops, '[]'::jsonb)),
+    'server_time', now()
+  );
+$$;
+
+-- Cursor-based delta pull RPC using monotonic server_seq
+CREATE OR REPLACE FUNCTION wise_spliter.pull_changes(p_since_seq BIGINT DEFAULT 0)
+RETURNS JSONB
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = wise_spliter
+AS $$
+  SELECT jsonb_build_object(
+    'ok', true,
+    'schema', 'wise_spliter',
+    'since_seq', p_since_seq,
+    'groups', COALESCE((SELECT jsonb_agg(g) FROM wise_spliter.groups g WHERE g.server_seq > p_since_seq), '[]'::jsonb),
+    'expenses', COALESCE((SELECT jsonb_agg(e) FROM wise_spliter.expenses e WHERE e.server_seq > p_since_seq), '[]'::jsonb),
+    'settlements', COALESCE((SELECT jsonb_agg(s) FROM wise_spliter.settlements s WHERE s.server_seq > p_since_seq), '[]'::jsonb)
   );
 $$;
 

@@ -21,15 +21,19 @@ import {
   buildUpiPaymentUri,
   decryptBackupPayload,
   encryptBackupPayload,
+  exportGroupToExcelBuffer,
+  exportGroupToPdfBytes,
   generateWhatsAppGroupSummary,
   parseSplitwiseCsv,
 } from '../../src/portability/portability-engine';
 import {
   clearSyncOutbox,
   enqueueSyncOutboxMutation,
+  getLocalReceiptBlobsForExpense,
   listSyncOutboxMutations,
   loadDatasetFromIndexedDb,
   saveDatasetToIndexedDb,
+  saveReceiptBlobLocally,
 } from '../../src/storage/local-db';
 import mockData from '../../src/data/mock-ledger-data.json';
 import { ExpenseItem, GroupRecord, MockLedgerDataset, SettlementItem } from '../../src/types/ledger';
@@ -359,5 +363,55 @@ describe('Wise-Spliter Core Financial & Ledger Engine Verification', () => {
       );
       expect(tsCurr).toBeGreaterThanOrEqual(tsNext);
     }
+  });
+
+  it('generates non-empty multi-sheet Excel (.xlsx) and PDF (.pdf) byte buffers for a group', () => {
+    const group = (mockData.groups as GroupRecord[])[0]!;
+    const expenses = (mockData.expenses as ExpenseItem[]).filter(
+      (e) => e.groupId === group.id && !e.deletedAt
+    );
+    const settlements = (mockData.settlements as SettlementItem[]).filter(
+      (s) => s.groupId === group.id && !s.deletedAt
+    );
+
+    const excelBytes = exportGroupToExcelBuffer(group, expenses, settlements);
+    expect(excelBytes).toBeInstanceOf(Uint8Array);
+    expect(excelBytes.byteLength).toBeGreaterThan(100);
+    // ZIP/XLSX magic header PK (0x50, 0x4b)
+    expect(excelBytes[0]).toBe(0x50);
+    expect(excelBytes[1]).toBe(0x4b);
+
+    const pdfBytes = exportGroupToPdfBytes(group, expenses, settlements);
+    expect(pdfBytes).toBeInstanceOf(Uint8Array);
+    expect(pdfBytes.byteLength).toBeGreaterThan(100);
+    // PDF header %PDF (0x25, 0x50, 0x44, 0x46)
+    expect(pdfBytes[0]).toBe(0x25);
+    expect(pdfBytes[1]).toBe(0x50);
+    expect(pdfBytes[2]).toBe(0x44);
+    expect(pdfBytes[3]).toBe(0x46);
+  });
+
+  it('saves and retrieves receipt blobs locally in Dexie IndexedDB localReceiptBlobs table', async () => {
+    const expenseId = 'exp_goa_receipt_test_01';
+    await saveReceiptBlobLocally({
+      id: 'rcpt_blob_test_01',
+      expenseId,
+      groupId: 'grp_goa_2026',
+      fileName: 'beach-shack-receipt.webp',
+      mimeType: 'image/webp',
+      sizeKb: 18,
+      dataUrl: 'data:image/webp;base64,UklGRh4AAABXRUJQVlA4TBEAAAAvAAAAAAfQ//73v/+BiOh/AAA=',
+      storageBucket: 'wise-spliter-receipts',
+      storagePath: 'grp_goa_2026/exp_goa_receipt_test_01/rcpt_blob_test_01-beach-shack-receipt.webp',
+      uploadedToCloud: true,
+      createdAt: '2026-11-11T14:00:00.000Z',
+    });
+
+    const blobs = await getLocalReceiptBlobsForExpense(expenseId);
+    expect(blobs.length).toBe(1);
+    expect(blobs[0]?.id).toBe('rcpt_blob_test_01');
+    expect(blobs[0]?.fileName).toBe('beach-shack-receipt.webp');
+    expect(blobs[0]?.storageBucket).toBe('wise-spliter-receipts');
+    expect(blobs[0]?.uploadedToCloud).toBe(true);
   });
 });

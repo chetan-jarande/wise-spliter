@@ -4,8 +4,11 @@
 Wise-Spliter is a 100% free, local-first, multi-platform daily expense-splitting and bill-sharing application (Desktop, iOS, Android, and Web) combining the offline speed and mathematical precision of **Settl** with the rich multi-user group collaboration, audit history, and settlement features of **Splitwise**. Every feature is completely free with no subscriptions, no ads, and no daily limits.
 
 **Related Specifications:**
+* [System Architecture & Topology](./architecture.md)
 * [Technical Architecture & Feature Specification](./technical-spec.md)
 * [Database Schema, Offline Sync & Security Specification](./database-and-sync-spec.md)
+* [Phase 1 Implementation Plan](./implementation-plan.md)
+* [Engineering & Coding Standards](./coding-standards.md)
 
 ---
 
@@ -20,7 +23,7 @@ Wise-Spliter is a 100% free, local-first, multi-platform daily expense-splitting
 ### 2. Expense Splitting, Modular Quick-Add & Math Precision
 * **Modular Quick-Add Expense (Group-Scoped or Direct Non-Group Split):** Invoke "Add Expense" from either the **Home Screen** or inside a **Specific Group**. When opened inside a group, that group is pre-selected automatically; when opened from the Home Screen without selecting a group (`group_id = null`), the expense is split directly among the friends/participants added to that bill without tying it to any group.
 * **Minimalist Home Screen with Top 3 Recent Groups & Progressive Disclosure:** The Home Screen surfaces only essential high-signal information—net balance summary, primary quick actions (`+ Add Expense`, `Settle Up`, `All Groups`, `Guided Help`), at most **3 recently accessed or updated groups**, and recent direct non-group splits. Opening a specific group progressively reveals minimal group-level insights, group-scoped expense operations, and automatic next-step guidance.
-* **Interactive Help & Contextual Page Guide:** Built-in skippable/dismissible step-by-step guidance on each screen plus an interactive **Help & Feature Guide** modal so users always know where to find every capability without cluttering the interface.
+* **Interactive Help & Contextual Page Guide:** Built-in skippable/dismissible step-by-step guidance on each screen (`ContextualPageGuideBanner`) plus an interactive **Help & Feature Guide** modal (`HelpGuideModal`) so users always know where to find every capability without cluttering the interface.
 * **Core Split Modes:** Split bills equally (with one-tap participant exclusion), by exact amounts, percentages, shares/ratios, or +/- adjustments.
 * **Multiple Payers Support:** Record a single expense where two or more people contributed to paying the bill.
 * **Saved Default Splits:** Save custom preset split ratios (e.g., 60/40 for couples or per-family shares) for one-tap reuse.
@@ -49,7 +52,7 @@ Wise-Spliter is a 100% free, local-first, multi-platform daily expense-splitting
 * **Categories & Custom Tags:** Organize expenses by categories (Food, Rent, Travel, Groceries) and custom hashtags.
 * **Visual Spending Analytics:** View monthly spending charts, category breakdowns, and personal vs. group spend trends.
 * **Instant Global Search & Filters:** Search across all historical expenses by keyword, amount, date range, payer, or category.
-* **Expense Comments, Notes & Receipt Attachments:** Add notes, offline-cached photo attachments (synced to cloud storage when online), and discussion comments on individual bills.
+* **Expense Comments, Notes & Receipt Attachments:** Add notes, discussion comments, and receipt/bill photo attachments on individual bills. Compressed WebP receipt images are saved immediately in the local Dexie.js IndexedDB table `local_receipt_blobs` for 100% offline viewing during flights/trips, and uploaded via the Backend API (`POST /api/receipts/upload` on `:4174`) to the private Supabase Storage bucket `wise-spliter-receipts` at `{group_id_or_direct}/{expense_id}/{receipt_id}.webp` with metadata persisted in `wise_spliter.receipt_attachments` and `wise_spliter.expenses.receipts`.
 
 ### 7. Data Ownership & Portability
 * **Splitwise CSV/JSON Importer:** Migrate your existing Splitwise groups and history in one click.

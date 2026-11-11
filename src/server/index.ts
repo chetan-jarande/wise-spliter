@@ -9,9 +9,12 @@ import initialMockData from '../data/mock-ledger-data.json';
 import { MockLedgerDataset } from '../types/ledger';
 import {
   SUPABASE_SCHEMA,
+  callPullChangesRpc,
+  callPushMutationsRpc,
   checkSupabaseSchemaHealth,
   fetchDatasetFromSupabase,
   syncDatasetToSupabase,
+  uploadReceiptToSupabaseStorage,
 } from './supabaseAdmin';
 
 const API_PORT = Number(process.env.API_PORT || 4174);
@@ -153,6 +156,79 @@ export const apiServer = createServer(async (req, res) => {
       sendJson(res, 400, {
         ok: false,
         error: err instanceof Error ? err.message : 'Invalid JSON payload',
+      });
+      return;
+    }
+  }
+
+  if (req.method === 'POST' && reqUrl.pathname === '/api/receipts/upload') {
+    try {
+      const body = await readJsonBody<{
+        id?: string;
+        expenseId?: string;
+        groupId?: string | null;
+        fileName?: string;
+        mimeType?: string;
+        sizeKb?: number;
+        uploadedByName?: string;
+        previewNote?: string;
+        dataUrl?: string;
+        hlc?: string;
+      }>(req);
+
+      const receiptId = body.id || `rcpt_${Date.now()}`;
+      const expenseId = body.expenseId || 'exp_goa_1';
+      const uploadRes = await uploadReceiptToSupabaseStorage({
+        id: receiptId,
+        expenseId,
+        groupId: body.groupId ?? null,
+        fileName: body.fileName || 'receipt.webp',
+        mimeType: body.mimeType || 'image/webp',
+        sizeKb: Number(body.sizeKb ?? 18),
+        uploadedByName: body.uploadedByName || 'Aarav Mehta',
+        previewNote: body.previewNote || 'Compressed receipt image',
+        dataUrl: body.dataUrl || '',
+        hlc:
+          body.hlc ||
+          `${Date.now().toString(16).padStart(12, '0')}-0001-usr_me`,
+      });
+
+      sendJson(res, 200, {
+        ok: true,
+        bucket: 'wise-spliter-receipts',
+        storagePath: uploadRes.storagePath,
+        receiptId: uploadRes.receiptId,
+        storageUploaded: uploadRes.storageUploaded,
+        metadataPersisted: uploadRes.metadataPersisted,
+      });
+      return;
+    } catch (err) {
+      sendJson(res, 400, {
+        ok: false,
+        error: err instanceof Error ? err.message : 'Invalid receipt upload payload',
+      });
+      return;
+    }
+  }
+
+  if (req.method === 'GET' && reqUrl.pathname === '/api/ledger/pull-changes') {
+    const sinceSeq = Number(reqUrl.searchParams.get('sinceSeq') || '0');
+    const result = await callPullChangesRpc(sinceSeq);
+    sendJson(res, 200, result);
+    return;
+  }
+
+  if (req.method === 'POST' && reqUrl.pathname === '/api/ledger/push-mutations') {
+    try {
+      const body = await readJsonBody<{ ops?: unknown[] } | unknown[]>(req);
+      const ops = Array.isArray(body) ? body : body.ops ?? [];
+      const result = await callPushMutationsRpc(ops);
+      sendJson(res, 200, result);
+      return;
+    } catch (err) {
+      sendJson(res, 400, {
+        ok: false,
+        error: err instanceof Error ? err.message : 'Invalid mutations payload',
       });
       return;
     }

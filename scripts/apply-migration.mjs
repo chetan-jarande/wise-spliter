@@ -36,6 +36,7 @@ const REQUIRED_TABLES = [
   'expense_revisions',
   'settlements',
   'group_activity_log',
+  'receipt_attachments',
 ];
 
 const report = [];
@@ -185,6 +186,26 @@ async function verifySchemaAndTables() {
   check(
     rpc.ok && rpc.text.includes('"wise_spliter"'),
     `RPC ${SUPABASE_SCHEMA}.schema_health() callable (HTTP ${rpc.status})`
+  );
+
+  const pullRpc = await apiProbe('/rest/v1/rpc/pull_changes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_since_seq: 0 }),
+  });
+  check(
+    pullRpc.ok && pullRpc.text.includes('"wise_spliter"'),
+    `RPC ${SUPABASE_SCHEMA}.pull_changes() callable (HTTP ${pullRpc.status})`
+  );
+
+  const pushRpc = await apiProbe('/rest/v1/rpc/push_mutations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_ops: [] }),
+  });
+  check(
+    pushRpc.ok && pushRpc.text.includes('"wise_spliter"'),
+    `RPC ${SUPABASE_SCHEMA}.push_mutations() callable (HTTP ${pushRpc.status})`
   );
 }
 

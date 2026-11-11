@@ -3,6 +3,7 @@ import {
   ExpenseItem,
   ExpenseRevision,
   GroupActivityItem,
+  GroupMember,
   GroupRecord,
   MockLedgerDataset,
   SettlementItem,
@@ -17,6 +18,20 @@ export interface SyncOutboxMutation {
   hlc: string;
 }
 
+export interface LocalReceiptBlobRecord {
+  id: string;
+  expenseId: string;
+  groupId: string | null;
+  fileName: string;
+  mimeType: string;
+  sizeKb: number;
+  dataUrl: string;
+  storageBucket: string;
+  storagePath: string;
+  uploadedToCloud: boolean;
+  createdAt: string;
+}
+
 export interface KvStoreEntry {
   key: string;
   valueJson: string;
@@ -27,30 +42,37 @@ const DATASET_SNAPSHOT_KEY = 'wise_spliter_full_dataset_v1';
 
 export class WiseSpliterLocalDatabase extends Dexie {
   groups!: Table<GroupRecord, string>;
+  groupMembers!: Table<GroupMember, string>;
   expenses!: Table<ExpenseItem, string>;
   expenseRevisions!: Table<ExpenseRevision, string>;
   settlements!: Table<SettlementItem, string>;
   groupActivityLog!: Table<GroupActivityItem, string>;
   syncOutbox!: Table<SyncOutboxMutation, string>;
+  localReceiptBlobs!: Table<LocalReceiptBlobRecord, string>;
   kvStore!: Table<KvStoreEntry, string>;
 
   constructor() {
     super('wise_spliter_local_db');
-    this.version(1).stores({
+    const schemaStores = {
       groups: 'id, baseCurrency, updatedAt, deletedAt, hlc',
+      groupMembers: 'id, groupId, userId, role, memberOrder',
       expenses: 'id, groupId, category, expenseDate, updatedAt, deletedAt, hlc',
       expenseRevisions: 'id, expenseId, groupId, revisionNumber, createdAt, hlc',
       settlements: 'id, groupId, batchSettlementId, settledDate, createdAt, deletedAt, hlc',
       groupActivityLog: 'id, groupId, entityType, entityId, action, createdAt, hlc',
       syncOutbox: 'id, entityType, action, createdAt, hlc',
+      localReceiptBlobs: 'id, expenseId, groupId, uploadedToCloud, createdAt',
       kvStore: 'key, updatedAt',
-    });
+    };
+    this.version(1).stores(schemaStores);
+    this.version(2).stores(schemaStores);
   }
 }
 
 let dbInstance: WiseSpliterLocalDatabase | null = null;
 let memoryDatasetSnapshot: MockLedgerDataset | null = null;
 let memoryOutbox: SyncOutboxMutation[] = [];
+let memoryReceiptBlobs: LocalReceiptBlobRecord[] = [];
 
 function isIndexedDbSupported(): boolean {
   try {
@@ -81,10 +103,12 @@ export async function saveDatasetToIndexedDb(dataset: MockLedgerDataset): Promis
 
   try {
     const nowIso = new Date().toISOString();
+    const allMembers = dataset.groups.flatMap((g) => g.members ?? []);
     await db.transaction(
       'rw',
       [
         db.groups,
+        db.groupMembers,
         db.expenses,
         db.expenseRevisions,
         db.settlements,
@@ -94,6 +118,7 @@ export async function saveDatasetToIndexedDb(dataset: MockLedgerDataset): Promis
       async () => {
         await Promise.all([
           db.groups.clear(),
+          db.groupMembers.clear(),
           db.expenses.clear(),
           db.expenseRevisions.clear(),
           db.settlements.clear(),
@@ -102,6 +127,7 @@ export async function saveDatasetToIndexedDb(dataset: MockLedgerDataset): Promis
 
         await Promise.all([
           db.groups.bulkPut(dataset.groups),
+          db.groupMembers.bulkPut(allMembers),
           db.expenses.bulkPut(dataset.expenses),
           db.expenseRevisions.bulkPut(dataset.expenseRevisions),
           db.settlements.bulkPut(dataset.settlements),
@@ -198,3 +224,56 @@ export async function clearSyncOutbox(): Promise<void> {
     // Ignore IndexedDB unavailability
   }
 }
+
+export async function saveReceiptBlobLocally(
+  record: LocalReceiptBlobRecord
+): Promise<void> {
+  memoryReceiptBlobs = [
+    ...memoryReceiptBlobs.filter((item) => item.id !== record.id),
+    record,
+  ];
+  const db = getLocalDb();
+  if (!db) return;
+
+  try {
+    await db.localReceiptBlobs.put(record);
+  } catch {
+    // Ignore IndexedDB unavailability
+  }
+}
+
+export async function getLocalReceiptBlobsForExpense(
+  expenseId: string
+): Promise<LocalReceiptBlobRecord[]> {
+  const db = getLocalDb();
+  if (db) {
+    try {
+      const rows = await db.localReceiptBlobs
+        .where('expenseId')
+        .equals(expenseId)
+        .toArray();
+      if (rows.length > 0) {
+        return rows;
+      }
+    } catch {
+      // Fallback to memory blobs
+    }
+  }
+  return memoryReceiptBlobs.filter((item) => item.expenseId === expenseId);
+}
+
+export async function listAllLocalReceiptBlobs(): Promise<LocalReceiptBlobRecord[]> {
+  const db = getLocalDb();
+  if (db) {
+    try {
+      const rows = await db.localReceiptBlobs.orderBy('createdAt').toArray();
+      if (rows.length > 0) {
+        return rows;
+      }
+    } catch {
+      // Fallback to memory blobs
+    }
+  }
+  return [...memoryReceiptBlobs];
+}
+

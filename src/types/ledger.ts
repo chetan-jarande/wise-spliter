@@ -138,6 +138,9 @@ export interface ReceiptAttachment {
   uploadedByName: string;
   createdAt: string;
   previewNote: string;
+  storageBucket?: string;
+  storagePath?: string;
+  dataUrl?: string;
 }
 
 export interface RevisionChangeField {
