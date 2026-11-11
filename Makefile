@@ -12,18 +12,21 @@ SUPABASE_DIR  = /home/chetan/projects/my-scripts/setup/dependencies
 
 .PHONY: help up dev dev-ui api prod build start stop check-port install test e2e typecheck clean \
         supabase-up supabase-down supabase-status supabase-ensure \
-        migrate-up migrate-local migrate-verify migrate-sql migrate-docker \
+        migrate-up migrate-local migrate-verify migrate-sql migrate-docker setup-dev \
         docker-up-dev docker-down-dev docker-build docker-up docker-down docker-logs down
 
 
 # =============================================================================
-# One-shot: dependencies + migrations + full-stack dev server (API + Frontend)
+# One-shot: dependencies + migrations + dev user seed + full-stack dev server
 # =============================================================================
 
 up: dev
 
-dev: supabase-ensure migrate-up
+dev: setup-dev
 	node scripts/dev-stack.mjs
+
+setup-dev: supabase-ensure migrate-up
+	set -a && [ -f .env.development ] && . ./.env.development; set +a && bun run scripts/setup-dev-user.mjs
 
 dev-ui:
 	node scripts/dev-stack.mjs
@@ -143,7 +146,8 @@ docker-logs:
 
 help:
 	@echo "Wise-Spliter Build, Database & Run Commands:"
-	@echo "  make dev             - Ensure centralized Supabase is up, apply wise_spliter schema, and start API (4174) + UI (4173)"
+	@echo "  make dev             - Ensure centralized Supabase is up, apply wise_spliter schema, seed dev users, and start API (4174) + UI (4173)"
+	@echo "  make setup-dev       - Ensure Supabase + migrations and provision dev users & ledger seed in wise_spliter"
 	@echo "  make dev-ui          - Start API (4174) + UI (4173) directly without re-running supabase-ensure"
 	@echo "  make api             - Run Backend API service on http://localhost:$(API_PORT)"
 	@echo "  make supabase-up     - Start centralized Supabase in $(SUPABASE_DIR)"

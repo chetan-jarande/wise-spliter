@@ -15,7 +15,8 @@
     "e2e": "playwright test",
     "typecheck": "tsc --noEmit && node scripts/check-deprecations.mjs",
     "migrate:up": "node scripts/apply-migration.mjs local",
-    "migrate:verify": "node scripts/apply-migration.mjs verify"
+    "migrate:verify": "node scripts/apply-migration.mjs verify",
+    "setup:dev": "bun run scripts/setup-dev-user.mjs"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.7",

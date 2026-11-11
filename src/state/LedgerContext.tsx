@@ -16,6 +16,7 @@ import {
   ReceiptAttachment,
   SettlementItem,
   SplitMode,
+  UserProfile,
 } from '../types/ledger';
 import { convertMinorAmountWithFx, formatMinorToMajor, getMinorScaleFactor } from '../domain/money/currencies';
 import { FriendCrossGroupSummary } from '../domain/ledger/ledger-engine';
@@ -70,6 +71,12 @@ export interface LedgerContextValue {
   closeAddExpenseModal: () => void;
   isHelpModalOpen: boolean;
   setHelpModalOpen: (open: boolean) => void;
+  isAuthModalOpen: boolean;
+  setAuthModalOpen: (open: boolean) => void;
+  switchActiveUserProfile: (credentials: {
+    email: string;
+    password?: string;
+  }) => Promise<boolean>;
   clearToast: () => void;
   showToast: (msg: string) => void;
   setActiveGroupId: (id: string) => void;
@@ -193,6 +200,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     editingExpense: null,
   });
   const [isHelpModalOpen, setHelpModalOpen] = useState<boolean>(false);
+  const [isAuthModalOpen, setAuthModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     try {
@@ -344,6 +352,69 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       },
     }));
     showToast('Synced local database with Supabase wise_spliter schema.');
+  };
+
+  const switchActiveUserProfile: LedgerContextValue['switchActiveUserProfile'] = async (
+    credentials
+  ) => {
+    const email = credentials.email?.trim().toLowerCase() || '';
+    const password = credentials.password ?? '';
+    if (!email || !password) {
+      showToast('Please enter both your email address and password.');
+      return false;
+    }
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const payload = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        token?: string;
+        profile?: UserProfile;
+        dataset?: MockLedgerDataset;
+      };
+
+      if (!res.ok || !payload.ok || !payload.profile) {
+        showToast(payload.error || 'Invalid email or password');
+        return false;
+      }
+
+      const verifiedProfile = payload.profile;
+      await wiseSpliterSyncEngine.ensureBackendSessionToken({
+        id: verifiedProfile.id,
+        email: verifiedProfile.email,
+        fullName: verifiedProfile.fullName,
+      });
+
+      if (payload.dataset && Array.isArray(payload.dataset.groups)) {
+        const nextDataset: MockLedgerDataset = {
+          ...payload.dataset,
+          currentUser: verifiedProfile,
+        };
+        setDataset(nextDataset);
+        const firstGroupId = nextDataset.groups[0]?.id ?? 'grp_goa_2026';
+        setActiveGroupIdState(firstGroupId);
+        showToast(
+          `Signed in as ${verifiedProfile.fullName} (${verifiedProfile.email}) - ${nextDataset.groups.length} group(s) loaded.`
+        );
+      } else {
+        setDataset((prev) => ({
+          ...prev,
+          currentUser: verifiedProfile,
+        }));
+        showToast(`Signed in as ${verifiedProfile.fullName} (${verifiedProfile.email})`);
+      }
+
+      return true;
+    } catch {
+      showToast('Unable to reach authentication server (/api/auth/login).');
+      return false;
+    }
   };
 
   const createGroup: LedgerContextValue['createGroup'] = (input) => {
@@ -1381,6 +1452,9 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
         closeAddExpenseModal,
         isHelpModalOpen,
         setHelpModalOpen,
+        isAuthModalOpen,
+        setAuthModalOpen,
+        switchActiveUserProfile,
         clearToast,
         showToast,
         setActiveGroupId,

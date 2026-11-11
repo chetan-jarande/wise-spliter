@@ -19,6 +19,7 @@ Wise-Spliter is engineered as a 5-layer local-first, mathematically deterministi
 * **Friends Cross-Group & UPI/WhatsApp Settle Studio (`FriendsAndSettlePage.tsx`):** Aggregates pairwise net balances across all shared groups plus standalone direct splits, generates standard NPCI `upi://pay` deep-links and scannable Desktop UPI QR codes, formats copyable WhatsApp settlement summaries, and executes atomic multi-group batch settlements (`batch_settlement_id`).
 * **Analytics & Global Search (`AnalyticsAndSearchPage.tsx`):** Provides multi-parameter filtering (query, group, category, split mode, conflict flag) alongside category distribution breakdowns and monthly cashflow velocity.
 * **Portability & Encrypted Backup Vault (`PortabilityAndSyncPage.tsx`):** Delivers 1-click Splitwise CSV and JSON migration imports, RFC-4180 CSV ledger exports, multi-sheet `.xlsx` workbooks, printable `.pdf` statements, and **Web Crypto (`PBKDF2-SHA256` + `AES-256-GCM`)** `.wisesplit` encrypted backup archives.
+* **Sign-In & Account Switch Modal (`DevAuthModal.tsx`):** Opened from the header user pill (`header-user-pill`), presenting a clean email/password authentication form (`dev-login-email-input`, `dev-login-password-input`, `dev-login-submit-btn`) and Google OAuth trigger without importing `dev-profiles.ts` or exposing any hardcoded credentials in the frontend bundle.
 * **Offline Service Worker (`public/sw.js`):** Caches the application shell and static assets so the PWA loads and operates 100% offline during flights and remote travel.
 
 ### Layer 2: Pure Financial & Graph Domain Engine (`src/domain/`)
@@ -37,8 +38,9 @@ This layer explicitly governs **"Why we have a Backend API and Who Updates the D
   * **Server Admin Singleton (`src/server/supabaseAdmin.ts`):** Uses `createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }, db: { schema: SUPABASE_SCHEMA } })` from `@supabase/supabase-js` so all server-side queries, RPC calls (`schema_health`, `pull_changes`, `push_mutations`), and Storage uploads (`wise-spliter-receipts`) target the `wise_spliter` schema cleanly.
   * **Browser Sync Client (`src/sync-engine/supabase-sync.ts`):** Uses `createClient(VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, { db: { schema: 'wise_spliter' }, auth: { persistSession: true, autoRefreshToken: true } })` for Google OAuth (`signInWithOAuth`) and session token management, paired with `.env.example` / `.env.development` / `.env.production` environment separation.
 * **Strict Secret Isolation:** The browser client **NEVER** holds or receives `SUPABASE_SECRET_KEY` (`service_role`). All privileged credentials remain strictly inside the Node/Bun Backend API process (`src/server/`).
-* **Authentication (`HTTP 401`) & User/Group Isolation (`HTTP 403` IDOR Protection in `src/server/securityAndAuth.ts`):**
-  * **Authentication (`verifyRequestAuth` -> `HTTP 401`):** Protects `/api/ledger/bootstrap`, `/api/ledger/sync`, `/api/ledger/pull-changes`, `/api/ledger/push-mutations`, and `/api/receipts/upload`. Verifies either an HMAC-SHA256 session token issued by `POST /api/auth/session` (signed with `GRANT_TOKEN_SECRET` and verified via `timingSafeEqual`) or an official Supabase Auth JWT verified via `getSupabaseAdmin().auth.getUser(token)`. Unauthenticated or tampered requests are rejected with `HTTP 401`.
+* **Authentication (`HTTP 401`), Backend Login (`POST /api/auth/login`) & User/Group Isolation (`HTTP 403` IDOR Protection in `src/server/securityAndAuth.ts`):**
+  * **Backend-Validated Login (`POST /api/auth/login` -> `HTTP 200` / `HTTP 401`):** Accepts `{ email, password }` from `DevAuthModal`, verifies the credentials against Supabase Auth (`signInWithPassword`) and `wise_spliter.profiles` (rejecting unknown or invalid credentials with `HTTP 401`), issues a signed HMAC-SHA256 session token, and returns the authenticated user's profile and isolated dataset via `filterDatasetForUser`.
+  * **Authentication (`verifyRequestAuth` -> `HTTP 401`):** Protects `/api/ledger/bootstrap`, `/api/ledger/sync`, `/api/ledger/pull-changes`, `/api/ledger/push-mutations`, and `/api/receipts/upload`. Verifies either an HMAC-SHA256 session token issued by `POST /api/auth/login` / `POST /api/auth/session` (signed with `GRANT_TOKEN_SECRET` and verified via `timingSafeEqual`) or an official Supabase Auth JWT verified via `getSupabaseAdmin().auth.getUser(token)`. Unauthenticated or tampered requests are rejected with `HTTP 401`.
   * **User-Level & Group-Membership Isolation (`authorizeDatasetSyncForUser` & `filterDatasetForUser` -> `HTTP 403`):** Scopes read responses solely to groups where the caller is a member (`userId` or `invitedEmail`) and standalone expenses (`groupId === null`) where `adHocParticipants` contains the caller. Blocks cross-user profile impersonation, unauthorized group creation/modification, existing DB group hijacking (IDOR), and unauthorized receipt/expense targets with `HTTP 403`.
   * **Security Headers, CORS Allowlist & Rate Limiting (`HTTP 429`):** Enforces `ALLOWED_ORIGINS` CORS headers, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Permissions-Policy`, and fixed-window per-IP rate limiting (default 120 req/min).
 * **Mathematical Invariant Gatekeeper:** Before any expense or settlement mutation touches PostgreSQL, the Backend API validates hard financial invariants:
@@ -344,18 +346,20 @@ erDiagram
 
 Wise-Spliter is designed so a developer can boot the entire 5-layer stack with a single command (`make dev` on the host or `make docker-up-dev` in containers).
 
-### 3.1 Host One-Shot Workflow (`make dev`)
-Running `make dev` executes the following end-to-end startup pipeline:
+### 3.1 Host One-Shot Workflow (`make dev` & `make setup-dev`)
+Running `make dev` (which invokes `make setup-dev` followed by `node scripts/dev-stack.mjs`) executes the following end-to-end startup pipeline:
 1. **Centralized Supabase Stack Verification (`SUPABASE_DIR = /home/chetan/projects/my-scripts/setup/dependencies`):**
    * Checks whether the shared local Supabase containers (`supabase_db_dependencies` on `:54322`, PostgREST on `:54321`, Studio on `:54323`) are healthy and running; starts them from `SUPABASE_DIR` if stopped.
 2. **Idempotent Schema Migration & Readiness Verification (`node scripts/apply-migration.mjs local`):**
    * Applies `supabase/migrations/0001_wise_spliter_schema.sql` to `supabase_db_dependencies` via `psql` (`ON_ERROR_STOP=1`).
    * Ensures `wise_spliter` is exposed in PostgREST schemas and reloads PostgREST (`NOTIFY pgrst, 'reload schema';`).
-   * Probes every table (`profiles`, `groups`, `group_members`, `expenses`, `expense_revisions`, `settlements`, `group_activity_log`) and invokes `POST /rest/v1/rpc/schema_health` with `Accept-Profile: wise_spliter` to verify `HTTP 200` readiness.
-3. **Backend API Gatekeeper Startup (`Port 4174`):**
+   * Probes every table (`profiles`, `groups`, `group_members`, `expenses`, `expense_revisions`, `settlements`, `group_activity_log`, `receipt_attachments`) and invokes `POST /rest/v1/rpc/schema_health` with `Accept-Profile: wise_spliter` to verify `HTTP 200` readiness.
+3. **Dev User & Ledger Seed Provisioning (`make setup-dev` -> `bun run scripts/setup-dev-user.mjs`):**
+   * Provisions the 3 development accounts (`arjun.mehta@gmail.com`, `rohan.verma@gmail.com`, `priya.nair@gmail.com`) in centralized Supabase Auth (`auth.users`) and `wise_spliter.profiles`, seeds the baseline ledger dataset into `wise_spliter.*`, verifies browser-style `signInWithPassword` authentication + backend HMAC session minting, and prints the terminal credential summary table.
+4. **Backend API Gatekeeper Startup (`Port 4174`):**
    * Starts `src/server/index.ts` on `http://127.0.0.1:4174` with `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `SUPABASE_SCHEMA=wise_spliter`.
    * Checks if `wise_spliter.groups` is empty and automatically seeds the initial multi-currency ledger dataset if needed.
-4. **Frontend Vite Server Startup (`Port 4173`):**
+5. **Frontend Vite Server Startup (`Port 4173`):**
    * Launches the React 19 + Vite client on `http://localhost:4173` with `/api/*` proxied directly to `http://127.0.0.1:4174`.
 
 ### 3.2 Containerized Orchestration (`make docker-up-dev`)
@@ -378,4 +382,4 @@ Running `make docker-up-dev` orchestrates the containerized development stack vi
    * **Story 3:** Group Management (Simplify Debts toggle, Base Currency Re-denomination Mode A/B, Unclaimed Member add/claim, and New Group creation).
    * **Story 4:** Transparent Activity History (Group & Global), Per-Expense Revision History restore, and Trash Recovery Vault restore.
    * **Story 5:** Friends Cross-Group Net Balances, 1-Tap Atomic Cross-Group Settle Up, UPI QR Studio, and WhatsApp Summary export.
-   * **Story 6:** Insights & Global Search across `0, 2, 3` decimal currencies (`JPY`, `INR`, `KWD`), Splitwise CSV import, `.xlsx`/`.pdf`/`AES-256-GCM` portability, and live Backend API `HTTP 401` / `HTTP 403` IDOR security verification.
+   * **Story 6:** Insights & Global Search across `0, 2, 3` decimal currencies (`JPY`, `INR`, `KWD`), Splitwise CSV import, `.xlsx`/`.pdf`/`AES-256-GCM` portability, live Backend API `HTTP 401` / `HTTP 403` IDOR security verification, and `DevAuthModal` backend-validated login (`POST /api/auth/login` returning `HTTP 401` on invalid credentials and `HTTP 200` with user-isolated groups for `rohan.verma@gmail.com`).

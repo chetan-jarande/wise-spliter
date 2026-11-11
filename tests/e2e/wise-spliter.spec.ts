@@ -293,7 +293,7 @@ test.describe('Wise-Spliter Full-Stack User Story E2E Suite (UI + Backend API + 
     expect(recordSettleSyncRes.status()).toBe(200);
   });
 
-  test('User Story 6: Insights & Global Search (0, 2, 3 Decimal Currencies), Portability (Splitwise/XLSX/PDF/AES-256-GCM) & Backend API Security Isolation (401/403)', async ({
+  test('User Story 6: Insights & Global Search (0, 2, 3 Decimal Currencies), Portability (Splitwise/XLSX/PDF/AES-256-GCM), DevAuthModal Login & Backend API Security Isolation (401/403)', async ({
     page,
     request,
   }) => {
@@ -488,5 +488,68 @@ test.describe('Wise-Spliter Full-Stack User Story E2E Suite (UI + Backend API + 
     expect(arjunBootstrapBody.schema).toBe('wise_spliter');
     expect(arjunBootstrapBody.dataset.groups.length).toBeGreaterThanOrEqual(4);
     expect(arjunBootstrapBody.dataset.expenses.length).toBeGreaterThanOrEqual(10);
+
+    // 4. DevAuthModal Backend-Validated Login & User-Scoped Dataset Isolation
+    await page.getByTestId('header-user-pill').click();
+    const authModal = page.getByTestId('dev-auth-modal');
+    await expect(authModal).toBeVisible();
+
+    const emailInput = page.getByTestId('dev-login-email-input');
+    const passwordInput = page.getByTestId('dev-login-password-input');
+    const loginSubmitBtn = page.getByTestId('dev-login-submit-btn');
+
+    await expect(emailInput).toBeVisible();
+    await expect(passwordInput).toBeVisible();
+    await expect(loginSubmitBtn).toBeVisible();
+    await expect(authModal).not.toContainText('WiseSpliter@2026');
+
+    // (4a) Submitting an unknown/invalid user via POST /api/auth/login returns HTTP 401
+    await emailInput.fill('nonexistent@example.com');
+    await passwordInput.fill('wrongpass');
+    const invalidLoginResPromise = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/auth/login') &&
+        res.request().method() === 'POST'
+    );
+    await loginSubmitBtn.click();
+    const invalidLoginRes = await invalidLoginResPromise;
+    expect(invalidLoginRes.status()).toBe(401);
+    await expect(page.getByTestId('dev-login-error-banner')).toBeVisible();
+
+    // (4b) Logging in as Rohan Verma validates against POST /api/auth/login (HTTP 200) and returns 3 isolated groups
+    await emailInput.fill('rohan.verma@gmail.com');
+    await passwordInput.fill('WiseSpliter@2026');
+    const validLoginResPromise = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/auth/login') &&
+        res.request().method() === 'POST'
+    );
+    await loginSubmitBtn.click();
+    const validLoginRes = await validLoginResPromise;
+    expect(validLoginRes.status()).toBe(200);
+
+    const validLoginBody = (await validLoginRes.json()) as {
+      ok: boolean;
+      profile: { fullName: string; email: string };
+      dataset: { groups: Array<{ id: string; name: string }> };
+    };
+    expect(validLoginBody.ok).toBe(true);
+    expect(validLoginBody.profile.fullName).toBe('Rohan Verma');
+
+    const rohanGroupNames = validLoginBody.dataset.groups.map((g) => g.name);
+    expect(rohanGroupNames).toHaveLength(3);
+    expect(rohanGroupNames).toEqual(
+      expect.arrayContaining([
+        'Goa Villa & Scuba 2026',
+        'Apt 14B Indiranagar',
+        'Kuwait & Dubai Stopover',
+      ])
+    );
+    expect(rohanGroupNames).not.toContain('Tokyo & Kyoto Autumn');
+
+    await expect(authModal).toBeHidden();
+    await expect(page.getByTestId('header-user-pill')).toContainText(
+      'Rohan Verma'
+    );
   });
 });

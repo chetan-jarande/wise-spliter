@@ -24,6 +24,7 @@ import { AnalyticsAndSearchPage } from './ui/pages/AnalyticsAndSearchPage';
 import { PortabilityAndSyncPage } from './ui/pages/PortabilityAndSyncPage';
 import { ContextualPageGuideBanner, HelpGuideModal } from './ui/modals/HelpGuideModal';
 import { ExpenseEditorModal } from './ui/modals/ExpenseEditorModal';
+import { DevAuthModal } from './ui/modals/DevAuthModal';
 
 const NAV_ITEMS: Array<{
   id: ActivePageTab;
@@ -95,6 +96,8 @@ export function App() {
     closeAddExpenseModal,
     isHelpModalOpen,
     setHelpModalOpen,
+    isAuthModalOpen,
+    setAuthModalOpen,
   } = useLedger();
 
   const unresolvedConflictCount = dataset.expenses.filter(
@@ -199,9 +202,12 @@ export function App() {
               )}
             </button>
 
-            <div
+            <button
+              type="button"
               data-testid="header-user-pill"
-              className="hidden sm:flex items-center gap-2 rounded-full bg-slate-100 dark:bg-slate-800/80 pl-1.5 pr-3 py-1 text-xs ring-1 ring-slate-200 dark:ring-white/10"
+              onClick={() => setAuthModalOpen(true)}
+              title="Sign in or switch active account"
+              className="hidden sm:flex items-center gap-2 rounded-full bg-slate-100 dark:bg-slate-800/80 pl-1.5 pr-3 py-1 text-xs ring-1 ring-slate-200 dark:ring-white/10 hover:bg-slate-200/70 dark:hover:bg-slate-700 transition-transform duration-200 active:scale-[0.98] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               <span className="h-6 w-6 rounded-full bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 font-mono font-bold text-[11px] flex items-center justify-center">
                 {dataset.currentUser.avatarInitials}
@@ -209,7 +215,7 @@ export function App() {
               <span className="font-medium text-slate-700 dark:text-slate-200 max-w-[110px] truncate">
                 {dataset.currentUser.fullName}
               </span>
-            </div>
+            </button>
 
             <button
               type="button"
@@ -289,6 +295,12 @@ export function App() {
           setActivePage(tab);
           setHelpModalOpen(false);
         }}
+      />
+
+      {/* Sign In & Switch Account Modal */}
+      <DevAuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setAuthModalOpen(false)}
       />
 
       {/* Mobile Bottom Navigation Bar (<= 5 items, >= 44x44px hit targets) */}

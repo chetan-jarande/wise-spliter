@@ -7,8 +7,9 @@
  */
 
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
+import { createClient } from '@supabase/supabase-js';
 import initialMockData from '../data/mock-ledger-data.json';
-import { MockLedgerDataset } from '../types/ledger';
+import { MockLedgerDataset, UserProfile } from '../types/ledger';
 import {
   authorizeDatasetSyncForUser,
   buildSecurityHeaders,
@@ -19,17 +20,24 @@ import {
 } from './securityAndAuth';
 import {
   SUPABASE_SCHEMA,
+  SUPABASE_URL,
   callPullChangesRpc,
   callPushMutationsRpc,
   checkSupabaseSchemaHealth,
   fetchDatasetFromSupabase,
   fetchExistingDbGroups,
+  getSupabaseAdmin,
   syncDatasetToSupabase,
   uploadReceiptToSupabaseStorage,
 } from './supabaseAdmin';
 
 const API_PORT = Number(process.env.API_PORT || 4174);
 const API_HOST = process.env.API_HOST || '0.0.0.0';
+const SUPABASE_PUBLISHABLE_KEY = (
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH'
+).trim();
 
 function getRequestOrigin(req: IncomingMessage): string | undefined {
   const origin = req.headers['origin'];
@@ -169,6 +177,115 @@ export const apiServer = createServer(async (req, res) => {
       timestamp: new Date().toISOString(),
     });
     return;
+  }
+
+  if (req.method === 'POST' && reqUrl.pathname === '/api/auth/login') {
+    try {
+      const body = await readJsonBody<{
+        email?: string;
+        password?: string;
+      }>(req);
+
+      const email =
+        typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+      const password =
+        typeof body.password === 'string' ? body.password : '';
+
+      if (!email || !password) {
+        sendJson(req, res, 401, {
+          ok: false,
+          error: 'Invalid email or password',
+        });
+        return;
+      }
+
+      const authClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+        db: { schema: SUPABASE_SCHEMA },
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false,
+        },
+      });
+
+      const { data: authData, error: authError } =
+        await authClient.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+      if (authError || !authData?.user) {
+        sendJson(req, res, 401, {
+          ok: false,
+          error: 'Invalid email or password',
+        });
+        return;
+      }
+
+      const { data: profileRow, error: profileError } = await getSupabaseAdmin()
+        .from('profiles')
+        .select(
+          'id, email, full_name, avatar_initials, default_currency, upi_id, google_connected'
+        )
+        .ilike('email', email)
+        .maybeSingle();
+
+      if (profileError || !profileRow) {
+        sendJson(req, res, 401, {
+          ok: false,
+          error: 'Invalid email or password',
+        });
+        return;
+      }
+
+      const verifiedProfile: UserProfile = {
+        id: String(profileRow.id),
+        email: String(profileRow.email).toLowerCase(),
+        fullName: String(profileRow.full_name),
+        avatarInitials: String(profileRow.avatar_initials),
+        defaultCurrency: String(profileRow.default_currency || 'INR'),
+        upiId: String(profileRow.upi_id || ''),
+        googleConnected: Boolean(profileRow.google_connected ?? true),
+        supabaseSchema: SUPABASE_SCHEMA,
+        syncState: 'synced',
+        lastSyncedAt: new Date().toISOString(),
+      };
+
+      const token = issueSessionToken({
+        userId: verifiedProfile.id,
+        email: verifiedProfile.email,
+        fullName: verifiedProfile.fullName,
+      });
+
+      const fallback = JSON.parse(
+        JSON.stringify(initialMockData)
+      ) as MockLedgerDataset;
+      const dbResult = await fetchDatasetFromSupabase(fallback);
+      const scopedDataset = filterDatasetForUser(
+        {
+          ...dbResult.dataset,
+          currentUser: verifiedProfile,
+        },
+        {
+          userId: verifiedProfile.id,
+          email: verifiedProfile.email,
+        }
+      );
+
+      sendJson(req, res, 200, {
+        ok: true,
+        token,
+        profile: verifiedProfile,
+        dataset: scopedDataset,
+      });
+      return;
+    } catch {
+      sendJson(req, res, 401, {
+        ok: false,
+        error: 'Invalid email or password',
+      });
+      return;
+    }
   }
 
   if (req.method === 'POST' && reqUrl.pathname === '/api/auth/session') {
