@@ -2,17 +2,61 @@ import { expect, test } from '@playwright/test';
 import mockData from '../../src/data/mock-ledger-data.json' with { type: 'json' };
 
 test.describe('Wise-Spliter Phase 1 Full Acceptance & E2E Suite', () => {
-  test('Tab 1 (Groups & Ledger): renders mock-ledger-data.json groups, resolves concurrent offline conflict, explains balances with exact equation, and exercises Add Expense modal (5 split modes, multi-payer, FX conversion, rotating remainder)', async ({
+  test('Home Dashboard (Minimalism, Top 3 Recent Groups, Contextual Guide, Direct Non-Group Split) -> Progressive Disclosure Group Workspace & Ledger', async ({
     page,
   }) => {
     await page.goto('/');
 
-    // 1. Verify all 4 groups from mock-ledger-data.json are rendered
+    // 1. Home Screen Minimalism & Contextual Help Guide
+    await expect(page.getByTestId('home-dashboard-page')).toBeVisible();
+    await expect(page.getByTestId('contextual-page-guide')).toBeVisible();
+
+    await page.getByTestId('header-help-btn').click();
+    const helpModal = page.getByTestId('help-guide-modal');
+    await expect(helpModal).toBeVisible();
+    await page.getByTestId('close-help-modal-btn').click();
+    await expect(helpModal).toBeHidden();
+
+    // Verify Top 3 Recent Groups constraint: exactly 3 group cards shown even though mock-ledger-data.json has 4 groups
+    expect(mockData.groups.length).toBe(4);
+    const recentGroupsGrid = page.getByTestId('home-recent-groups-grid');
+    await expect(recentGroupsGrid).toBeVisible();
+    await expect(
+      recentGroupsGrid.locator('[data-testid^="home-recent-group-card-"]')
+    ).toHaveCount(3);
+
+    // 2. Modular Add Expense from Home (No Group Selected -> Direct Split Between Added Users)
+    await page.getByTestId('home-quick-add-expense-btn').click();
+    const scopeSelect = page.getByTestId('expense-group-scope-select');
+    await expect(scopeSelect).toBeVisible();
+    await expect(scopeSelect).toHaveValue('');
+    await expect(page.getByTestId('adhoc-participants-panel')).toBeVisible();
+
+    await page.getByTestId('adhoc-friend-name-input').fill('Vikram Rao');
+    await page.getByTestId('add-adhoc-friend-btn').click();
+    await expect(page.getByTestId('adhoc-participants-panel')).toContainText('Vikram Rao');
+
+    await page.getByTestId('expense-title-input').fill('Late Night Shawarma & Chai');
+    await page.getByTestId('expense-amount-input').fill('900');
+    await page.getByTestId('save-expense-btn').click();
+
+    const directExpensesList = page.getByTestId('home-direct-expenses-list');
+    await expect(directExpensesList).toBeVisible();
+    await expect(directExpensesList).toContainText('Late Night Shawarma & Chai');
+
+    // 3. Progressive Disclosure on Opening a Group & Group-Preselected Add Expense
+    await page.getByTestId('open-group-workspace-grp_goa_2026').click();
+
+    await expect(page.getByTestId('group-minimal-insights-bar')).toBeVisible();
+    await expect(page.getByTestId('group-auto-guide-strip')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Goa Villa & Scuba 2026' })).toBeVisible();
+
+    // Verify all 4 groups from mock-ledger-data.json are rendered in the Group Switcher Bar
     for (const grp of mockData.groups) {
       await expect(page.getByTestId(`group-select-${grp.id}`)).toBeVisible();
     }
 
-    // 2. Verify Concurrent Offline Conflict Resolution Banner is visible for Thalassa Cliff Dinner
+    // 4. Verify Concurrent Offline Conflict Resolution Banner is visible for Thalassa Cliff Dinner
     const conflictBanner = page.getByTestId('conflict-resolution-banner');
     await expect(conflictBanner).toBeVisible();
     await expect(conflictBanner).toContainText('Thalassa Cliff Dinner');
@@ -21,7 +65,7 @@ test.describe('Wise-Spliter Phase 1 Full Acceptance & E2E Suite', () => {
     await page.getByTestId('keep-active-revision-btn').first().click();
     await expect(conflictBanner).toBeHidden();
 
-    // 3. Open "Explain This Balance" provenance modal for a group member and verify exact math equation
+    // 5. Open "Explain This Balance" provenance modal for a group member and verify exact math equation
     await page.getByTestId('explain-balance-btn').first().click();
     const explainModal = page.getByTestId('explain-balance-modal');
     await expect(explainModal).toBeVisible();
@@ -32,8 +76,10 @@ test.describe('Wise-Spliter Phase 1 Full Acceptance & E2E Suite', () => {
     await page.getByTestId('close-explain-modal-btn').click();
     await expect(explainModal).toBeHidden();
 
-    // 4. Open "Add Expense" modal and verify all 5 split modes, multi-payer toggle, FX conversion, and rotating remainder
+    // 6. Open "Add Expense" modal inside the group workspace and verify group is pre-selected to grp_goa_2026
     await page.getByTestId('add-expense-btn').click();
+    await expect(page.getByTestId('expense-group-scope-select')).toHaveValue('grp_goa_2026');
+
     await page.getByTestId('expense-title-input').fill('Beach Shack Sunset Snacks');
     await page.getByTestId('expense-amount-input').fill('1000');
 

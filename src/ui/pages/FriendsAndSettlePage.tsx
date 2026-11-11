@@ -345,11 +345,15 @@ export function FriendsAndSettlePage() {
   };
 
   const handleLoadGroupBreakdownIntoStudio = (item: {
-    groupId: string;
+    groupId: string | null;
     myMemberId: string;
     friendMemberId: string;
     netMinor: number;
   }) => {
+    if (!item.groupId) {
+      showToast('Direct non-group split selected.');
+      return;
+    }
     const targetGrp = dataset.groups.find((g) => g.id === item.groupId);
     if (!targetGrp) return;
     setActiveGroupId(item.groupId);

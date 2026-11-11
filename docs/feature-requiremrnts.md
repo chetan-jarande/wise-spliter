@@ -17,7 +17,10 @@ Wise-Spliter is a 100% free, local-first, multi-platform daily expense-splitting
 * **Instant Unclaimed / Placeholder Group Members with Auto-Linking:** Add friends to any group immediately by Name (and optional Gmail/UPI ID) so you can split bills right away even if they haven't installed the app yet; if they sign in with Google or join via group invite link later, their account links to their existing member history automatically.
 * **Unlimited Everything (100% Free):** No daily expense caps, no cooldown timers, no ads, and no paywalled features.
 
-### 2. Expense Splitting & Math Precision
+### 2. Expense Splitting, Modular Quick-Add & Math Precision
+* **Modular Quick-Add Expense (Group-Scoped or Direct Non-Group Split):** Invoke "Add Expense" from either the **Home Screen** or inside a **Specific Group**. When opened inside a group, that group is pre-selected automatically; when opened from the Home Screen without selecting a group (`group_id = null`), the expense is split directly among the friends/participants added to that bill without tying it to any group.
+* **Minimalist Home Screen with Top 3 Recent Groups & Progressive Disclosure:** The Home Screen surfaces only essential high-signal information—net balance summary, primary quick actions (`+ Add Expense`, `Settle Up`, `All Groups`, `Guided Help`), at most **3 recently accessed or updated groups**, and recent direct non-group splits. Opening a specific group progressively reveals minimal group-level insights, group-scoped expense operations, and automatic next-step guidance.
+* **Interactive Help & Contextual Page Guide:** Built-in skippable/dismissible step-by-step guidance on each screen plus an interactive **Help & Feature Guide** modal so users always know where to find every capability without cluttering the interface.
 * **Core Split Modes:** Split bills equally (with one-tap participant exclusion), by exact amounts, percentages, shares/ratios, or +/- adjustments.
 * **Multiple Payers Support:** Record a single expense where two or more people contributed to paying the bill.
 * **Saved Default Splits:** Save custom preset split ratios (e.g., 60/40 for couples or per-family shares) for one-tap reuse.

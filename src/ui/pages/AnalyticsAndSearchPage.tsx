@@ -325,11 +325,13 @@ export function AnalyticsAndSearchPage() {
 
         if (!q) return true;
 
-        const grp = groupMap.get(exp.groupId);
+        const grp = exp.groupId ? groupMap.get(exp.groupId) : undefined;
         const payerNames = exp.payers
           .map(
             (p) =>
-              grp?.members.find((m) => m.id === p.memberId)?.displayName ?? ''
+              grp?.members.find((m) => m.id === p.memberId)?.displayName ??
+              exp.adHocParticipants?.find((a) => a.id === p.memberId)?.displayName ??
+              ''
           )
           .join(' ')
           .toLowerCase();
@@ -364,7 +366,12 @@ export function AnalyticsAndSearchPage() {
     selectedStatusFilter,
   ]);
 
-  const handleJumpToGroup = (groupId: string, groupName: string) => {
+  const handleJumpToGroup = (groupId: string | null, groupName: string) => {
+    if (!groupId) {
+      setActivePage('home');
+      showToast('Switched to Home Direct Splits.');
+      return;
+    }
     setActiveGroupId(groupId);
     setActivePage('groups');
     showToast(`Switched to "${groupName}" ledger.`);
@@ -1023,7 +1030,7 @@ export function AnalyticsAndSearchPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusBadge tone="emerald">
                         <Receipt className="w-3.5 h-3.5" />
-                        <span>{grp?.name ?? exp.groupId}</span>
+                        <span>{grp?.name ?? 'Direct Non-Group Split'}</span>
                       </StatusBadge>
                       <StatusBadge tone="slate">{exp.category}</StatusBadge>
                       <StatusBadge tone="blue">
@@ -1098,12 +1105,12 @@ export function AnalyticsAndSearchPage() {
                       onClick={() =>
                         handleJumpToGroup(
                           exp.groupId,
-                          grp?.name ?? exp.groupId
+                          grp?.name ?? 'Direct Non-Group Split'
                         )
                       }
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-colors cursor-pointer"
                     >
-                      <span>Inspect in Group</span>
+                      <span>{exp.groupId ? 'Inspect in Group' : 'Inspect on Home'}</span>
                       <ArrowUpRight className="w-4 h-4" weight="bold" />
                     </button>
                   </div>

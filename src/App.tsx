@@ -6,7 +6,9 @@ import {
   CloudArrowUp,
   CloudSlash,
   Database,
+  House,
   Moon,
+  Question,
   Receipt,
   ShieldCheck,
   Sun,
@@ -14,11 +16,14 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { ActivePageTab, useLedger } from './state/LedgerContext';
+import { HomeDashboardPage } from './ui/pages/HomeDashboardPage';
 import { GroupsLedgerPage } from './ui/pages/GroupsLedgerPage';
 import { ActivityAndTrashPage } from './ui/pages/ActivityAndTrashPage';
 import { FriendsAndSettlePage } from './ui/pages/FriendsAndSettlePage';
 import { AnalyticsAndSearchPage } from './ui/pages/AnalyticsAndSearchPage';
 import { PortabilityAndSyncPage } from './ui/pages/PortabilityAndSyncPage';
+import { ContextualPageGuideBanner, HelpGuideModal } from './ui/modals/HelpGuideModal';
+import { ExpenseEditorModal } from './ui/modals/ExpenseEditorModal';
 
 const NAV_ITEMS: Array<{
   id: ActivePageTab;
@@ -27,6 +32,13 @@ const NAV_ITEMS: Array<{
   testId: string;
   icon: React.ComponentType<{ size?: number; weight?: 'regular' | 'bold' | 'duotone' | 'fill' }>;
 }> = [
+  {
+    id: 'home',
+    label: 'Home',
+    shortLabel: 'Home',
+    testId: 'nav-tab-home',
+    icon: House,
+  },
   {
     id: 'groups',
     label: 'Groups & Ledger',
@@ -64,6 +76,8 @@ const NAV_ITEMS: Array<{
   },
 ];
 
+const MOBILE_NAV_ITEMS = NAV_ITEMS.slice(0, 5);
+
 export function App() {
   const {
     dataset,
@@ -77,6 +91,10 @@ export function App() {
     pendingOutboxCount,
     toastMessage,
     clearToast,
+    expenseModalState,
+    closeAddExpenseModal,
+    isHelpModalOpen,
+    setHelpModalOpen,
   } = useLedger();
 
   const unresolvedConflictCount = dataset.expenses.filter(
@@ -195,6 +213,17 @@ export function App() {
 
             <button
               type="button"
+              data-testid="header-help-btn"
+              onClick={() => setHelpModalOpen(true)}
+              aria-label="Open interactive Help and Step-by-Step Guide"
+              className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 ring-1 ring-slate-200 dark:ring-white/10 hover:bg-slate-200/70 dark:hover:bg-slate-700 transition-transform duration-200 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+            >
+              <Question size={16} weight="bold" aria-hidden="true" />
+              <span className="hidden sm:inline">Help</span>
+            </button>
+
+            <button
+              type="button"
               data-testid="theme-toggle-btn"
               onClick={toggleTheme}
               aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
@@ -231,7 +260,12 @@ export function App() {
       </div>
 
       {/* Main Content Workspace */}
-      <main id="main-workspace" className="relative mx-auto max-w-[1400px] px-4 sm:px-6 pt-6">
+      <main id="main-workspace" className="relative mx-auto max-w-[1400px] px-4 sm:px-6 pt-6 space-y-5">
+        <ContextualPageGuideBanner
+          pageKey={activePage}
+          onOpenFullHelp={() => setHelpModalOpen(true)}
+        />
+        {activePage === 'home' && <HomeDashboardPage />}
         {activePage === 'groups' && <GroupsLedgerPage />}
         {activePage === 'activity' && <ActivityAndTrashPage />}
         {activePage === 'friends' && <FriendsAndSettlePage />}
@@ -239,13 +273,31 @@ export function App() {
         {activePage === 'portability' && <PortabilityAndSyncPage />}
       </main>
 
+      {/* Global Modular Expense Editor Modal (invokable from Home or Group) */}
+      <ExpenseEditorModal
+        isOpen={expenseModalState.isOpen}
+        onClose={closeAddExpenseModal}
+        defaultGroupId={expenseModalState.defaultGroupId}
+        initialExpense={expenseModalState.editingExpense}
+      />
+
+      {/* Interactive Step-by-Step Help & Feature Guide Modal */}
+      <HelpGuideModal
+        isOpen={isHelpModalOpen}
+        onClose={() => setHelpModalOpen(false)}
+        onNavigateTab={(tab) => {
+          setActivePage(tab);
+          setHelpModalOpen(false);
+        }}
+      />
+
       {/* Mobile Bottom Navigation Bar (<= 5 items, >= 44x44px hit targets) */}
       <nav
         aria-label="Mobile Navigation"
         className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-xl border-t border-slate-200 dark:border-white/10 px-2 py-1.5"
       >
         <div className="mx-auto max-w-md grid grid-cols-5 gap-1">
-          {NAV_ITEMS.map((item) => {
+          {MOBILE_NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = activePage === item.id;
             return (

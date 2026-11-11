@@ -66,6 +66,31 @@ export interface UserProfile {
   lastSyncedAt: string;
 }
 
+export interface AdHocParticipant {
+  id: string;
+  displayName: string;
+  invitedEmail: string | null;
+  upiId: string | null;
+  avatarInitials: string;
+  memberOrder: number;
+}
+
+export interface HelpGuideStep {
+  stepNumber: number;
+  title: string;
+  description: string;
+  targetTab: string;
+  actionLabel: string;
+}
+
+export interface HelpGuideSection {
+  pageKey: 'home' | 'groups' | 'activity' | 'friends' | 'analytics' | 'portability';
+  pageTitle: string;
+  shortTip: string;
+  whereToFindWhat: string[];
+  steps: HelpGuideStep[];
+}
+
 export interface GroupMember {
   id: string;
   groupId: string;
@@ -139,7 +164,7 @@ export interface ExpenseSnapshotData {
 export interface ExpenseRevision {
   id: string;
   expenseId: string;
-  groupId: string;
+  groupId: string | null;
   revisionNumber: number;
   baseRevisionId: string | null;
   actorMemberId: string;
@@ -161,7 +186,8 @@ export interface ExpenseRevision {
 
 export interface ExpenseItem {
   id: string;
-  groupId: string;
+  groupId: string | null; // null when expense is a direct non-group split between participants
+  adHocParticipants?: AdHocParticipant[];
   title: string;
   category: ExpenseCategoryKey;
   tags: string[];
@@ -194,7 +220,7 @@ export interface ExpenseItem {
 
 export interface SettlementItem {
   id: string;
-  groupId: string;
+  groupId: string | null;
   batchSettlementId: string | null;
   fromMemberId: string;
   toMemberId: string;
@@ -211,7 +237,7 @@ export interface SettlementItem {
 
 export interface GroupActivityItem {
   id: string;
-  groupId: string;
+  groupId: string | null;
   actorMemberId: string;
   actorDisplayName: string;
   entityType: 'group' | 'member' | 'expense' | 'settlement' | 'comment' | 'currency';
@@ -242,6 +268,7 @@ export interface GroupRecord {
   inviteCode: string;
   createdAt: string;
   updatedAt: string;
+  lastAccessedAt?: string;
   deletedAt: string | null;
   hlc: string;
   members: GroupMember[];
@@ -283,6 +310,7 @@ export interface MockLedgerDataset {
   currenciesCatalog: CurrencyDefinition[];
   categoriesCatalog: CategoryMeta[];
   actionTypesCatalog: ActionTypeCatalogItem[];
+  helpGuidesCatalog?: HelpGuideSection[];
   groups: GroupRecord[];
   expenses: ExpenseItem[];
   expenseRevisions: ExpenseRevision[];

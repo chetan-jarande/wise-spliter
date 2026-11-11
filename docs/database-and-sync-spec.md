@@ -73,6 +73,7 @@ CREATE TABLE wise_spliter.groups (
   created_by UUID NOT NULL REFERENCES wise_spliter.profiles(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_accessed_at TIMESTAMPTZ NOT NULL DEFAULT now(), -- Tracks recent group opens for Home Top-3 list
   deleted_at TIMESTAMPTZ, -- Non-null when in Trash
   deleted_by UUID REFERENCES wise_spliter.profiles(id),
   hlc TEXT NOT NULL,
@@ -109,13 +110,14 @@ CREATE INDEX idx_group_members_invited_email ON wise_spliter.group_members (lowe
 CREATE INDEX idx_group_members_server_seq ON wise_spliter.group_members (group_id, server_seq);
 ```
 
-#### 4. `wise_spliter.expenses`
-Stores active and soft-deleted bills. Every monetary value is stored in **integer minor units (`BIGINT`)**.
+#### 4. `wise_spliter.expenses` (Supports Group-Scoped & Direct Non-Group Splits)
+Stores active and soft-deleted bills. `group_id` is **nullable (`UUID NULL`)**: when `group_id IS NOT NULL`, the bill belongs to that group; when `group_id IS NULL` (created via Home Screen Quick-Add without selecting a group), `ad_hoc_participants JSONB` stores the direct participant roster (`[{ id, displayName, invitedEmail, upiId, avatarInitials, memberOrder }]`) and the expense is split purely among those users. Every monetary value is stored in **integer minor units (`BIGINT`)**.
 
 ```sql
 CREATE TABLE wise_spliter.expenses (
   id UUID PRIMARY KEY, -- Client-generated UUIDv7
-  group_id UUID NOT NULL REFERENCES wise_spliter.groups(id) ON DELETE CASCADE,
+  group_id UUID REFERENCES wise_spliter.groups(id) ON DELETE CASCADE, -- NULL for direct non-group expenses
+  ad_hoc_participants JSONB NOT NULL DEFAULT '[]', -- Populated when group_id IS NULL
   title TEXT NOT NULL,
   category TEXT NOT NULL DEFAULT 'general',
   tags TEXT[] NOT NULL DEFAULT '{}',

@@ -314,7 +314,7 @@ export interface FriendCrossGroupSummary {
   isClaimedAccount: boolean;
   netInInrMinor: number;
   groupBreakdowns: Array<{
-    groupId: string;
+    groupId: string | null;
     groupName: string;
     currency: string;
     myMemberId: string;
@@ -396,6 +396,70 @@ export function computeCrossGroupFriendsSummary(
         const majorVal = netMinor / Math.pow(10, decimals);
         entry.netInInrMinor += Math.round(majorVal * rateToInr * 100);
       }
+    }
+  }
+
+  // Also aggregate Direct Non-Group Expenses (groupId === null)
+  const standaloneExpenses = expenses.filter((e) => e.groupId === null && !e.deletedAt);
+  for (const exp of standaloneExpenses) {
+    const participants = exp.adHocParticipants ?? [];
+    const me = participants.find(
+      (p) => p.invitedEmail?.toLowerCase() === currentUserEmail.toLowerCase()
+    );
+    if (!me) continue;
+
+    const myPaid = exp.payers
+      .filter((p) => p.memberId === me.id)
+      .reduce((a, b) => a + b.paidMinor, 0);
+    const total = exp.amountMinor;
+    if (total <= 0) continue;
+
+    for (const p of participants) {
+      if (p.id === me.id) continue;
+      const friendKey = (p.invitedEmail ?? p.displayName).toLowerCase();
+      const friendPaid = exp.payers
+        .filter((py) => py.memberId === p.id)
+        .reduce((a, b) => a + b.paidMinor, 0);
+      const friendOwed =
+        exp.splits.find((s) => s.memberId === p.id && s.included)?.owedMinor ?? 0;
+      const myOwed =
+        exp.splits.find((s) => s.memberId === me.id && s.included)?.owedMinor ?? 0;
+
+      // Pairwise delta on this direct expense
+      const friendOwesMe = Math.round((friendOwed * myPaid) / total);
+      const iOweFriend = Math.round((myOwed * friendPaid) / total);
+      const netDelta = friendOwesMe - iOweFriend;
+      if (netDelta === 0) continue;
+
+      if (!friendMap.has(friendKey)) {
+        friendMap.set(friendKey, {
+          friendKey,
+          displayName: p.displayName,
+          email: p.invitedEmail,
+          upiId: p.upiId,
+          avatarInitials: p.avatarInitials,
+          isClaimedAccount: false,
+          netInInrMinor: 0,
+          groupBreakdowns: [],
+        });
+      }
+
+      const entry = friendMap.get(friendKey)!;
+      if (p.upiId && !entry.upiId) entry.upiId = p.upiId;
+
+      entry.groupBreakdowns.push({
+        groupId: null,
+        groupName: `Direct: ${exp.title}`,
+        currency: exp.groupCurrency,
+        myMemberId: me.id,
+        friendMemberId: p.id,
+        netMinor: netDelta,
+      });
+
+      const rateToInr = fxRatesToInr[exp.groupCurrency] ?? 1;
+      const decimals = exp.groupCurrency === 'JPY' ? 0 : exp.groupCurrency === 'KWD' ? 3 : 2;
+      const majorVal = netDelta / Math.pow(10, decimals);
+      entry.netInInrMinor += Math.round(majorVal * rateToInr * 100);
     }
   }
 

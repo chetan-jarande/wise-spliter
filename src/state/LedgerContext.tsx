@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import initialMockData from '../data/mock-ledger-data.json';
 import {
+  AdHocParticipant,
   DefaultSplitPreset,
   ExpenseCategoryKey,
   ExpenseItem,
@@ -18,12 +19,19 @@ import {
 import { convertMinorAmountWithFx, formatMinorToMajor, getMinorScaleFactor } from '../domain/money/currencies';
 import { FriendCrossGroupSummary } from '../domain/ledger/ledger-engine';
 import { ParsedSplitwiseExpense } from '../portability/portability-engine';
+import {
+  clearSyncOutbox,
+  enqueueSyncOutboxMutation,
+  saveDatasetToIndexedDb,
+} from '../storage/local-db';
+import { wiseSpliterSyncEngine } from '../sync-engine/supabase-sync';
 
-export type ActivePageTab = 'groups' | 'activity' | 'friends' | 'analytics' | 'portability';
+export type ActivePageTab = 'home' | 'groups' | 'activity' | 'friends' | 'analytics' | 'portability';
 
 export interface UpsertExpenseInput {
   id?: string;
-  groupId: string;
+  groupId: string | null;
+  adHocParticipants?: AdHocParticipant[];
   title: string;
   category: ExpenseCategoryKey;
   tags: string[];
@@ -38,18 +46,31 @@ export interface UpsertExpenseInput {
   splits: ExpenseSplitShare[];
 }
 
+export interface ExpenseModalState {
+  isOpen: boolean;
+  defaultGroupId: string | null;
+  editingExpense: ExpenseItem | null;
+}
+
 export interface LedgerContextValue {
   dataset: MockLedgerDataset;
   activeGroupId: string;
   activeGroup: GroupRecord;
+  recentGroups: GroupRecord[];
   activePage: ActivePageTab;
   theme: 'dark' | 'light';
   isOnline: boolean;
   pendingOutboxCount: number;
   toastMessage: string | null;
+  expenseModalState: ExpenseModalState;
+  openAddExpenseModal: (defaultGroupId?: string | null, editingExpense?: ExpenseItem | null) => void;
+  closeAddExpenseModal: () => void;
+  isHelpModalOpen: boolean;
+  setHelpModalOpen: (open: boolean) => void;
   clearToast: () => void;
   showToast: (msg: string) => void;
   setActiveGroupId: (id: string) => void;
+  openGroupWorkspace: (groupId: string) => void;
   setActivePage: (page: ActivePageTab) => void;
   toggleTheme: () => void;
   toggleOfflineMode: () => void;
@@ -82,7 +103,7 @@ export interface LedgerContextValue {
   refreshOfflineExpenseFx: (expenseId: string, liveRate: number) => void;
   addExpenseComment: (expenseId: string, body: string) => void;
   recordSettlement: (input: {
-    groupId: string;
+    groupId: string | null;
     fromMemberId: string;
     toMemberId: string;
     amountMinor: number;
@@ -91,6 +112,7 @@ export interface LedgerContextValue {
     notes?: string;
     settledDate?: string;
     batchSettlementId?: string | null;
+    currency?: string;
   }) => void;
   settleAllAcrossGroupsWithFriend: (
     friendSummary: FriendCrossGroupSummary,
@@ -145,10 +167,10 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     return cloneInitialDataset();
   });
 
-  const [activeGroupId, setActiveGroupId] = useState<string>(
+  const [activeGroupId, setActiveGroupIdState] = useState<string>(
     () => dataset.groups[0]?.id ?? 'grp_goa_2026'
   );
-  const [activePage, setActivePage] = useState<ActivePageTab>('groups');
+  const [activePage, setActivePage] = useState<ActivePageTab>('home');
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     try {
       const savedTheme = localStorage.getItem(THEME_KEY);
@@ -162,12 +184,20 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
   const [pendingOutboxCount, setPendingOutboxCount] = useState<number>(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  const [expenseModalState, setExpenseModalState] = useState<ExpenseModalState>({
+    isOpen: false,
+    defaultGroupId: null,
+    editingExpense: null,
+  });
+  const [isHelpModalOpen, setHelpModalOpen] = useState<boolean>(false);
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(dataset));
     } catch {
       // Ignore storage quota issues
     }
+    void saveDatasetToIndexedDb(dataset);
   }, [dataset]);
 
   useEffect(() => {
@@ -190,9 +220,37 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
 
   const clearToast = () => setToastMessage(null);
 
-  const recordOutboxIfOffline = () => {
+  const openAddExpenseModal: LedgerContextValue['openAddExpenseModal'] = (
+    defaultGroupId = null,
+    editingExpense = null
+  ) => {
+    setExpenseModalState({
+      isOpen: true,
+      defaultGroupId: defaultGroupId !== undefined ? defaultGroupId : (editingExpense?.groupId ?? null),
+      editingExpense,
+    });
+  };
+
+  const closeAddExpenseModal = () => {
+    setExpenseModalState((prev) => ({
+      ...prev,
+      isOpen: false,
+      editingExpense: null,
+    }));
+  };
+
+  const recordOutboxIfOffline = (entityType = 'ledger', action = 'mutation', payload: unknown = {}) => {
     if (!isOnline) {
       setPendingOutboxCount((c) => c + 1);
+      const nowIso = new Date().toISOString();
+      void enqueueSyncOutboxMutation({
+        id: `outbox_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+        entityType,
+        action,
+        payloadJson: JSON.stringify(payload),
+        createdAt: nowIso,
+        hlc: makeHlc(dataset.currentUser.id),
+      });
     }
   };
 
@@ -203,6 +261,39 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       dataset.groups[0]!
     );
   }, [dataset.groups, activeGroupId]);
+
+  const recentGroups = useMemo(() => {
+    return [...dataset.groups]
+      .filter((g) => !g.deletedAt)
+      .sort((a, b) => {
+        const timeA = Math.max(
+          Date.parse(a.lastAccessedAt ?? a.updatedAt) || 0,
+          Date.parse(a.updatedAt) || 0
+        );
+        const timeB = Math.max(
+          Date.parse(b.lastAccessedAt ?? b.updatedAt) || 0,
+          Date.parse(b.updatedAt) || 0
+        );
+        return timeB - timeA;
+      })
+      .slice(0, 3);
+  }, [dataset.groups]);
+
+  const setActiveGroupId = (id: string) => {
+    const nowIso = new Date().toISOString();
+    setActiveGroupIdState(id);
+    setDataset((prev) => ({
+      ...prev,
+      groups: prev.groups.map((g) =>
+        g.id === id ? { ...g, lastAccessedAt: nowIso } : g
+      ),
+    }));
+  };
+
+  const openGroupWorkspace = (groupId: string) => {
+    setActiveGroupId(groupId);
+    setActivePage('groups');
+  };
 
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
@@ -220,7 +311,9 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
         },
       }));
       if (next && pendingOutboxCount > 0) {
+        const countToFlush = pendingOutboxCount;
         setPendingOutboxCount(0);
+        void wiseSpliterSyncEngine.flushOutbox(countToFlush);
         showToast('Reconnected: Flushed offline outbox mutations to Supabase wise_spliter schema.');
       } else if (!next) {
         showToast('Switched to Offline Mode: All changes saved to local IndexedDB outbox.');
@@ -231,8 +324,10 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
 
   const triggerCloudSync = () => {
     setIsOnline(true);
+    const countToFlush = pendingOutboxCount;
     setPendingOutboxCount(0);
     const nowIso = new Date().toISOString();
+    void wiseSpliterSyncEngine.flushOutbox(countToFlush);
     setDataset((d) => ({
       ...d,
       currentUser: {
@@ -262,6 +357,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       inviteCode: `${input.name.slice(0, 4).toUpperCase().replace(/\W/g, 'GRP')}-${Math.floor(1000 + Math.random() * 9000)}`,
       createdAt: nowIso,
       updatedAt: nowIso,
+      lastAccessedAt: nowIso,
       deletedAt: null,
       hlc,
       members: [
@@ -301,8 +397,8 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       groups: [newGroup, ...prev.groups],
       groupActivityLog: [activity, ...prev.groupActivityLog],
     }));
-    setActiveGroupId(newId);
-    recordOutboxIfOffline();
+    setActiveGroupIdState(newId);
+    recordOutboxIfOffline('group', 'group_created', { groupId: newId });
     showToast(`Created group "${newGroup.name}"`);
     return newGroup;
   };
@@ -555,20 +651,52 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
   const upsertExpense: LedgerContextValue['upsertExpense'] = (input) => {
     const nowIso = new Date().toISOString();
     const hlc = makeHlc(dataset.currentUser.id);
-    const grp = dataset.groups.find((g) => g.id === input.groupId) ?? activeGroup;
-    const myMember =
-      grp.members.find((m) => m.userId === dataset.currentUser.id) ?? grp.members[0]!;
+    const isDirectSplit = input.groupId === null;
+    const grp = isDirectSplit
+      ? null
+      : (dataset.groups.find((g) => g.id === input.groupId) ?? activeGroup);
 
     const existing = input.id ? dataset.expenses.find((e) => e.id === input.id) : undefined;
     const expId = existing?.id ?? `exp_${Date.now()}`;
-    const rotationSeed = existing ? existing.rotationSeed : grp.expenseSeq;
+
+    const adHocParticipants = isDirectSplit
+      ? (input.adHocParticipants ?? existing?.adHocParticipants ?? [])
+      : undefined;
+
+    const myMemberId = isDirectSplit
+      ? (adHocParticipants?.find(
+          (p) => p.invitedEmail?.toLowerCase() === dataset.currentUser.email.toLowerCase()
+        )?.id ??
+          adHocParticipants?.[0]?.id ??
+          input.payers[0]?.memberId ??
+          dataset.currentUser.id)
+      : ((grp!.members.find((m) => m.userId === dataset.currentUser.id) ?? grp!.members[0])!.id);
+
+    const rotationSeed = existing
+      ? existing.rotationSeed
+      : isDirectSplit
+        ? dataset.expenses.filter((e) => e.groupId === null).length
+        : grp!.expenseSeq;
+
     const revNum = existing ? existing.revisionNumber + 1 : 1;
     const revId = `rev_${expId}_v${revNum}_${Date.now()}`;
 
+    const origCode = input.originalCurrency.toUpperCase();
+    const hasCustomFx =
+      input.fxStatus !== 'identity' &&
+      input.fxRateScaled > 0 &&
+      input.fxRateScaled !== 100000000;
+
+    const targetCurrency = isDirectSplit
+      ? hasCustomFx
+        ? dataset.currentUser.defaultCurrency.toUpperCase()
+        : origCode
+      : grp!.baseCurrency;
+
     const fxConv = convertMinorAmountWithFx({
       originalMinor: input.originalAmountMinor,
-      fromCurrency: input.originalCurrency,
-      toCurrency: grp.baseCurrency,
+      fromCurrency: origCode,
+      toCurrency: targetCurrency,
       fxRateScaled: input.fxRateScaled,
       fxStatus: input.fxStatus,
       dateIso: input.expenseDate,
@@ -576,15 +704,16 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
 
     const newExpense: ExpenseItem = {
       id: expId,
-      groupId: grp.id,
+      groupId: isDirectSplit ? null : grp!.id,
+      ...(isDirectSplit ? { adHocParticipants } : {}),
       title: input.title.trim(),
       category: input.category,
       tags: input.tags,
       notes: input.notes.trim(),
       expenseDate: input.expenseDate,
-      originalCurrency: input.originalCurrency.toUpperCase(),
+      originalCurrency: origCode,
       originalAmountMinor: input.originalAmountMinor,
-      groupCurrency: grp.baseCurrency,
+      groupCurrency: targetCurrency,
       amountMinor: fxConv.convertedMinor,
       fxRateScaled: input.fxRateScaled,
       fxStatus: input.fxStatus,
@@ -597,8 +726,8 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       revisionNumber: revNum,
       hasUnresolvedConflict: false,
       conflictRevisionId: null,
-      createdByMemberId: existing?.createdByMemberId ?? myMember.id,
-      updatedByMemberId: myMember.id,
+      createdByMemberId: existing?.createdByMemberId ?? myMemberId,
+      updatedByMemberId: myMemberId,
       createdAt: existing?.createdAt ?? nowIso,
       updatedAt: nowIso,
       deletedAt: null,
@@ -613,9 +742,9 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
             ? [
                 {
                   field: 'amount_minor',
-                  fromValue: formatMinorToMajor(existing.amountMinor, grp.baseCurrency),
-                  toValue: formatMinorToMajor(newExpense.amountMinor, grp.baseCurrency),
-                  label: `Total changed from ${formatMinorToMajor(existing.amountMinor, grp.baseCurrency)} to ${formatMinorToMajor(newExpense.amountMinor, grp.baseCurrency)}`,
+                  fromValue: formatMinorToMajor(existing.amountMinor, targetCurrency),
+                  toValue: formatMinorToMajor(newExpense.amountMinor, targetCurrency),
+                  label: `Total changed from ${formatMinorToMajor(existing.amountMinor, targetCurrency)} to ${formatMinorToMajor(newExpense.amountMinor, targetCurrency)}`,
                 },
               ]
             : []),
@@ -644,18 +773,18 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
           {
             field: 'created',
             fromValue: '0',
-            toValue: formatMinorToMajor(newExpense.amountMinor, grp.baseCurrency),
-            label: `Logged ${formatMinorToMajor(newExpense.amountMinor, grp.baseCurrency)} (${newExpense.splitMode.toUpperCase()} split)`,
+            toValue: formatMinorToMajor(newExpense.amountMinor, targetCurrency),
+            label: `Logged ${formatMinorToMajor(newExpense.amountMinor, targetCurrency)} (${newExpense.splitMode.toUpperCase()} split)`,
           },
         ];
 
     const revision: ExpenseRevision = {
       id: revId,
       expenseId: expId,
-      groupId: grp.id,
+      groupId: isDirectSplit ? null : grp!.id,
       revisionNumber: revNum,
       baseRevisionId: existing?.currentRevisionId ?? null,
-      actorMemberId: myMember.id,
+      actorMemberId: myMemberId,
       actorDisplayName: dataset.currentUser.fullName,
       action: existing ? 'updated' : 'created',
       changes:
@@ -687,24 +816,37 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       hlc,
     };
 
+    const participantNames = (adHocParticipants ?? [])
+      .map((p) => p.displayName)
+      .filter(Boolean)
+      .join(', ');
+
+    const summaryText = isDirectSplit
+      ? existing
+        ? `${dataset.currentUser.fullName} updated Direct Non-Group Split "${newExpense.title}" (${formatMinorToMajor(newExpense.amountMinor, targetCurrency)})${participantNames ? ` among ${participantNames}` : ''}`
+        : `${dataset.currentUser.fullName} added Direct Non-Group Split "${newExpense.title}" (${formatMinorToMajor(newExpense.amountMinor, targetCurrency)})${participantNames ? ` among ${participantNames}` : ''}`
+      : existing
+        ? `${dataset.currentUser.fullName} updated "${newExpense.title}" (${formatMinorToMajor(newExpense.amountMinor, targetCurrency)})`
+        : `${dataset.currentUser.fullName} added "${newExpense.title}" (${formatMinorToMajor(newExpense.amountMinor, targetCurrency)})`;
+
     const activity: GroupActivityItem = {
       id: `act_${Date.now()}`,
-      groupId: grp.id,
-      actorMemberId: myMember.id,
+      groupId: isDirectSplit ? null : grp!.id,
+      actorMemberId: myMemberId,
       actorDisplayName: dataset.currentUser.fullName,
       entityType: 'expense',
       entityId: expId,
       action: existing ? 'expense_updated' : 'expense_created',
-      summaryText: existing
-        ? `${dataset.currentUser.fullName} updated "${newExpense.title}" (${formatMinorToMajor(newExpense.amountMinor, grp.baseCurrency)})`
-        : `${dataset.currentUser.fullName} added "${newExpense.title}" (${formatMinorToMajor(newExpense.amountMinor, grp.baseCurrency)})`,
+      summaryText,
       detailNote:
         revision.changes.map((c) => c.label).join('; ') +
+        (isDirectSplit && participantNames ? ` | Direct Non-Group Split (${participantNames})` : '') +
         (newExpense.fxAuditNote ? ` | ${newExpense.fxAuditNote}` : ''),
       diffBadges: [
+        ...(isDirectSplit ? ['Direct Non-Group Split'] : []),
         `${newExpense.splitMode.toUpperCase()} Split`,
-        formatMinorToMajor(newExpense.amountMinor, grp.baseCurrency),
-        ...(newExpense.originalCurrency !== grp.baseCurrency
+        formatMinorToMajor(newExpense.amountMinor, targetCurrency),
+        ...(newExpense.originalCurrency !== targetCurrency
           ? [`FX: ${formatMinorToMajor(newExpense.originalAmountMinor, newExpense.originalCurrency)}`]
           : []),
       ],
@@ -714,16 +856,19 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
 
     setDataset((prev) => ({
       ...prev,
-      groups: prev.groups.map((g) =>
-        g.id === grp.id
-          ? {
-              ...g,
-              expenseSeq: existing ? g.expenseSeq : g.expenseSeq + 1,
-              updatedAt: nowIso,
-              hlc,
-            }
-          : g
-      ),
+      groups: isDirectSplit
+        ? prev.groups
+        : prev.groups.map((g) =>
+            g.id === grp!.id
+              ? {
+                  ...g,
+                  expenseSeq: existing ? g.expenseSeq : g.expenseSeq + 1,
+                  updatedAt: nowIso,
+                  lastAccessedAt: nowIso,
+                  hlc,
+                }
+              : g
+          ),
       expenses: existing
         ? prev.expenses.map((e) => (e.id === expId ? newExpense : e))
         : [newExpense, ...prev.expenses],
@@ -731,7 +876,10 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       groupActivityLog: [activity, ...prev.groupActivityLog],
     }));
 
-    recordOutboxIfOffline();
+    recordOutboxIfOffline('expense', existing ? 'expense_updated' : 'expense_created', {
+      expenseId: expId,
+      groupId: newExpense.groupId,
+    });
     showToast(existing ? `Updated "${newExpense.title}"` : `Added "${newExpense.title}"`);
     return newExpense;
   };
@@ -981,21 +1129,35 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
   const recordSettlement: LedgerContextValue['recordSettlement'] = (input) => {
     const nowIso = new Date().toISOString();
     const hlc = makeHlc(dataset.currentUser.id);
-    const grp = dataset.groups.find((g) => g.id === input.groupId);
-    if (!grp) return;
+    const grp = input.groupId ? dataset.groups.find((g) => g.id === input.groupId) : null;
+    if (input.groupId && !grp) return;
 
-    const fromName = grp.members.find((m) => m.id === input.fromMemberId)?.displayName ?? 'Member';
-    const toName = grp.members.find((m) => m.id === input.toMemberId)?.displayName ?? 'Member';
+    const findParticipantName = (memberId: string): string => {
+      if (grp) {
+        return grp.members.find((m) => m.id === memberId)?.displayName ?? 'Member';
+      }
+      for (const exp of dataset.expenses) {
+        if (exp.adHocParticipants) {
+          const found = exp.adHocParticipants.find((p) => p.id === memberId);
+          if (found) return found.displayName;
+        }
+      }
+      return 'Member';
+    };
+
+    const fromName = findParticipantName(input.fromMemberId);
+    const toName = findParticipantName(input.toMemberId);
+    const stlCurrency = grp?.baseCurrency ?? input.currency ?? dataset.currentUser.defaultCurrency;
     const stlId = `stl_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
     const newStl: SettlementItem = {
       id: stlId,
-      groupId: grp.id,
+      groupId: grp ? grp.id : null,
       batchSettlementId: input.batchSettlementId ?? null,
       fromMemberId: input.fromMemberId,
       toMemberId: input.toMemberId,
       amountMinor: Math.round(input.amountMinor),
-      currency: grp.baseCurrency,
+      currency: stlCurrency,
       paymentMethod: input.paymentMethod,
       paymentReference: input.paymentReference?.trim() || null,
       notes: input.notes?.trim() || '',
@@ -1007,19 +1169,19 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
 
     const act: GroupActivityItem = {
       id: `act_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-      groupId: grp.id,
+      groupId: grp ? grp.id : null,
       actorMemberId: input.fromMemberId,
       actorDisplayName: dataset.currentUser.fullName,
       entityType: 'settlement',
       entityId: stlId,
       action: 'settlement_recorded',
-      summaryText: `${fromName} paid ${toName} ${formatMinorToMajor(newStl.amountMinor, grp.baseCurrency)} via ${newStl.paymentMethod.toUpperCase()}`,
+      summaryText: `${fromName} paid ${toName} ${formatMinorToMajor(newStl.amountMinor, stlCurrency)} via ${newStl.paymentMethod.toUpperCase()}`,
       detailNote: input.batchSettlementId
         ? `Recorded as part of Cross-Group Atomic Settlement Batch (${input.batchSettlementId})`
-        : newStl.notes || 'Direct group settlement recorded',
+        : newStl.notes || 'Direct settlement recorded',
       diffBadges: [
         newStl.paymentMethod.toUpperCase(),
-        formatMinorToMajor(newStl.amountMinor, grp.baseCurrency),
+        formatMinorToMajor(newStl.amountMinor, stlCurrency),
         ...(input.batchSettlementId ? ['Cross-Group Batch'] : []),
       ],
       createdAt: nowIso,
@@ -1032,8 +1194,11 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       groupActivityLog: [act, ...prev.groupActivityLog],
     }));
 
-    recordOutboxIfOffline();
-    showToast(`Recorded settlement: ${fromName} paid ${toName} ${formatMinorToMajor(newStl.amountMinor, grp.baseCurrency)}`);
+    recordOutboxIfOffline('settlement', 'settlement_recorded', {
+      settlementId: stlId,
+      groupId: newStl.groupId,
+    });
+    showToast(`Recorded settlement: ${fromName} paid ${toName} ${formatMinorToMajor(newStl.amountMinor, stlCurrency)}`);
   };
 
   const settleAllAcrossGroupsWithFriend: LedgerContextValue['settleAllAcrossGroupsWithFriend'] = (
@@ -1055,6 +1220,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
         paymentMethod,
         settledDate: today,
         batchSettlementId: batchId,
+        currency: item.currency,
         notes: `Cross-group net settlement with ${friendSummary.displayName}`,
       });
     }
@@ -1127,7 +1293,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
   const restoreFullDatasetFromBackup = (restored: MockLedgerDataset) => {
     setDataset(restored);
     if (restored.groups[0]) {
-      setActiveGroupId(restored.groups[0].id);
+      setActiveGroupIdState(restored.groups[0].id);
     }
     showToast('Restored full ledger state from backup.');
   };
@@ -1135,14 +1301,16 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
   const resetToInitialMockData = () => {
     const fresh = cloneInitialDataset();
     setDataset(fresh);
-    setActiveGroupId(fresh.groups[0]!.id);
+    setActiveGroupIdState(fresh.groups[0]!.id);
     setPendingOutboxCount(0);
     setIsOnline(true);
+    void clearSyncOutbox();
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {
       // Ignore
     }
+    void saveDatasetToIndexedDb(fresh);
     showToast('Reset ledger to initial mock-ledger-data.json state.');
   };
 
@@ -1152,14 +1320,21 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
         dataset,
         activeGroupId,
         activeGroup,
+        recentGroups,
         activePage,
         theme,
         isOnline,
         pendingOutboxCount,
         toastMessage,
+        expenseModalState,
+        openAddExpenseModal,
+        closeAddExpenseModal,
+        isHelpModalOpen,
+        setHelpModalOpen,
         clearToast,
         showToast,
         setActiveGroupId,
+        openGroupWorkspace,
         setActivePage,
         toggleTheme,
         toggleOfflineMode,

@@ -133,6 +133,112 @@
       "sampleNoteTemplate": "{actor} commented on \"{title}\": \"{comment}\""
     }
   ],
+  "helpGuidesCatalog": [
+    {
+      "pageKey": "home",
+      "pageTitle": "Minimalist Home & Quick Split Hub",
+      "shortTip": "Your Home screen keeps cognitive load low: see your overall net position, quick-add any expense (with or without a group), or jump into your 3 most recently active groups.",
+      "whereToFindWhat": [
+        "Top Bar: Net Position across all groups and direct friend splits.",
+        "Quick Add Expense: Log a standalone 1-on-1/ad-hoc split (No Group) or assign to any group.",
+        "Recent Groups (Max 3): Your 3 most recently accessed or updated groups. Click any group to open its progressive workspace.",
+        "Direct Non-Group Splits: Bills split directly between participants without creating a group."
+      ],
+      "steps": [
+        {
+          "stepNumber": 1,
+          "title": "Quick-Add a Standalone or Group Bill",
+          "description": "Click '+ Quick Add Expense' on Home. Leave Group as 'No Group (Direct Split)' to split between specific people, or pick a group.",
+          "targetTab": "home",
+          "actionLabel": "Open Quick Add"
+        },
+        {
+          "stepNumber": 2,
+          "title": "Open a Group for Progressive Insights & Actions",
+          "description": "Click any of your Top 3 Recent Groups (or 'View All Groups') to unlock group-specific insights, balance explanations, and group settings.",
+          "targetTab": "groups",
+          "actionLabel": "Explore Groups"
+        },
+        {
+          "stepNumber": 3,
+          "title": "Settle Up via UPI QR or WhatsApp Card",
+          "description": "Open 'Friends & Settle' to clear balances across multiple groups in one atomic batch or generate a UPI QR code.",
+          "targetTab": "friends",
+          "actionLabel": "Go to Settle Hub"
+        }
+      ]
+    },
+    {
+      "pageKey": "groups",
+      "pageTitle": "Progressive Group Workspace & 5-Mode Ledger",
+      "shortTip": "Once a group is opened, minimal group-scoped insights appear automatically at the top alongside all group operations (Add Expense with group pre-selected, Explain Balance, Currency Switcher, and Simplify Toggle).",
+      "whereToFindWhat": [
+        "Minimal Group Insights Strip: Total group spend, your personal share, and your net group balance.",
+        "Conflict Banner (when applicable): 1-click resolution for concurrent offline edits.",
+        "Left Column: Group members, Google OAuth link status, 'Explain Balance' math modal, and suggested repayments.",
+        "Right Column: Filterable expense ledger with rotating remainder badges and foreign FX audit notes."
+      ],
+      "steps": [
+        {
+          "stepNumber": 1,
+          "title": "Add Expense (Group Pre-Selected)",
+          "description": "Click 'Add Expense' inside the group header - this group is pre-selected automatically with all 5 split modes.",
+          "targetTab": "groups",
+          "actionLabel": "Add Group Bill"
+        },
+        {
+          "stepNumber": 2,
+          "title": "Inspect Mathematical Lineage",
+          "description": "Click 'Explain' next to any member to view the exact equation (Paid - Share + Sent - Received = Net).",
+          "targetTab": "groups",
+          "actionLabel": "Inspect Balances"
+        }
+      ]
+    },
+    {
+      "pageKey": "activity",
+      "pageTitle": "Transparent Activity Feed, Revisions & Trash Vault",
+      "shortTip": "Every create, edit, currency change, settlement, and conflict in a group is logged here with HLC timestamps and 1-click restore.",
+      "whereToFindWhat": [
+        "Activity Timeline: Filter by any action type (Expense Edited, Conflict Flagged, Settlement Recorded, etc.).",
+        "Revision Inspector: View field-by-field before -> after diffs and restore any historical revision.",
+        "Trash Recovery Vault: Restore soft-deleted bills in one click."
+      ],
+      "steps": []
+    },
+    {
+      "pageKey": "friends",
+      "pageTitle": "Cross-Group Friends Net Ledger & UPI/WhatsApp Studio",
+      "shortTip": "See your combined net balance with each friend across all shared groups and direct non-group splits, without mixing strangers across groups.",
+      "whereToFindWhat": [
+        "Friends Net List: Per-group breakdown + 'Settle All Across Groups' atomic batch button.",
+        "UPI QR & Deep-Link Studio: Pre-filled upi://pay links and scannable QR code.",
+        "WhatsApp Summary Generator: Copy-ready markdown and visual summary card."
+      ],
+      "steps": []
+    },
+    {
+      "pageKey": "analytics",
+      "pageTitle": "Deep Spending Analytics & Global Instant Search",
+      "shortTip": "Full visual breakdowns by category and split mode, plus instant search across all groups and currencies.",
+      "whereToFindWhat": [
+        "Category & Split Mode Charts: Proportional SVG ring and bar distributions.",
+        "Global Search: Filter by keyword, #tag, currency (INR/JPY/KWD/EUR/USD), or split mode."
+      ],
+      "steps": []
+    },
+    {
+      "pageKey": "portability",
+      "pageTitle": "Local IndexedDB, Supabase Sync & Data Portability",
+      "shortTip": "Manage your local Dexie IndexedDB mirror, Supabase wise_spliter cloud sync, Splitwise CSV imports, and AES-256-GCM encrypted backups.",
+      "whereToFindWhat": [
+        "Cloud Sync Center: Toggle Offline Flight Mode and flush queued outbox mutations to wise_spliter.",
+        "Splitwise Importer & CSV/PDF Exporter: Migrate data in or export statements out.",
+        "Encrypted Backup Vault: PBKDF2 + AES-256-GCM encrypted .wisesplit backup and restore."
+      ],
+      "steps": []
+    }
+  ],
   "groups": [
     {
       "id": "grp_goa_2026",
@@ -155,6 +261,7 @@
       "inviteCode": "GOA-2026-VILLA",
       "createdAt": "2026-11-01T09:00:00Z",
       "updatedAt": "2026-11-11T18:30:00Z",
+      "lastAccessedAt": "2026-11-11T19:10:00Z",
       "deletedAt": null,
       "hlc": "019a73e4c900-0006-usr_arjun_01",
       "members": [
@@ -826,6 +933,61 @@
       "updatedAt": "2026-11-07T20:00:00Z",
       "deletedAt": null,
       "hlc": "019a70f0c300-0001-usr_arjun_01",
+      "comments": [],
+      "receipts": []
+    },
+    {
+      "id": "exp_direct_coffee_01",
+      "groupId": null,
+      "adHocParticipants": [
+        {
+          "id": "adhoc_arjun",
+          "displayName": "Arjun Mehta",
+          "invitedEmail": "arjun.mehta@gmail.com",
+          "upiId": "arjun.mehta@okicici",
+          "avatarInitials": "AM",
+          "memberOrder": 0
+        },
+        {
+          "id": "adhoc_rohan",
+          "displayName": "Rohan Verma",
+          "invitedEmail": "rohan.verma@gmail.com",
+          "upiId": "rohan.verma@okaxis",
+          "avatarInitials": "RV",
+          "memberOrder": 1
+        }
+      ],
+      "title": "Blue Tokai Specialty Coffee & Croissants (Direct Non-Group Split)",
+      "category": "food",
+      "tags": ["#direct-split", "#no-group", "#coffee"],
+      "notes": "Quick-added from Home screen without selecting any group; split directly between Arjun and Rohan",
+      "expenseDate": "2026-11-11",
+      "originalCurrency": "INR",
+      "originalAmountMinor": 84000,
+      "groupCurrency": "INR",
+      "amountMinor": 84000,
+      "fxRateScaled": 100000000,
+      "fxStatus": "identity",
+      "fxAuditNote": null,
+      "splitMode": "equal",
+      "rotationSeed": 0,
+      "payers": [
+        { "memberId": "adhoc_arjun", "paidMinor": 84000, "originalPaidMinor": 84000 }
+      ],
+      "splits": [
+        { "memberId": "adhoc_arjun", "included": true, "owedMinor": 42000, "originalOwedMinor": 42000, "rawInputValue": 1, "remainderMinor": 0 },
+        { "memberId": "adhoc_rohan", "included": true, "owedMinor": 42000, "originalOwedMinor": 42000, "rawInputValue": 1, "remainderMinor": 0 }
+      ],
+      "currentRevisionId": "rev_direct_01_v1",
+      "revisionNumber": 1,
+      "hasUnresolvedConflict": false,
+      "conflictRevisionId": null,
+      "createdByMemberId": "adhoc_arjun",
+      "updatedByMemberId": "adhoc_arjun",
+      "createdAt": "2026-11-11T17:45:00Z",
+      "updatedAt": "2026-11-11T17:45:00Z",
+      "deletedAt": null,
+      "hlc": "019a73e4c850-0001-usr_arjun_01",
       "comments": [],
       "receipts": []
     }

@@ -155,10 +155,10 @@ export function ActivityAndTrashPage() {
         existing.revisions.push(rev);
       } else {
         const exp = dataset.expenses.find((e) => e.id === rev.expenseId);
-        const grp = groupMap.get(rev.groupId);
+        const grp = rev.groupId ? groupMap.get(rev.groupId) : undefined;
         grouped.set(rev.expenseId, {
           expense: exp,
-          groupName: grp?.name ?? rev.groupId,
+          groupName: grp?.name ?? (rev.groupId ?? 'Direct Non-Group Split'),
           groupCurrency: exp?.groupCurrency ?? grp?.baseCurrency ?? 'INR',
           revisions: [rev],
         });
@@ -427,7 +427,7 @@ export function ActivityAndTrashPage() {
               ) : (
                 <div className="space-y-3">
                   {filteredActivities.map((item) => {
-                    const grpInfo = groupMap.get(item.groupId);
+                    const grpInfo = item.groupId ? groupMap.get(item.groupId) : undefined;
                     const badgeTone = getActionBadgeTone(item.action, dataset.actionTypesCatalog);
                     const actionLabel = getActionLabel(item.action, dataset.actionTypesCatalog);
                     const initials = getInitialsFromName(item.actorDisplayName);
@@ -717,7 +717,7 @@ export function ActivityAndTrashPage() {
               ) : (
                 <div className="space-y-3">
                   {trashedExpenses.map((exp) => {
-                    const grpInfo = groupMap.get(exp.groupId);
+                    const grpInfo = exp.groupId ? groupMap.get(exp.groupId) : undefined;
                     const includedSplits = exp.splits.filter((s) => s.included);
 
                     return (

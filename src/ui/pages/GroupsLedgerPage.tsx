@@ -53,6 +53,7 @@ export function GroupsLedgerPage() {
     dataset,
     activeGroup,
     setActiveGroupId,
+    setActivePage,
     createGroup,
     toggleGroupSimplifyDebts,
     changeGroupBaseCurrency,
@@ -175,6 +176,54 @@ export function GroupsLedgerPage() {
     () => groupExpenses.reduce((acc, e) => acc + e.amountMinor, 0),
     [groupExpenses]
   );
+
+  const currentUserMember = useMemo(() => {
+    return (
+      activeGroup.members.find(
+        (m) =>
+          m.userId === dataset.currentUser.id ||
+          m.invitedEmail?.toLowerCase() === dataset.currentUser.email.toLowerCase()
+      ) ?? activeGroup.members[0]
+    );
+  }, [activeGroup.members, dataset.currentUser.id, dataset.currentUser.email]);
+
+  const myGroupShareMinor = useMemo(() => {
+    if (!currentUserMember) return 0;
+    return groupExpenses.reduce((acc, exp) => {
+      const splitShare = exp.splits.find(
+        (s) => s.memberId === currentUserMember.id && s.included
+      );
+      return acc + (splitShare ? splitShare.owedMinor : 0);
+    }, 0);
+  }, [groupExpenses, currentUserMember]);
+
+  const myGroupNetPositionMinor = useMemo(() => {
+    if (!currentUserMember) return 0;
+    return netBalances.get(currentUserMember.id) ?? 0;
+  }, [netBalances, currentUserMember]);
+
+  const topSpendCategory = useMemo(() => {
+    if (groupExpenses.length === 0) {
+      return { label: 'No Bills Yet', amountMinor: 0 };
+    }
+    const totalsByCat = new Map<ExpenseCategoryKey, number>();
+    for (const exp of groupExpenses) {
+      totalsByCat.set(exp.category, (totalsByCat.get(exp.category) ?? 0) + exp.amountMinor);
+    }
+    let topKey: ExpenseCategoryKey = groupExpenses[0]!.category;
+    let topAmount = 0;
+    for (const [cat, amt] of totalsByCat.entries()) {
+      if (amt > topAmount) {
+        topKey = cat;
+        topAmount = amt;
+      }
+    }
+    const meta = dataset.categoriesCatalog.find((c) => c.key === topKey);
+    return {
+      label: meta?.label ?? topKey.toUpperCase(),
+      amountMinor: topAmount,
+    };
+  }, [groupExpenses, dataset.categoriesCatalog]);
 
   const memberNameOf = (id: string) =>
     activeGroup.members.find((m) => m.id === id)?.displayName ?? id;
@@ -598,6 +647,112 @@ export function GroupsLedgerPage() {
             </div>
           </form>
         )}
+
+        {/* Progressive Disclosure: Minimal Group Insights Bar (4-Metric Strip) */}
+        <div
+          data-testid="group-minimal-insights-bar"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-slate-200/70 dark:border-white/10"
+        >
+          <div className="rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/60 px-3.5 py-2.5">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Group Total Spend
+            </div>
+            <div className="mt-1 text-sm sm:text-base font-extrabold font-mono tabular-nums text-slate-900 dark:text-slate-100">
+              <CurrencyAmount
+                minorAmount={totalGroupSpendMinor}
+                currencyCode={activeGroup.baseCurrency}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/60 px-3.5 py-2.5">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Your Group Share
+            </div>
+            <div className="mt-1 text-sm sm:text-base font-extrabold font-mono tabular-nums text-slate-900 dark:text-slate-100">
+              <CurrencyAmount
+                minorAmount={myGroupShareMinor}
+                currencyCode={activeGroup.baseCurrency}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/60 px-3.5 py-2.5">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Your Net Position
+            </div>
+            <div className="mt-1 text-sm sm:text-base font-extrabold font-mono tabular-nums">
+              <CurrencyAmount
+                minorAmount={myGroupNetPositionMinor}
+                currencyCode={activeGroup.baseCurrency}
+                colorize
+                showPlusSign
+              />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/60 px-3.5 py-2.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
+                Top Category ({groupExpenses.length} bills)
+              </span>
+              <button
+                type="button"
+                onClick={() => setActivePage('analytics')}
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-[#059669] hover:underline cursor-pointer shrink-0"
+              >
+                <span>View Full Group Charts</span>
+                <ArrowRight className="w-3 h-3" weight="bold" />
+              </button>
+            </div>
+            <div className="mt-1 flex items-baseline justify-between gap-2">
+              <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                {topSpendCategory.label}
+              </span>
+              <span className="text-xs font-mono tabular-nums font-bold text-slate-600 dark:text-slate-300">
+                <CurrencyAmount
+                  minorAmount={topSpendCategory.amountMinor}
+                  currencyCode={activeGroup.baseCurrency}
+                />
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Automatic User Guidance Strip */}
+        <div
+          data-testid="group-auto-guide-strip"
+          className={`flex flex-wrap items-center justify-between gap-2 rounded-2xl border px-4 py-2.5 text-xs font-semibold ${
+            conflictedExpenses.length > 0
+              ? 'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300'
+              : suggestedTransfers.length > 0
+              ? 'border-sky-500/30 bg-sky-500/[0.07] text-sky-800 dark:text-sky-300'
+              : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {conflictedExpenses.length > 0 ? (
+              <Warning className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" weight="fill" />
+            ) : suggestedTransfers.length > 0 ? (
+              <Scales className="w-4 h-4 shrink-0 text-sky-600 dark:text-sky-400" weight="duotone" />
+            ) : (
+              <CheckCircle
+                className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400"
+                weight="fill"
+              />
+            )}
+            <span>
+              {conflictedExpenses.length > 0
+                ? 'Step 1: Resolve the concurrent offline edit conflict below to lock group balances.'
+                : suggestedTransfers.length > 0
+                ? "Group ready: Add new expenses, click 'Explain' on any member to verify math, or record a settlement."
+                : "All members are settled to 0.00! Click '+ Add Expense' to log the next shared bill."}
+            </span>
+          </div>
+          <span className="font-mono text-[11px] opacity-80">
+            {activeGroup.name} ({activeGroup.baseCurrency})
+          </span>
+        </div>
       </DoubleBezelCard>
 
       {/* Concurrent Offline Conflict Resolution Banner */}
@@ -1253,6 +1408,7 @@ export function GroupsLedgerPage() {
           setEditingExpense(null);
         }}
         initialExpense={editingExpense}
+        defaultGroupId={activeGroup.id}
       />
 
       <ExplainBalanceModal

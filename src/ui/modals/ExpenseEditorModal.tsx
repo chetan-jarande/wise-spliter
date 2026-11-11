@@ -5,13 +5,18 @@ import {
   CheckCircle,
   Coins,
   FloppyDisk,
+  FolderOpen,
+  Plus,
   Sparkle,
   Tag,
+  Trash,
+  UserPlus,
   Users,
   WarningCircle,
   X,
 } from '@phosphor-icons/react';
 import {
+  AdHocParticipant,
   ExpenseCategoryKey,
   ExpenseItem,
   ExpensePayer,
@@ -40,6 +45,13 @@ import {
   validateExpenseInvariants,
 } from '../../domain/splits/split-calculator';
 
+export interface ExpenseEditorModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  initialExpense?: ExpenseItem | null;
+  defaultGroupId?: string | null; // When opened from a group, pass group.id; when opened from Home Quick-Add, pass null
+}
+
 const SPLIT_MODES: Array<{ mode: SplitMode; label: string; hint: string }> = [
   { mode: 'equal', label: 'Equal', hint: 'Deterministic rotating remainder' },
   { mode: 'exact', label: 'Exact', hint: 'Exact minor units per person' },
@@ -48,16 +60,92 @@ const SPLIT_MODES: Array<{ mode: SplitMode; label: string; hint: string }> = [
   { mode: 'adjustment', label: '+/- Adjust', hint: 'Equal base plus custom item delta' },
 ];
 
+const DEFAULT_ADHOC_PARTICIPANTS: AdHocParticipant[] = [
+  {
+    id: 'adhoc_arjun',
+    displayName: 'Arjun Mehta',
+    invitedEmail: 'arjun.mehta@gmail.com',
+    upiId: 'arjun.mehta@okicici',
+    avatarInitials: 'AM',
+    memberOrder: 0,
+  },
+  {
+    id: 'adhoc_rohan',
+    displayName: 'Rohan Verma',
+    invitedEmail: 'rohan.verma@gmail.com',
+    upiId: 'rohan.verma@okaxis',
+    avatarInitials: 'RV',
+    memberOrder: 1,
+  },
+];
+
+const KNOWN_ADHOC_CONTACTS: Array<Omit<AdHocParticipant, 'memberOrder'>> = [
+  {
+    id: 'adhoc_priya',
+    displayName: 'Priya Nair',
+    invitedEmail: 'priya.nair@gmail.com',
+    upiId: 'priya.nair@oksbi',
+    avatarInitials: 'PN',
+  },
+  {
+    id: 'adhoc_kabir',
+    displayName: 'Kabir Kapoor',
+    invitedEmail: 'kabir.kapoor@gmail.com',
+    upiId: 'kabir.kapoor@okhdfcbank',
+    avatarInitials: 'KK',
+  },
+  {
+    id: 'adhoc_neha',
+    displayName: 'Neha Sharma',
+    invitedEmail: 'neha.sharma@gmail.com',
+    upiId: 'neha.sharma@okicici',
+    avatarInitials: 'NS',
+  },
+  {
+    id: 'adhoc_rohan',
+    displayName: 'Rohan Verma',
+    invitedEmail: 'rohan.verma@gmail.com',
+    upiId: 'rohan.verma@okaxis',
+    avatarInitials: 'RV',
+  },
+];
+
+function computeInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0]![0] ?? ''}${parts[parts.length - 1]![0] ?? ''}`.toUpperCase();
+  }
+  return name.trim().slice(0, 2).toUpperCase() || 'FR';
+}
+
 export function ExpenseEditorModal({
   isOpen,
   onClose,
   initialExpense = null,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  initialExpense?: ExpenseItem | null;
-}) {
+  defaultGroupId,
+}: ExpenseEditorModalProps) {
   const { dataset, activeGroup, isOnline, upsertExpense, saveDefaultSplitPreset } = useLedger();
+
+  const activeGroups = useMemo(
+    () => dataset.groups.filter((g) => !g.deletedAt),
+    [dataset.groups]
+  );
+
+  const resolveInitialScopeGroupId = (): string => {
+    if (initialExpense) {
+      return initialExpense.groupId ?? '';
+    }
+    if (defaultGroupId !== undefined) {
+      return defaultGroupId ?? '';
+    }
+    return activeGroup.id;
+  };
+
+  const [selectedGroupId, setSelectedGroupId] = useState<string>(resolveInitialScopeGroupId);
+  const [adHocParticipants, setAdHocParticipants] = useState<AdHocParticipant[]>(
+    DEFAULT_ADHOC_PARTICIPANTS
+  );
+  const [customFriendName, setCustomFriendName] = useState('');
 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<ExpenseCategoryKey>('food');
@@ -77,6 +165,34 @@ export function ExpenseEditorModal({
   const [includedMembers, setIncludedMembers] = useState<Record<string, boolean>>({});
   const [memberInputStrings, setMemberInputStrings] = useState<Record<string, string>>({});
 
+  const isDirectSplit = selectedGroupId === '';
+
+  const selectedGroup = useMemo(() => {
+    if (isDirectSplit) return null;
+    return activeGroups.find((g) => g.id === selectedGroupId) ?? activeGroup;
+  }, [isDirectSplit, activeGroups, selectedGroupId, activeGroup]);
+
+  const effectiveBaseCurrency = selectedGroup ? selectedGroup.baseCurrency : originalCurrency;
+
+  const currentParticipants = useMemo(() => {
+    if (selectedGroup) {
+      return selectedGroup.members.map((m) => ({
+        id: m.id,
+        displayName: m.displayName,
+        avatarInitials: m.avatarInitials,
+        memberOrder: m.memberOrder,
+        userId: m.userId,
+      }));
+    }
+    return adHocParticipants.map((p, idx) => ({
+      id: p.id,
+      displayName: p.displayName,
+      avatarInitials: p.avatarInitials,
+      memberOrder: idx,
+      userId: p.id === 'adhoc_arjun' ? dataset.currentUser.id : null,
+    }));
+  }, [selectedGroup, adHocParticipants, dataset.currentUser.id]);
+
   const allCurrencyOptions = useMemo(() => {
     const primaryCodes = new Set(dataset.currenciesCatalog.map((c) => c.code));
     const extras = Object.values(SUPPORTED_CURRENCIES)
@@ -87,6 +203,32 @@ export function ExpenseEditorModal({
 
   useEffect(() => {
     if (!isOpen) return;
+
+    const initGroupId = initialExpense
+      ? initialExpense.groupId ?? ''
+      : defaultGroupId !== undefined
+      ? defaultGroupId ?? ''
+      : activeGroup.id;
+
+    setSelectedGroupId(initGroupId);
+    setCustomFriendName('');
+
+    const targetGroup =
+      initGroupId !== ''
+        ? dataset.groups.find((g) => g.id === initGroupId && !g.deletedAt) ?? activeGroup
+        : null;
+
+    const initAdHoc: AdHocParticipant[] =
+      initialExpense?.adHocParticipants && initialExpense.adHocParticipants.length >= 2
+        ? initialExpense.adHocParticipants.map((p, i) => ({ ...p, memberOrder: i }))
+        : DEFAULT_ADHOC_PARTICIPANTS.map((p, i) => ({ ...p, memberOrder: i }));
+
+    setAdHocParticipants(initAdHoc);
+
+    const activeRoster = targetGroup ? targetGroup.members : initAdHoc;
+    const baseCurr = targetGroup
+      ? targetGroup.baseCurrency
+      : initialExpense?.originalCurrency ?? dataset.currentUser.defaultCurrency ?? 'INR';
 
     if (initialExpense) {
       setTitle(initialExpense.title);
@@ -108,23 +250,20 @@ export function ExpenseEditorModal({
 
       const multi = initialExpense.payers.length > 1;
       setIsMultiPayer(multi);
-      setSinglePayerId(initialExpense.payers[0]?.memberId ?? activeGroup.members[0]?.id ?? '');
+      setSinglePayerId(initialExpense.payers[0]?.memberId ?? activeRoster[0]?.id ?? '');
 
       const payerMap: Record<string, string> = {};
-      for (const m of activeGroup.members) {
+      for (const m of activeRoster) {
         const foundPayer = initialExpense.payers.find((p) => p.memberId === m.id);
         payerMap[m.id] = foundPayer
-          ? formatMinorToMajor(foundPayer.paidMinor, activeGroup.baseCurrency, false).replace(
-              /,/g,
-              ''
-            )
+          ? formatMinorToMajor(foundPayer.paidMinor, baseCurr, false).replace(/,/g, '')
           : '0';
       }
       setMultiPayerInputs(payerMap);
 
       const incMap: Record<string, boolean> = {};
       const strMap: Record<string, string> = {};
-      for (const m of activeGroup.members) {
+      for (const m of activeRoster) {
         const sp = initialExpense.splits.find((s) => s.memberId === m.id);
         incMap[m.id] = sp ? sp.included : true;
         if (!sp) {
@@ -135,11 +274,7 @@ export function ExpenseEditorModal({
           initialExpense.splitMode === 'exact' ||
           initialExpense.splitMode === 'adjustment'
         ) {
-          strMap[m.id] = formatMinorToMajor(
-            sp.rawInputValue,
-            activeGroup.baseCurrency,
-            false
-          ).replace(/,/g, '');
+          strMap[m.id] = formatMinorToMajor(sp.rawInputValue, baseCurr, false).replace(/,/g, '');
         } else {
           strMap[m.id] = String(sp.rawInputValue || 1);
         }
@@ -150,7 +285,7 @@ export function ExpenseEditorModal({
       setTitle('');
       setCategory('food');
       setExpenseDate('2026-11-11');
-      setOriginalCurrency(activeGroup.baseCurrency);
+      setOriginalCurrency(baseCurr);
       setAmountInput('');
       setFxRateInput('1.00');
       setFxStatus('identity');
@@ -158,16 +293,17 @@ export function ExpenseEditorModal({
       setTagsInput('');
       setSplitMode('equal');
       setIsMultiPayer(false);
-      const defaultPayer =
-        activeGroup.members.find((m) => m.userId === dataset.currentUser.id)?.id ??
-        activeGroup.members[0]?.id ??
-        '';
+      const defaultPayer = targetGroup
+        ? targetGroup.members.find((m) => m.userId === dataset.currentUser.id)?.id ??
+          targetGroup.members[0]?.id ??
+          ''
+        : initAdHoc[0]?.id ?? 'adhoc_arjun';
       setSinglePayerId(defaultPayer);
 
       const payerMap: Record<string, string> = {};
       const incMap: Record<string, boolean> = {};
       const strMap: Record<string, string> = {};
-      for (const m of activeGroup.members) {
+      for (const m of activeRoster) {
         payerMap[m.id] = '0';
         incMap[m.id] = true;
         strMap[m.id] = '1';
@@ -176,16 +312,169 @@ export function ExpenseEditorModal({
       setIncludedMembers(incMap);
       setMemberInputStrings(strMap);
     }
-  }, [isOpen, initialExpense, activeGroup, dataset.currentUser.id]);
+  }, [isOpen, initialExpense, defaultGroupId, activeGroup, dataset.groups, dataset.currentUser]);
+
+  const syncParticipantStateForRoster = (
+    roster: Array<{ id: string; memberOrder: number; userId?: string | null }>,
+    nextBaseCurrency: string,
+    nextOrigCurrency: string
+  ) => {
+    const defaultPayer =
+      roster.find((m) => m.userId === dataset.currentUser.id)?.id ?? roster[0]?.id ?? '';
+    setSinglePayerId(defaultPayer);
+    setIsMultiPayer(false);
+    setSplitMode('equal');
+
+    const payerMap: Record<string, string> = {};
+    const incMap: Record<string, boolean> = {};
+    const strMap: Record<string, string> = {};
+    for (const m of roster) {
+      payerMap[m.id] = '0';
+      incMap[m.id] = true;
+      strMap[m.id] = '1';
+    }
+    setMultiPayerInputs(payerMap);
+    setIncludedMembers(incMap);
+    setMemberInputStrings(strMap);
+
+    if (nextOrigCurrency === nextBaseCurrency) {
+      setFxRateInput('1.00');
+      setFxStatus('identity');
+    } else {
+      const fromInr = dataset.fxRatesToInr[nextOrigCurrency] ?? 1;
+      const toInr = dataset.fxRatesToInr[nextBaseCurrency] ?? 1;
+      const crossRate = fromInr / toInr;
+      setFxRateInput(crossRate.toFixed(crossRate >= 10 ? 2 : 4));
+      setFxStatus(isOnline ? 'live' : 'cached_offline');
+    }
+  };
+
+  const handleGroupScopeChange = (nextGroupId: string) => {
+    setSelectedGroupId(nextGroupId);
+    if (nextGroupId === '') {
+      const roster =
+        adHocParticipants.length >= 2 ? adHocParticipants : DEFAULT_ADHOC_PARTICIPANTS;
+      setAdHocParticipants(roster);
+      const nextCurr = originalCurrency || dataset.currentUser.defaultCurrency || 'INR';
+      setOriginalCurrency(nextCurr);
+      syncParticipantStateForRoster(
+        roster.map((p, idx) => ({
+          id: p.id,
+          memberOrder: idx,
+          userId: p.id === 'adhoc_arjun' ? dataset.currentUser.id : null,
+        })),
+        nextCurr,
+        nextCurr
+      );
+    } else {
+      const grp = dataset.groups.find((g) => g.id === nextGroupId && !g.deletedAt) ?? activeGroup;
+      setOriginalCurrency(grp.baseCurrency);
+      syncParticipantStateForRoster(grp.members, grp.baseCurrency, grp.baseCurrency);
+    }
+  };
+
+  const handleAddAdHocParticipant = (contact: Omit<AdHocParticipant, 'memberOrder'>) => {
+    const trimmedName = contact.displayName.trim();
+    if (!trimmedName) return;
+    const exists = adHocParticipants.some(
+      (p) => p.id === contact.id || p.displayName.toLowerCase() === trimmedName.toLowerCase()
+    );
+    if (exists) return;
+
+    const nextParticipant: AdHocParticipant = {
+      ...contact,
+      displayName: trimmedName,
+      avatarInitials: contact.avatarInitials || computeInitials(trimmedName),
+      memberOrder: adHocParticipants.length,
+    };
+
+    const nextList = [...adHocParticipants, nextParticipant];
+    setAdHocParticipants(nextList);
+    setIncludedMembers((prev) => ({ ...prev, [nextParticipant.id]: true }));
+    setMultiPayerInputs((prev) => ({ ...prev, [nextParticipant.id]: '0' }));
+
+    if (splitMode === 'percentage') {
+      const activeIds = nextList
+        .filter((p) => (p.id === nextParticipant.id ? true : includedMembers[p.id] !== false))
+        .map((p) => p.id);
+      const k = activeIds.length;
+      if (k > 0) {
+        const baseBps = Math.floor(10000 / k);
+        const remBps = 10000 - baseBps * k;
+        const nextStr = { ...memberInputStrings };
+        activeIds.forEach((id, idx) => {
+          const bps = baseBps + (idx === 0 ? remBps : 0);
+          nextStr[id] = (bps / 100).toFixed(2).replace(/\.00$/, '');
+        });
+        setMemberInputStrings(nextStr);
+      }
+    } else if (splitMode === 'adjustment') {
+      setMemberInputStrings((prev) => ({ ...prev, [nextParticipant.id]: '0' }));
+    } else {
+      setMemberInputStrings((prev) => ({ ...prev, [nextParticipant.id]: '1' }));
+    }
+  };
+
+  const handleAddCustomFriend = () => {
+    const name = customFriendName.trim();
+    if (!name) return;
+    const matchedKnown = KNOWN_ADHOC_CONTACTS.find(
+      (c) => c.displayName.toLowerCase() === name.toLowerCase()
+    );
+    if (matchedKnown) {
+      handleAddAdHocParticipant(matchedKnown);
+    } else {
+      const slug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_|_$/g, '');
+      handleAddAdHocParticipant({
+        id: `adhoc_${slug || 'friend'}_${Date.now()}`,
+        displayName: name,
+        invitedEmail: null,
+        upiId: null,
+        avatarInitials: computeInitials(name),
+      });
+    }
+    setCustomFriendName('');
+  };
+
+  const handleRemoveAdHocParticipant = (participantId: string) => {
+    if (adHocParticipants.length <= 2) return;
+    const filtered = adHocParticipants
+      .filter((p) => p.id !== participantId)
+      .map((p, idx) => ({ ...p, memberOrder: idx }));
+    setAdHocParticipants(filtered);
+    if (singlePayerId === participantId) {
+      setSinglePayerId(filtered[0]?.id ?? 'adhoc_arjun');
+    }
+    if (splitMode === 'percentage') {
+      const activeIds = filtered
+        .filter((p) => includedMembers[p.id] !== false)
+        .map((p) => p.id);
+      const k = activeIds.length;
+      if (k > 0) {
+        const baseBps = Math.floor(10000 / k);
+        const remBps = 10000 - baseBps * k;
+        const nextStr = { ...memberInputStrings };
+        activeIds.forEach((id, idx) => {
+          const bps = baseBps + (idx === 0 ? remBps : 0);
+          nextStr[id] = (bps / 100).toFixed(2).replace(/\.00$/, '');
+        });
+        setMemberInputStrings(nextStr);
+      }
+    }
+  };
 
   const handleCurrencyChange = (nextCurrency: string) => {
     setOriginalCurrency(nextCurrency);
-    if (nextCurrency === activeGroup.baseCurrency) {
+    const targetBase = selectedGroup ? selectedGroup.baseCurrency : nextCurrency;
+    if (nextCurrency === targetBase) {
       setFxRateInput('1.00');
       setFxStatus('identity');
     } else {
       const fromInr = dataset.fxRatesToInr[nextCurrency] ?? 1;
-      const toInr = dataset.fxRatesToInr[activeGroup.baseCurrency] ?? 1;
+      const toInr = dataset.fxRatesToInr[targetBase] ?? 1;
       const crossRate = fromInr / toInr;
       setFxRateInput(crossRate.toFixed(crossRate >= 10 ? 2 : 4));
       setFxStatus(isOnline ? 'live' : 'cached_offline');
@@ -198,19 +487,19 @@ export function ExpenseEditorModal({
   );
 
   const fxRateScaled = useMemo(() => {
-    if (originalCurrency === activeGroup.baseCurrency) return 100000000;
+    if (originalCurrency === effectiveBaseCurrency) return 100000000;
     return parseFxRateToScaled(fxRateInput);
-  }, [originalCurrency, activeGroup.baseCurrency, fxRateInput]);
+  }, [originalCurrency, effectiveBaseCurrency, fxRateInput]);
 
   const fxConversion = useMemo(
     () =>
       convertMinorAmountWithFx({
         originalMinor: originalAmountMinor,
         fromCurrency: originalCurrency,
-        toCurrency: activeGroup.baseCurrency,
+        toCurrency: effectiveBaseCurrency,
         fxRateScaled,
         fxStatus:
-          originalCurrency === activeGroup.baseCurrency
+          originalCurrency === effectiveBaseCurrency
             ? 'identity'
             : fxStatus === 'identity'
             ? isOnline
@@ -222,7 +511,7 @@ export function ExpenseEditorModal({
     [
       originalAmountMinor,
       originalCurrency,
-      activeGroup.baseCurrency,
+      effectiveBaseCurrency,
       fxRateScaled,
       fxStatus,
       isOnline,
@@ -231,17 +520,21 @@ export function ExpenseEditorModal({
   );
 
   const totalConvertedMinor = fxConversion.convertedMinor;
-  const rotationSeed = initialExpense ? initialExpense.rotationSeed : activeGroup.expenseSeq;
+  const rotationSeed = initialExpense
+    ? initialExpense.rotationSeed
+    : selectedGroup
+    ? selectedGroup.expenseSeq
+    : 0;
 
   const handleSwitchSplitMode = (nextMode: SplitMode) => {
     setSplitMode(nextMode);
-    const activeMembers = activeGroup.members.filter((m) => includedMembers[m.id] !== false);
+    const activeMembers = currentParticipants.filter((m) => includedMembers[m.id] !== false);
     const k = activeMembers.length;
     if (k === 0) return;
 
     const nextStrings = { ...memberInputStrings };
     if (nextMode === 'equal' || nextMode === 'shares') {
-      for (const m of activeGroup.members) {
+      for (const m of currentParticipants) {
         nextStrings[m.id] = includedMembers[m.id] !== false ? '1' : '0';
       }
     } else if (nextMode === 'percentage') {
@@ -252,7 +545,7 @@ export function ExpenseEditorModal({
         nextStrings[m.id] = (bps / 100).toFixed(2).replace(/\.00$/, '');
       });
     } else if (nextMode === 'adjustment') {
-      for (const m of activeGroup.members) {
+      for (const m of currentParticipants) {
         nextStrings[m.id] = '0';
       }
     } else if (nextMode === 'exact') {
@@ -261,7 +554,7 @@ export function ExpenseEditorModal({
         originalTotalMinor: originalAmountMinor,
         splitMode: 'equal',
         rotationSeed,
-        participants: activeGroup.members.map((m) => ({
+        participants: currentParticipants.map((m) => ({
           memberId: m.id,
           memberOrder: m.memberOrder,
           included: includedMembers[m.id] !== false,
@@ -271,7 +564,7 @@ export function ExpenseEditorModal({
       for (const sp of eqSplits) {
         nextStrings[sp.memberId] = formatMinorToMajor(
           sp.owedMinor,
-          activeGroup.baseCurrency,
+          effectiveBaseCurrency,
           false
         ).replace(/,/g, '');
       }
@@ -284,11 +577,11 @@ export function ExpenseEditorModal({
     setIsMultiPayer(next);
     if (next) {
       const payerMap: Record<string, string> = {};
-      const firstId = singlePayerId || activeGroup.members[0]?.id;
-      for (const m of activeGroup.members) {
+      const firstId = singlePayerId || currentParticipants[0]?.id;
+      for (const m of currentParticipants) {
         payerMap[m.id] =
           m.id === firstId
-            ? formatMinorToMajor(totalConvertedMinor, activeGroup.baseCurrency, false).replace(
+            ? formatMinorToMajor(totalConvertedMinor, effectiveBaseCurrency, false).replace(
                 /,/g,
                 ''
               )
@@ -299,22 +592,24 @@ export function ExpenseEditorModal({
   };
 
   const handleApplyDefaultSplit = () => {
-    const preset = activeGroup.defaultSplitConfig;
+    if (!selectedGroup) return;
+    const preset = selectedGroup.defaultSplitConfig;
     if (!preset) return;
     setSplitMode(preset.splitMode);
     const incMap: Record<string, boolean> = {};
     const strMap: Record<string, string> = {};
-    for (const m of activeGroup.members) {
+    for (const m of selectedGroup.members) {
       const rawVal = preset.memberValues[m.id];
       const isInc = rawVal !== undefined && (preset.splitMode === 'adjustment' || rawVal > 0);
       incMap[m.id] = isInc;
       if (preset.splitMode === 'percentage') {
         strMap[m.id] = ((rawVal ?? 0) / 100).toFixed(2).replace(/\.00$/, '');
       } else if (preset.splitMode === 'exact' || preset.splitMode === 'adjustment') {
-        strMap[m.id] = formatMinorToMajor(rawVal ?? 0, activeGroup.baseCurrency, false).replace(
-          /,/g,
-          ''
-        );
+        strMap[m.id] = formatMinorToMajor(
+          rawVal ?? 0,
+          selectedGroup.baseCurrency,
+          false
+        ).replace(/,/g, '');
       } else {
         strMap[m.id] = String(rawVal ?? 1);
       }
@@ -324,7 +619,7 @@ export function ExpenseEditorModal({
   };
 
   const participantInputs: SplitParticipantInput[] = useMemo(() => {
-    return activeGroup.members.map((m) => {
+    return currentParticipants.map((m) => {
       const included = includedMembers[m.id] !== false;
       const strVal = memberInputStrings[m.id] ?? '0';
       let rawInputValue = 0;
@@ -337,7 +632,7 @@ export function ExpenseEditorModal({
       } else if (splitMode === 'percentage') {
         rawInputValue = Math.max(0, Math.round((Number(strVal) || 0) * 100));
       } else {
-        rawInputValue = parseMajorToMinor(strVal, activeGroup.baseCurrency);
+        rawInputValue = parseMajorToMinor(strVal, effectiveBaseCurrency);
       }
       return {
         memberId: m.id,
@@ -346,7 +641,13 @@ export function ExpenseEditorModal({
         rawInputValue,
       };
     });
-  }, [activeGroup.members, activeGroup.baseCurrency, includedMembers, memberInputStrings, splitMode]);
+  }, [
+    currentParticipants,
+    effectiveBaseCurrency,
+    includedMembers,
+    memberInputStrings,
+    splitMode,
+  ]);
 
   const computedSplits = useMemo(
     () =>
@@ -362,7 +663,7 @@ export function ExpenseEditorModal({
 
   const computedPayers: ExpensePayer[] = useMemo(() => {
     if (!isMultiPayer) {
-      const targetId = singlePayerId || activeGroup.members[0]?.id || '';
+      const targetId = singlePayerId || currentParticipants[0]?.id || '';
       return [
         {
           memberId: targetId,
@@ -372,10 +673,10 @@ export function ExpenseEditorModal({
       ];
     }
     const list: ExpensePayer[] = [];
-    for (const m of activeGroup.members) {
+    for (const m of currentParticipants) {
       const paidMinor = Math.max(
         0,
-        parseMajorToMinor(multiPayerInputs[m.id] ?? '0', activeGroup.baseCurrency)
+        parseMajorToMinor(multiPayerInputs[m.id] ?? '0', effectiveBaseCurrency)
       );
       if (paidMinor > 0) {
         const origPaid =
@@ -393,8 +694,8 @@ export function ExpenseEditorModal({
   }, [
     isMultiPayer,
     singlePayerId,
-    activeGroup.members,
-    activeGroup.baseCurrency,
+    currentParticipants,
+    effectiveBaseCurrency,
     totalConvertedMinor,
     originalAmountMinor,
     multiPayerInputs,
@@ -412,13 +713,14 @@ export function ExpenseEditorModal({
   );
 
   const handleSaveDefaultSplit = () => {
+    if (!selectedGroup) return;
     const memberValues: Record<string, number> = {};
     for (const p of participantInputs) {
       if (p.included) {
         memberValues[p.memberId] = p.rawInputValue;
       }
     }
-    saveDefaultSplitPreset(activeGroup.id, {
+    saveDefaultSplitPreset(selectedGroup.id, {
       label: `Custom ${splitMode.toUpperCase()} Split`,
       splitMode,
       memberValues,
@@ -433,19 +735,26 @@ export function ExpenseEditorModal({
       .filter(Boolean)
       .map((t) => (t.startsWith('#') ? t : `#${t}`));
 
-    upsertExpense({
+    const defaultTags = isDirectSplit
+      ? ['#direct-split', '#no-group', `#${category}`]
+      : [`#${category}`];
+
+    const payload = {
       id: initialExpense?.id,
-      groupId: activeGroup.id,
-      title: title.trim() || 'Shared Group Expense',
+      groupId: isDirectSplit ? null : selectedGroup!.id,
+      adHocParticipants: isDirectSplit ? adHocParticipants : undefined,
+      title:
+        title.trim() ||
+        (isDirectSplit ? 'Direct Non-Group Expense' : 'Shared Group Expense'),
       category,
-      tags: parsedTags.length > 0 ? parsedTags : [`#${category}`],
+      tags: parsedTags.length > 0 ? parsedTags : defaultTags,
       notes,
       expenseDate,
       originalCurrency,
       originalAmountMinor,
       fxRateScaled,
       fxStatus:
-        originalCurrency === activeGroup.baseCurrency
+        originalCurrency === effectiveBaseCurrency
           ? 'identity'
           : fxStatus === 'identity'
           ? isOnline
@@ -455,18 +764,23 @@ export function ExpenseEditorModal({
       splitMode,
       payers: computedPayers,
       splits: computedSplits,
-    });
+    };
+
+    upsertExpense(payload as unknown as Parameters<typeof upsertExpense>[0]);
     onClose();
   };
 
   if (!isOpen) return null;
 
-  const baseMeta = getCurrency(activeGroup.baseCurrency);
+  const baseMeta = getCurrency(effectiveBaseCurrency);
   const minorUnitLabel =
     baseMeta.decimals === 0 ? 'units' : baseMeta.decimals === 3 ? 'fils' : 'paise/cents';
   const remainderWinners = computedSplits
     .filter((s) => s.included && s.remainderMinor === 1)
-    .map((s) => activeGroup.members.find((m) => m.id === s.memberId)?.displayName ?? s.memberId);
+    .map(
+      (s) =>
+        currentParticipants.find((m) => m.id === s.memberId)?.displayName ?? s.memberId
+    );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
@@ -478,15 +792,25 @@ export function ExpenseEditorModal({
           {/* Modal Header */}
           <div className="flex items-start justify-between gap-4 border-b border-slate-200/80 dark:border-white/10 pb-4">
             <div>
-              <div className="flex items-center gap-2">
-                <StatusBadge tone="emerald">
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge tone={isDirectSplit ? 'blue' : 'emerald'}>
                   <Coins className="w-3.5 h-3.5" weight="duotone" />
-                  <span>{initialExpense ? `Edit Expense (Rev #${initialExpense.revisionNumber})` : 'New Group Expense'}</span>
+                  <span>
+                    {initialExpense
+                      ? `Edit Expense (Rev #${initialExpense.revisionNumber})`
+                      : isDirectSplit
+                      ? 'Direct Non-Group Split'
+                      : 'New Group Expense'}
+                  </span>
                 </StatusBadge>
-                <CurrencyPrecisionPill currencyCode={activeGroup.baseCurrency} />
+                <CurrencyPrecisionPill currencyCode={effectiveBaseCurrency} />
               </div>
               <h2 className="mt-1.5 text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                {initialExpense ? `Update "${initialExpense.title}"` : `Log Bill in ${activeGroup.name}`}
+                {initialExpense
+                  ? `Update "${initialExpense.title}"`
+                  : isDirectSplit
+                  ? `Split Directly Between ${adHocParticipants.length} Participants`
+                  : `Log Bill in ${selectedGroup?.name ?? activeGroup.name}`}
               </h2>
             </div>
             <button
@@ -499,6 +823,138 @@ export function ExpenseEditorModal({
             </button>
           </div>
 
+          {/* Group / Scope Selector */}
+          <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-slate-900/60 p-3.5">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
+              <span className="inline-flex items-center gap-1.5">
+                <FolderOpen className="w-4 h-4 text-[#059669]" weight="duotone" />
+                <span>Expense Scope (Group or Direct Non-Group Split)</span>
+              </span>
+            </label>
+            <select
+              data-testid="expense-group-scope-select"
+              value={selectedGroupId}
+              onChange={(e) => handleGroupScopeChange(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 dark:border-white/15 bg-white dark:bg-slate-900 px-3.5 py-2.5 text-sm font-semibold text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#059669]"
+            >
+              <option value="">
+                No Group (Direct Split Between Added Participants)
+              </option>
+              {activeGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name} ({g.baseCurrency})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Inline Direct Participants Builder (Only when No Group is selected) */}
+          {isDirectSplit && (
+            <div
+              data-testid="adhoc-participants-panel"
+              className="rounded-2xl border border-sky-500/30 bg-sky-500/[0.05] dark:bg-sky-500/[0.06] p-4 space-y-3"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-sky-600 dark:text-sky-400" weight="duotone" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                    Direct Split Participants ({adHocParticipants.length})
+                  </span>
+                </div>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  No group required - settles in Friends &amp; Settle Hub
+                </span>
+              </div>
+
+              {/* Active Ad-Hoc Participants Pills */}
+              <div className="flex flex-wrap items-center gap-2">
+                {adHocParticipants.map((p) => {
+                  const canRemove = adHocParticipants.length > 2;
+                  return (
+                    <span
+                      key={p.id}
+                      className="inline-flex items-center gap-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 shadow-sm"
+                    >
+                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300 text-[10px] font-bold">
+                        {p.avatarInitials}
+                      </span>
+                      <span>{p.displayName}</span>
+                      {p.id === 'adhoc_arjun' && (
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">
+                          (You)
+                        </span>
+                      )}
+                      {canRemove && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAdHocParticipant(p.id)}
+                          className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
+                          title={`Remove ${p.displayName}`}
+                        >
+                          <Trash className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+
+              {/* Quick-Add Known Contacts + Custom Friend Input */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1 border-t border-slate-200/70 dark:border-white/10">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mr-1">
+                    Quick add:
+                  </span>
+                  {KNOWN_ADHOC_CONTACTS.map((c) => {
+                    const alreadyAdded = adHocParticipants.some(
+                      (p) =>
+                        p.id === c.id ||
+                        p.displayName.toLowerCase() === c.displayName.toLowerCase()
+                    );
+                    if (alreadyAdded) return null;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => handleAddAdHocParticipant(c)}
+                        className="inline-flex items-center gap-1 rounded-lg bg-white dark:bg-slate-800 hover:bg-emerald-500/10 border border-slate-200 dark:border-white/10 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 transition-colors"
+                      >
+                        <Plus className="w-3 h-3 text-[#059669]" weight="bold" />
+                        <span>{c.displayName}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    data-testid="adhoc-friend-name-input"
+                    value={customFriendName}
+                    onChange={(e) => setCustomFriendName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddCustomFriend();
+                      }
+                    }}
+                    placeholder="Add person by name..."
+                    className="w-full sm:w-44 rounded-lg border border-slate-300 dark:border-white/15 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#059669]"
+                  />
+                  <button
+                    type="button"
+                    data-testid="add-adhoc-friend-btn"
+                    onClick={handleAddCustomFriend}
+                    className="inline-flex items-center gap-1 rounded-lg bg-[#059669] hover:bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" weight="bold" />
+                    <span>Add</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Core Bill Details */}
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-3.5">
             <div className="sm:col-span-7">
@@ -510,7 +966,7 @@ export function ExpenseEditorModal({
                 data-testid="expense-title-input"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g., Thalassa Cliff Dinner or Shinkansen Tickets"
+                placeholder="e.g., Thalassa Cliff Dinner or Blue Tokai Coffee"
                 className="w-full rounded-xl border border-slate-300 dark:border-white/15 bg-slate-50 dark:bg-slate-900/90 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#059669]"
               />
             </div>
@@ -554,7 +1010,7 @@ export function ExpenseEditorModal({
                     const nextConv = convertMinorAmountWithFx({
                       originalMinor: nextOrigMinor,
                       fromCurrency: originalCurrency,
-                      toCurrency: activeGroup.baseCurrency,
+                      toCurrency: effectiveBaseCurrency,
                       fxRateScaled,
                       fxStatus: 'live',
                       dateIso: expenseDate,
@@ -564,7 +1020,7 @@ export function ExpenseEditorModal({
                       originalTotalMinor: nextOrigMinor,
                       splitMode: 'equal',
                       rotationSeed,
-                      participants: activeGroup.members.map((m) => ({
+                      participants: currentParticipants.map((m) => ({
                         memberId: m.id,
                         memberOrder: m.memberOrder,
                         included: includedMembers[m.id] !== false,
@@ -575,7 +1031,7 @@ export function ExpenseEditorModal({
                     for (const sp of eqSplits) {
                       nextStr[sp.memberId] = formatMinorToMajor(
                         sp.owedMinor,
-                        activeGroup.baseCurrency,
+                        effectiveBaseCurrency,
                         false
                       ).replace(/,/g, '');
                     }
@@ -622,13 +1078,13 @@ export function ExpenseEditorModal({
           </div>
 
           {/* Foreign Currency FX Rate & Live Preview Bar */}
-          {originalCurrency !== activeGroup.baseCurrency && (
+          {originalCurrency !== effectiveBaseCurrency && (
             <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.06] p-3.5 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
                   <ArrowsLeftRight className="w-4 h-4" weight="bold" />
                   <span>
-                    Foreign Currency Conversion ({originalCurrency} to {activeGroup.baseCurrency})
+                    Foreign Currency Conversion ({originalCurrency} to {effectiveBaseCurrency})
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -648,7 +1104,7 @@ export function ExpenseEditorModal({
                     className="w-28 rounded-lg border border-emerald-500/40 bg-white dark:bg-slate-900 px-2.5 py-1 font-mono tabular-nums text-xs font-semibold text-slate-900 dark:text-slate-100"
                   />
                   <span className="text-xs font-mono font-semibold text-slate-700 dark:text-slate-300">
-                    {activeGroup.baseCurrency}
+                    {effectiveBaseCurrency}
                   </span>
                 </div>
               </div>
@@ -658,7 +1114,7 @@ export function ExpenseEditorModal({
                   Converted Total:{' '}
                   <CurrencyAmount
                     minorAmount={totalConvertedMinor}
-                    currencyCode={activeGroup.baseCurrency}
+                    currencyCode={effectiveBaseCurrency}
                   />
                 </span>
               </div>
@@ -690,7 +1146,7 @@ export function ExpenseEditorModal({
 
             {!isMultiPayer ? (
               <div className="flex flex-wrap items-center gap-2">
-                {activeGroup.members.map((m) => {
+                {currentParticipants.map((m) => {
                   const selected = singlePayerId === m.id;
                   return (
                     <button
@@ -713,7 +1169,7 @@ export function ExpenseEditorModal({
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {activeGroup.members.map((m) => (
+                {currentParticipants.map((m) => (
                   <div
                     key={m.id}
                     className="flex items-center justify-between gap-2 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-white/10 px-3 py-2"
@@ -747,28 +1203,30 @@ export function ExpenseEditorModal({
               <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
                 Split Mode (5 Integer-Exact Algorithms)
               </span>
-              <div className="flex flex-wrap items-center gap-2">
-                {activeGroup.defaultSplitConfig && (
+              {selectedGroup && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {selectedGroup.defaultSplitConfig && (
+                    <button
+                      type="button"
+                      data-testid="apply-default-split-btn"
+                      onClick={handleApplyDefaultSplit}
+                      className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/30 px-2.5 py-1 text-xs font-semibold transition-colors"
+                    >
+                      <Sparkle className="w-3.5 h-3.5" weight="fill" />
+                      <span>Apply Default ({selectedGroup.defaultSplitConfig.label})</span>
+                    </button>
+                  )}
                   <button
                     type="button"
-                    data-testid="apply-default-split-btn"
-                    onClick={handleApplyDefaultSplit}
-                    className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/30 px-2.5 py-1 text-xs font-semibold transition-colors"
+                    data-testid="save-default-split-btn"
+                    onClick={handleSaveDefaultSplit}
+                    className="inline-flex items-center gap-1 rounded-lg bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/15 text-slate-700 dark:text-slate-300 px-2.5 py-1 text-xs font-semibold transition-colors"
                   >
-                    <Sparkle className="w-3.5 h-3.5" weight="fill" />
-                    <span>Apply Default ({activeGroup.defaultSplitConfig.label})</span>
+                    <FloppyDisk className="w-3.5 h-3.5" />
+                    <span>Save as Group Default</span>
                   </button>
-                )}
-                <button
-                  type="button"
-                  data-testid="save-default-split-btn"
-                  onClick={handleSaveDefaultSplit}
-                  className="inline-flex items-center gap-1 rounded-lg bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/15 text-slate-700 dark:text-slate-300 px-2.5 py-1 text-xs font-semibold transition-colors"
-                >
-                  <FloppyDisk className="w-3.5 h-3.5" />
-                  <span>Save as Group Default</span>
-                </button>
-              </div>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
@@ -801,7 +1259,7 @@ export function ExpenseEditorModal({
 
             {/* Participant Split Rows */}
             <div className="space-y-2">
-              {activeGroup.members.map((m) => {
+              {currentParticipants.map((m) => {
                 const isInc = includedMembers[m.id] !== false;
                 const splitShare = computedSplits.find((s) => s.memberId === m.id);
                 const owedMinor = splitShare?.owedMinor ?? 0;
@@ -873,7 +1331,7 @@ export function ExpenseEditorModal({
                         <div className="text-sm font-bold font-mono tabular-nums">
                           <CurrencyAmount
                             minorAmount={owedMinor}
-                            currencyCode={activeGroup.baseCurrency}
+                            currencyCode={effectiveBaseCurrency}
                           />
                         </div>
                         <div className="text-[10px] font-mono tabular-nums text-slate-400">
@@ -928,7 +1386,7 @@ export function ExpenseEditorModal({
                   Unallocated Split:{' '}
                   <CurrencyAmount
                     minorAmount={validation.unallocatedSplitMinor}
-                    currencyCode={activeGroup.baseCurrency}
+                    currencyCode={effectiveBaseCurrency}
                   />
                 </span>
                 {' | '}
@@ -936,7 +1394,7 @@ export function ExpenseEditorModal({
                   Unallocated Payer:{' '}
                   <CurrencyAmount
                     minorAmount={validation.unallocatedPayerMinor}
-                    currencyCode={activeGroup.baseCurrency}
+                    currencyCode={effectiveBaseCurrency}
                   />
                 </span>
               </div>
