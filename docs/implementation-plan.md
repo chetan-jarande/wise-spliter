@@ -9,9 +9,9 @@
 **Tech Stack:** TypeScript 5.8 (`strict: true`, `noUncheckedIndexedAccess: true`), Vite 6, React 19, Tailwind CSS, Dexie.js 4, `@supabase/supabase-js` (`db.schema = 'wise_spliter'`), Recharts, PapaParse, SheetJS (`xlsx`), `jsPDF`, `html-to-image`, Web Crypto API (`AES-256-GCM`), Vitest, `fast-check`, and Playwright.
 
 **Spec:**
-* [feature-requiremrnts.md](/home/chetan/projects/wise-spliter/feature-requiremrnts.md)
-* [technical-spec.md](/home/chetan/projects/wise-spliter/technical-spec.md)
-* [database-and-sync-spec.md](/home/chetan/projects/wise-spliter/database-and-sync-spec.md)
+* [feature-requiremrnts.md](./feature-requiremrnts.md)
+* [technical-spec.md](./technical-spec.md)
+* [database-and-sync-spec.md](./database-and-sync-spec.md)
 
 ## Global Constraints
 
