@@ -1,0 +1,1086 @@
+{
+  "schemaVersion": 1,
+  "currentUser": {
+    "id": "usr_arjun_01",
+    "email": "arjun.mehta@gmail.com",
+    "fullName": "Arjun Mehta",
+    "avatarInitials": "AM",
+    "defaultCurrency": "INR",
+    "upiId": "arjun.mehta@okicici",
+    "googleConnected": true,
+    "supabaseSchema": "wise_spliter",
+    "syncState": "synced",
+    "lastSyncedAt": "2026-11-11T19:15:00Z"
+  },
+  "fxRatesToInr": {
+    "INR": 1,
+    "USD": 84.5,
+    "EUR": 91.2,
+    "GBP": 108.4,
+    "JPY": 0.56,
+    "KWD": 274.0,
+    "BHD": 224.2,
+    "AED": 23.0,
+    "SGD": 63.4,
+    "THB": 2.48,
+    "CHF": 95.8,
+    "AUD": 55.6,
+    "CAD": 61.2,
+    "KRW": 0.062,
+    "VND": 0.0034,
+    "OMR": 219.5
+  },
+  "currenciesCatalog": [
+    { "code": "INR", "name": "Indian Rupee", "symbol": "₹", "decimals": 2, "flagCode": "IN" },
+    { "code": "USD", "name": "US Dollar", "symbol": "$", "decimals": 2, "flagCode": "US" },
+    { "code": "EUR", "name": "Euro", "symbol": "€", "decimals": 2, "flagCode": "EU" },
+    { "code": "GBP", "name": "British Pound", "symbol": "£", "decimals": 2, "flagCode": "GB" },
+    { "code": "JPY", "name": "Japanese Yen", "symbol": "¥", "decimals": 0, "flagCode": "JP" },
+    { "code": "KWD", "name": "Kuwaiti Dinar", "symbol": "KD", "decimals": 3, "flagCode": "KW" },
+    { "code": "BHD", "name": "Bahraini Dinar", "symbol": "BD", "decimals": 3, "flagCode": "BH" },
+    { "code": "OMR", "name": "Omani Rial", "symbol": "OMR", "decimals": 3, "flagCode": "OM" },
+    { "code": "AED", "name": "UAE Dirham", "symbol": "AED", "decimals": 2, "flagCode": "AE" },
+    { "code": "SGD", "name": "Singapore Dollar", "symbol": "S$", "decimals": 2, "flagCode": "SG" },
+    { "code": "THB", "name": "Thai Baht", "symbol": "฿", "decimals": 2, "flagCode": "TH" },
+    { "code": "CHF", "name": "Swiss Franc", "symbol": "CHF", "decimals": 2, "flagCode": "CH" },
+    { "code": "AUD", "name": "Australian Dollar", "symbol": "A$", "decimals": 2, "flagCode": "AU" },
+    { "code": "CAD", "name": "Canadian Dollar", "symbol": "C$", "decimals": 2, "flagCode": "CA" },
+    { "code": "KRW", "name": "South Korean Won", "symbol": "₩", "decimals": 0, "flagCode": "KR" },
+    { "code": "VND", "name": "Vietnamese Dong", "symbol": "₫", "decimals": 0, "flagCode": "VN" }
+  ],
+  "categoriesCatalog": [
+    { "key": "food", "label": "Food & Dining", "description": "Restaurants, cafes, beach shacks, and group dinners" },
+    { "key": "lodging", "label": "Stays & Villas", "description": "Hotels, Airbnb villas, resorts, and security deposits" },
+    { "key": "transport", "label": "Cabs & Transit", "description": "Airport transfers, scooter rentals, fuel, and metro passes" },
+    { "key": "utilities", "label": "Rent & Utilities", "description": "Monthly apartment rent, electricity, fiber internet, and water" },
+    { "key": "groceries", "label": "Groceries & Household", "description": "Supermarket runs, kitchen supplies, and daily essentials" },
+    { "key": "activities", "label": "Sports & Experiences", "description": "Scuba diving, museum tickets, padel court bookings, and tours" },
+    { "key": "flights", "label": "Flights & Rail", "description": "Airlines, Shinkansen bullet trains, and intercity bookings" },
+    { "key": "shopping", "label": "Shared Gear & Gifts", "description": "Group gifts, camping gear, and duty-free shared items" },
+    { "key": "general", "label": "General Expense", "description": "Miscellaneous shared bills and adjustments" }
+  ],
+  "actionTypesCatalog": [
+    {
+      "action": "group_created",
+      "label": "Group Created",
+      "badgeTone": "emerald",
+      "sampleNoteTemplate": "{actor} created group \"{group}\" with base currency {currency}"
+    },
+    {
+      "action": "group_currency_changed",
+      "label": "Base Currency Updated",
+      "badgeTone": "blue",
+      "sampleNoteTemplate": "{actor} updated group base currency ({mode}): {oldCurrency} -> {newCurrency}"
+    },
+    {
+      "action": "member_added",
+      "label": "Member Added",
+      "badgeTone": "slate",
+      "sampleNoteTemplate": "{actor} added {member} ({status}) to the group"
+    },
+    {
+      "action": "member_claimed",
+      "label": "Account Linked",
+      "badgeTone": "emerald",
+      "sampleNoteTemplate": "{member} signed in with Google ({email}) and claimed their member ledger"
+    },
+    {
+      "action": "expense_created",
+      "label": "Expense Logged",
+      "badgeTone": "emerald",
+      "sampleNoteTemplate": "{actor} added \"{title}\" ({amount}) split via {splitMode}"
+    },
+    {
+      "action": "expense_updated",
+      "label": "Expense Edited",
+      "badgeTone": "blue",
+      "sampleNoteTemplate": "{actor} updated \"{title}\": {diffSummary}"
+    },
+    {
+      "action": "expense_deleted",
+      "label": "Moved to Trash",
+      "badgeTone": "rose",
+      "sampleNoteTemplate": "{actor} moved \"{title}\" ({amount}) to Trash"
+    },
+    {
+      "action": "expense_restored",
+      "label": "Restored from Trash",
+      "badgeTone": "emerald",
+      "sampleNoteTemplate": "{actor} restored \"{title}\" ({amount}) from Trash"
+    },
+    {
+      "action": "expense_conflict_flagged",
+      "label": "Offline Edit Conflict",
+      "badgeTone": "amber",
+      "sampleNoteTemplate": "Concurrent offline edits detected on \"{title}\" between {actorA} and {actorB}"
+    },
+    {
+      "action": "expense_conflict_resolved",
+      "label": "Conflict Resolved",
+      "badgeTone": "emerald",
+      "sampleNoteTemplate": "{actor} resolved offline edit conflict on \"{title}\" (kept Rev #{revision})"
+    },
+    {
+      "action": "settlement_recorded",
+      "label": "Settlement Recorded",
+      "badgeTone": "emerald",
+      "sampleNoteTemplate": "{from} paid {to} {amount} via {method}"
+    },
+    {
+      "action": "comment_added",
+      "label": "Comment Posted",
+      "badgeTone": "slate",
+      "sampleNoteTemplate": "{actor} commented on \"{title}\": \"{comment}\""
+    }
+  ],
+  "groups": [
+    {
+      "id": "grp_goa_2026",
+      "name": "Goa Villa & Scuba 2026",
+      "description": "4-day Assagao villa stay, scuba diving at Grande Island, and beach dinners",
+      "category": "trip",
+      "baseCurrency": "INR",
+      "simplifyDebts": true,
+      "defaultSplitConfig": {
+        "label": "Default 4-Way Equal",
+        "splitMode": "equal",
+        "memberValues": {
+          "mem_goa_arjun": 1,
+          "mem_goa_rohan": 1,
+          "mem_goa_priya": 1,
+          "mem_goa_kabir": 1
+        }
+      },
+      "expenseSeq": 6,
+      "inviteCode": "GOA-2026-VILLA",
+      "createdAt": "2026-11-01T09:00:00Z",
+      "updatedAt": "2026-11-11T18:30:00Z",
+      "deletedAt": null,
+      "hlc": "019a73e4c900-0006-usr_arjun_01",
+      "members": [
+        {
+          "id": "mem_goa_arjun",
+          "groupId": "grp_goa_2026",
+          "userId": "usr_arjun_01",
+          "invitedEmail": "arjun.mehta@gmail.com",
+          "displayName": "Arjun Mehta",
+          "avatarInitials": "AM",
+          "upiId": "arjun.mehta@okicici",
+          "role": "admin",
+          "memberOrder": 0,
+          "joinedAt": "2026-11-01T09:00:00Z",
+          "claimedAt": "2026-11-01T09:00:00Z"
+        },
+        {
+          "id": "mem_goa_rohan",
+          "groupId": "grp_goa_2026",
+          "userId": "usr_rohan_02",
+          "invitedEmail": "rohan.verma@gmail.com",
+          "displayName": "Rohan Verma",
+          "avatarInitials": "RV",
+          "upiId": "rohan.verma@okaxis",
+          "role": "member",
+          "memberOrder": 1,
+          "joinedAt": "2026-11-01T09:05:00Z",
+          "claimedAt": "2026-11-01T10:12:00Z"
+        },
+        {
+          "id": "mem_goa_priya",
+          "groupId": "grp_goa_2026",
+          "userId": "usr_priya_03",
+          "invitedEmail": "priya.nair@gmail.com",
+          "displayName": "Priya Nair",
+          "avatarInitials": "PN",
+          "upiId": "priya.nair@oksbi",
+          "role": "member",
+          "memberOrder": 2,
+          "joinedAt": "2026-11-01T09:06:00Z",
+          "claimedAt": "2026-11-01T11:40:00Z"
+        },
+        {
+          "id": "mem_goa_kabir",
+          "groupId": "grp_goa_2026",
+          "userId": null,
+          "invitedEmail": "kabir.kapoor@gmail.com",
+          "displayName": "Kabir Kapoor",
+          "avatarInitials": "KK",
+          "upiId": "kabir.kapoor@okhdfcbank",
+          "role": "member",
+          "memberOrder": 3,
+          "joinedAt": "2026-11-01T09:08:00Z",
+          "claimedAt": null
+        }
+      ]
+    },
+    {
+      "id": "grp_apt_14b",
+      "name": "Apt 14B Indiranagar",
+      "description": "Monthly rent, BESCOM electricity, ACT fiber internet, and shared house groceries",
+      "category": "home",
+      "baseCurrency": "INR",
+      "simplifyDebts": true,
+      "defaultSplitConfig": {
+        "label": "Master Room 40% / Others 30% each",
+        "splitMode": "percentage",
+        "memberValues": {
+          "mem_apt_arjun": 4000,
+          "mem_apt_rohan": 3000,
+          "mem_apt_neha": 3000
+        }
+      },
+      "expenseSeq": 3,
+      "inviteCode": "APT-14B-BLR",
+      "createdAt": "2026-10-01T08:00:00Z",
+      "updatedAt": "2026-11-10T16:20:00Z",
+      "deletedAt": null,
+      "hlc": "019a72b1a100-0003-usr_arjun_01",
+      "members": [
+        {
+          "id": "mem_apt_arjun",
+          "groupId": "grp_apt_14b",
+          "userId": "usr_arjun_01",
+          "invitedEmail": "arjun.mehta@gmail.com",
+          "displayName": "Arjun Mehta",
+          "avatarInitials": "AM",
+          "upiId": "arjun.mehta@okicici",
+          "role": "admin",
+          "memberOrder": 0,
+          "joinedAt": "2026-10-01T08:00:00Z",
+          "claimedAt": "2026-10-01T08:00:00Z"
+        },
+        {
+          "id": "mem_apt_rohan",
+          "groupId": "grp_apt_14b",
+          "userId": "usr_rohan_02",
+          "invitedEmail": "rohan.verma@gmail.com",
+          "displayName": "Rohan Verma",
+          "avatarInitials": "RV",
+          "upiId": "rohan.verma@okaxis",
+          "role": "member",
+          "memberOrder": 1,
+          "joinedAt": "2026-10-01T08:10:00Z",
+          "claimedAt": "2026-10-01T08:15:00Z"
+        },
+        {
+          "id": "mem_apt_neha",
+          "groupId": "grp_apt_14b",
+          "userId": "usr_neha_04",
+          "invitedEmail": "neha.sharma@gmail.com",
+          "displayName": "Neha Sharma",
+          "avatarInitials": "NS",
+          "upiId": "neha.sharma@okicici",
+          "role": "member",
+          "memberOrder": 2,
+          "joinedAt": "2026-10-01T08:12:00Z",
+          "claimedAt": "2026-10-01T09:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "grp_tokyo_2026",
+      "name": "Tokyo & Kyoto Autumn",
+      "description": "Zero-decimal JPY rail passes, izakaya dinners, and teamLab Planets tickets",
+      "category": "trip",
+      "baseCurrency": "JPY",
+      "simplifyDebts": true,
+      "defaultSplitConfig": null,
+      "expenseSeq": 2,
+      "inviteCode": "TOKYO-2026-JPY",
+      "createdAt": "2026-10-20T06:00:00Z",
+      "updatedAt": "2026-11-09T14:00:00Z",
+      "deletedAt": null,
+      "hlc": "019a71a0b200-0002-usr_arjun_01",
+      "members": [
+        {
+          "id": "mem_jp_arjun",
+          "groupId": "grp_tokyo_2026",
+          "userId": "usr_arjun_01",
+          "invitedEmail": "arjun.mehta@gmail.com",
+          "displayName": "Arjun Mehta",
+          "avatarInitials": "AM",
+          "upiId": "arjun.mehta@okicici",
+          "role": "admin",
+          "memberOrder": 0,
+          "joinedAt": "2026-10-20T06:00:00Z",
+          "claimedAt": "2026-10-20T06:00:00Z"
+        },
+        {
+          "id": "mem_jp_priya",
+          "groupId": "grp_tokyo_2026",
+          "userId": "usr_priya_03",
+          "invitedEmail": "priya.nair@gmail.com",
+          "displayName": "Priya Nair",
+          "avatarInitials": "PN",
+          "upiId": "priya.nair@oksbi",
+          "role": "member",
+          "memberOrder": 1,
+          "joinedAt": "2026-10-20T06:05:00Z",
+          "claimedAt": "2026-10-20T06:10:00Z"
+        }
+      ]
+    },
+    {
+      "id": "grp_kuwait_stopover",
+      "name": "Kuwait & Dubai Stopover",
+      "description": "3-decimal Kuwaiti Dinar (KWD fils) precision ledger for airport lounge and souk dining",
+      "category": "trip",
+      "baseCurrency": "KWD",
+      "simplifyDebts": false,
+      "defaultSplitConfig": null,
+      "expenseSeq": 1,
+      "inviteCode": "KWD-3DEC-2026",
+      "createdAt": "2026-11-05T12:00:00Z",
+      "updatedAt": "2026-11-08T19:00:00Z",
+      "deletedAt": null,
+      "hlc": "019a70f0c300-0001-usr_arjun_01",
+      "members": [
+        {
+          "id": "mem_kw_arjun",
+          "groupId": "grp_kuwait_stopover",
+          "userId": "usr_arjun_01",
+          "invitedEmail": "arjun.mehta@gmail.com",
+          "displayName": "Arjun Mehta",
+          "avatarInitials": "AM",
+          "upiId": "arjun.mehta@okicici",
+          "role": "admin",
+          "memberOrder": 0,
+          "joinedAt": "2026-11-05T12:00:00Z",
+          "claimedAt": "2026-11-05T12:00:00Z"
+        },
+        {
+          "id": "mem_kw_rohan",
+          "groupId": "grp_kuwait_stopover",
+          "userId": "usr_rohan_02",
+          "invitedEmail": "rohan.verma@gmail.com",
+          "displayName": "Rohan Verma",
+          "avatarInitials": "RV",
+          "upiId": "rohan.verma@okaxis",
+          "role": "member",
+          "memberOrder": 1,
+          "joinedAt": "2026-11-05T12:05:00Z",
+          "claimedAt": "2026-11-05T12:10:00Z"
+        },
+        {
+          "id": "mem_kw_priya",
+          "groupId": "grp_kuwait_stopover",
+          "userId": "usr_priya_03",
+          "invitedEmail": "priya.nair@gmail.com",
+          "displayName": "Priya Nair",
+          "avatarInitials": "PN",
+          "upiId": "priya.nair@oksbi",
+          "role": "member",
+          "memberOrder": 2,
+          "joinedAt": "2026-11-05T12:06:00Z",
+          "claimedAt": "2026-11-05T12:15:00Z"
+        }
+      ]
+    }
+  ],
+  "expenses": [
+    {
+      "id": "exp_goa_villa_01",
+      "groupId": "grp_goa_2026",
+      "title": "Assagao Pool Villa (Multi-Payer Booking)",
+      "category": "lodging",
+      "tags": ["#villa", "#assagao", "#multipayer"],
+      "notes": "Arjun paid ₹12,000 advance via card and Rohan paid ₹8,000 at check-in",
+      "expenseDate": "2026-11-08",
+      "originalCurrency": "INR",
+      "originalAmountMinor": 2000000,
+      "groupCurrency": "INR",
+      "amountMinor": 2000000,
+      "fxRateScaled": 100000000,
+      "fxStatus": "identity",
+      "fxAuditNote": null,
+      "splitMode": "equal",
+      "rotationSeed": 0,
+      "payers": [
+        { "memberId": "mem_goa_arjun", "paidMinor": 1200000, "originalPaidMinor": 1200000 },
+        { "memberId": "mem_goa_rohan", "paidMinor": 800000, "originalPaidMinor": 800000 }
+      ],
+      "splits": [
+        { "memberId": "mem_goa_arjun", "included": true, "owedMinor": 500000, "originalOwedMinor": 500000, "rawInputValue": 1, "remainderMinor": 0 },
+        { "memberId": "mem_goa_rohan", "included": true, "owedMinor": 500000, "originalOwedMinor": 500000, "rawInputValue": 1, "remainderMinor": 0 },
+        { "memberId": "mem_goa_priya", "included": true, "owedMinor": 500000, "originalOwedMinor": 500000, "rawInputValue": 1, "remainderMinor": 0 },
+        { "memberId": "mem_goa_kabir", "included": true, "owedMinor": 500000, "originalOwedMinor": 500000, "rawInputValue": 1, "remainderMinor": 0 }
+      ],
+      "currentRevisionId": "rev_goa_01_v1",
+      "revisionNumber": 1,
+      "hasUnresolvedConflict": false,
+      "conflictRevisionId": null,
+      "createdByMemberId": "mem_goa_arjun",
+      "updatedByMemberId": "mem_goa_arjun",
+      "createdAt": "2026-11-08T14:00:00Z",
+      "updatedAt": "2026-11-08T14:00:00Z",
+      "deletedAt": null,
+      "hlc": "019a73a00100-0001-usr_arjun_01",
+      "comments": [
+        {
+          "id": "cmt_01",
+          "expenseId": "exp_goa_villa_01",
+          "authorMemberId": "mem_goa_rohan",
+          "authorName": "Rohan Verma",
+          "body": "Uploaded the check-in receipt PDF to the attachment slot.",
+          "createdAt": "2026-11-08T14:20:00Z"
+        }
+      ],
+      "receipts": [
+        {
+          "id": "rcp_01",
+          "expenseId": "exp_goa_villa_01",
+          "fileName": "assagao-villa-invoice.webp",
+          "mimeType": "image/webp",
+          "sizeKb": 184,
+          "uploadedByName": "Arjun Mehta",
+          "createdAt": "2026-11-08T14:05:00Z",
+          "previewNote": "Tax Invoice #GOA-8821 - Total ₹20,000.00"
+        }
+      ]
+    },
+    {
+      "id": "exp_goa_cab_rot_02",
+      "groupId": "grp_goa_2026",
+      "title": "Airport Transfer Cab (3-Way Rotating Remainder #1)",
+      "category": "transport",
+      "tags": ["#cab", "#rotating-remainder"],
+      "notes": "Kabir arrived on a later flight so split 3-ways between Arjun, Rohan, and Priya. Seed 1 assigns +1 paisa to Rohan.",
+      "expenseDate": "2026-11-08",
+      "originalCurrency": "INR",
+      "originalAmountMinor": 100000,
+      "groupCurrency": "INR",
+      "amountMinor": 100000,
+      "fxRateScaled": 100000000,
+      "fxStatus": "identity",
+      "fxAuditNote": null,
+      "splitMode": "equal",
+      "rotationSeed": 1,
+      "payers": [
+        { "memberId": "mem_goa_arjun", "paidMinor": 100000, "originalPaidMinor": 100000 }
+      ],
+      "splits": [
+        { "memberId": "mem_goa_arjun", "included": true, "owedMinor": 33333, "originalOwedMinor": 33333, "rawInputValue": 1, "remainderMinor": 0 },
+        { "memberId": "mem_goa_rohan", "included": true, "owedMinor": 33334, "originalOwedMinor": 33334, "rawInputValue": 1, "remainderMinor": 1 },
+        { "memberId": "mem_goa_priya", "included": true, "owedMinor": 33333, "originalOwedMinor": 33333, "rawInputValue": 1, "remainderMinor": 0 },
+        { "memberId": "mem_goa_kabir", "included": false, "owedMinor": 0, "originalOwedMinor": 0, "rawInputValue": 0, "remainderMinor": 0 }
+      ],
+      "currentRevisionId": "rev_goa_02_v1",
+      "revisionNumber": 1,
+      "hasUnresolvedConflict": false,
+      "conflictRevisionId": null,
+      "createdByMemberId": "mem_goa_arjun",
+      "updatedByMemberId": "mem_goa_arjun",
+      "createdAt": "2026-11-08T16:30:00Z",
+      "updatedAt": "2026-11-08T16:30:00Z",
+      "deletedAt": null,
+      "hlc": "019a73a10200-0001-usr_arjun_01",
+      "comments": [],
+      "receipts": []
+    },
+    {
+      "id": "exp_goa_scuba_fx_03",
+      "groupId": "grp_goa_2026",
+      "title": "PADI Scuba Charter (EUR Foreign Card Bill)",
+      "category": "activities",
+      "tags": ["#scuba", "#fx-conversion", "#shares"],
+      "notes": "Booked via European dive operator in EUR; Arjun & Kabir did 2 dives (2 shares each), Rohan & Priya did 1 dive (1 share each)",
+      "expenseDate": "2026-11-09",
+      "originalCurrency": "EUR",
+      "originalAmountMinor": 18000,
+      "groupCurrency": "INR",
+      "amountMinor": 1641600,
+      "fxRateScaled": 9120000000,
+      "fxStatus": "live",
+      "fxAuditNote": "Converted from €180.00 EUR at 1 EUR = 91.20 INR (live rate, 2026-11-09)",
+      "splitMode": "shares",
+      "rotationSeed": 2,
+      "payers": [
+        { "memberId": "mem_goa_priya", "paidMinor": 1641600, "originalPaidMinor": 18000 }
+      ],
+      "splits": [
+        { "memberId": "mem_goa_arjun", "included": true, "owedMinor": 547200, "originalOwedMinor": 6000, "rawInputValue": 2, "remainderMinor": 0 },
+        { "memberId": "mem_goa_rohan", "included": true, "owedMinor": 273600, "originalOwedMinor": 3000, "rawInputValue": 1, "remainderMinor": 0 },
+        { "memberId": "mem_goa_priya", "included": true, "owedMinor": 273600, "originalOwedMinor": 3000, "rawInputValue": 1, "remainderMinor": 0 },
+        { "memberId": "mem_goa_kabir", "included": true, "owedMinor": 547200, "originalOwedMinor": 6000, "rawInputValue": 2, "remainderMinor": 0 }
+      ],
+      "currentRevisionId": "rev_goa_03_v1",
+      "revisionNumber": 1,
+      "hasUnresolvedConflict": false,
+      "conflictRevisionId": null,
+      "createdByMemberId": "mem_goa_priya",
+      "updatedByMemberId": "mem_goa_priya",
+      "createdAt": "2026-11-09T11:00:00Z",
+      "updatedAt": "2026-11-09T11:00:00Z",
+      "deletedAt": null,
+      "hlc": "019a73b20300-0001-usr_priya_03",
+      "comments": [],
+      "receipts": []
+    },
+    {
+      "id": "exp_goa_dinner_conflict_04",
+      "groupId": "grp_goa_2026",
+      "title": "Thalassa Cliff Dinner & Pitchers",
+      "category": "food",
+      "tags": ["#dinner", "#adjustment", "#conflict-demo"],
+      "notes": "Includes +₹800 lobster adjustment for Rohan. Both Arjun (offline on flight) and Rohan edited this bill concurrently.",
+      "expenseDate": "2026-11-10",
+      "originalCurrency": "INR",
+      "originalAmountMinor": 680000,
+      "groupCurrency": "INR",
+      "amountMinor": 680000,
+      "fxRateScaled": 100000000,
+      "fxStatus": "identity",
+      "fxAuditNote": null,
+      "splitMode": "adjustment",
+      "rotationSeed": 3,
+      "payers": [
+        { "memberId": "mem_goa_arjun", "paidMinor": 680000, "originalPaidMinor": 680000 }
+      ],
+      "splits": [
+        { "memberId": "mem_goa_arjun", "included": true, "owedMinor": 150000, "originalOwedMinor": 150000, "rawInputValue": 0, "remainderMinor": 0 },
+        { "memberId": "mem_goa_rohan", "included": true, "owedMinor": 230000, "originalOwedMinor": 230000, "rawInputValue": 80000, "remainderMinor": 0 },
+        { "memberId": "mem_goa_priya", "included": true, "owedMinor": 150000, "originalOwedMinor": 150000, "rawInputValue": 0, "remainderMinor": 0 },
+        { "memberId": "mem_goa_kabir", "included": true, "owedMinor": 150000, "originalOwedMinor": 150000, "rawInputValue": 0, "remainderMinor": 0 }
+      ],
+      "currentRevisionId": "rev_goa_04_v2_arjun",
+      "revisionNumber": 2,
+      "hasUnresolvedConflict": true,
+      "conflictRevisionId": "rev_goa_04_v2_rohan",
+      "createdByMemberId": "mem_goa_arjun",
+      "updatedByMemberId": "mem_goa_arjun",
+      "createdAt": "2026-11-10T21:15:00Z",
+      "updatedAt": "2026-11-11T10:05:00Z",
+      "deletedAt": null,
+      "hlc": "019a73e4c200-0002-usr_arjun_01",
+      "comments": [
+        {
+          "id": "cmt_02",
+          "expenseId": "exp_goa_dinner_conflict_04",
+          "authorMemberId": "mem_goa_arjun",
+          "authorName": "Arjun Mehta",
+          "body": "Added the ₹800 service charge & lobster adjustment while offline on the flight.",
+          "createdAt": "2026-11-11T10:06:00Z"
+        }
+      ],
+      "receipts": []
+    },
+    {
+      "id": "exp_goa_scooter_exact_05",
+      "groupId": "grp_goa_2026",
+      "title": "Scooter Rentals & Fuel (Exact Split)",
+      "category": "transport",
+      "tags": ["#scooters", "#exact"],
+      "notes": "Exact amounts based on days rented per person",
+      "expenseDate": "2026-11-11",
+      "originalCurrency": "INR",
+      "originalAmountMinor": 240000,
+      "groupCurrency": "INR",
+      "amountMinor": 240000,
+      "fxRateScaled": 100000000,
+      "fxStatus": "identity",
+      "fxAuditNote": null,
+      "splitMode": "exact",
+      "rotationSeed": 4,
+      "payers": [
+        { "memberId": "mem_goa_rohan", "paidMinor": 240000, "originalPaidMinor": 240000 }
+      ],
+      "splits": [
+        { "memberId": "mem_goa_arjun", "included": true, "owedMinor": 80000, "originalOwedMinor": 80000, "rawInputValue": 80000, "remainderMinor": 0 },
+        { "memberId": "mem_goa_rohan", "included": true, "owedMinor": 80000, "originalOwedMinor": 80000, "rawInputValue": 80000, "remainderMinor": 0 },
+        { "memberId": "mem_goa_priya", "included": true, "owedMinor": 40000, "originalOwedMinor": 40000, "rawInputValue": 40000, "remainderMinor": 0 },
+        { "memberId": "mem_goa_kabir", "included": true, "owedMinor": 40000, "originalOwedMinor": 40000, "rawInputValue": 40000, "remainderMinor": 0 }
+      ],
+      "currentRevisionId": "rev_goa_05_v1",
+      "revisionNumber": 1,
+      "hasUnresolvedConflict": false,
+      "conflictRevisionId": null,
+      "createdByMemberId": "mem_goa_rohan",
+      "updatedByMemberId": "mem_goa_rohan",
+      "createdAt": "2026-11-11T12:00:00Z",
+      "updatedAt": "2026-11-11T12:00:00Z",
+      "deletedAt": null,
+      "hlc": "019a73e4c500-0001-usr_rohan_02",
+      "comments": [],
+      "receipts": []
+    },
+    {
+      "id": "exp_goa_trashed_gelato_06",
+      "groupId": "grp_goa_2026",
+      "title": "Duplicate Entry: Late Night Gelato",
+      "category": "food",
+      "tags": ["#dessert", "#duplicate"],
+      "notes": "Accidentally logged twice - moved to Trash so it can be restored anytime",
+      "expenseDate": "2026-11-10",
+      "originalCurrency": "INR",
+      "originalAmountMinor": 96000,
+      "groupCurrency": "INR",
+      "amountMinor": 96000,
+      "fxRateScaled": 100000000,
+      "fxStatus": "identity",
+      "fxAuditNote": null,
+      "splitMode": "equal",
+      "rotationSeed": 5,
+      "payers": [
+        { "memberId": "mem_goa_priya", "paidMinor": 96000, "originalPaidMinor": 96000 }
+      ],
+      "splits": [
+        { "memberId": "mem_goa_arjun", "included": true, "owedMinor": 24000, "originalOwedMinor": 24000, "rawInputValue": 1, "remainderMinor": 0 },
+        { "memberId": "mem_goa_rohan", "included": true, "owedMinor": 24000, "originalOwedMinor": 24000, "rawInputValue": 1, "remainderMinor": 0 },
+        { "memberId": "mem_goa_priya", "included": true, "owedMinor": 24000, "originalOwedMinor": 24000, "rawInputValue": 1, "remainderMinor": 0 },
+        { "memberId": "mem_goa_kabir", "included": true, "owedMinor": 24000, "originalOwedMinor": 24000, "rawInputValue": 1, "remainderMinor": 0 }
+      ],
+      "currentRevisionId": "rev_goa_06_v2",
+      "revisionNumber": 2,
+      "hasUnresolvedConflict": false,
+      "conflictRevisionId": null,
+      "createdByMemberId": "mem_goa_priya",
+      "updatedByMemberId": "mem_goa_arjun",
+      "createdAt": "2026-11-10T23:10:00Z",
+      "updatedAt": "2026-11-11T08:00:00Z",
+      "deletedAt": "2026-11-11T08:00:00Z",
+      "hlc": "019a73e4c600-0001-usr_arjun_01",
+      "comments": [],
+      "receipts": []
+    },
+    {
+      "id": "exp_apt_rent_01",
+      "groupId": "grp_apt_14b",
+      "title": "November Apartment Rent (40/30/30 Preset)",
+      "category": "utilities",
+      "tags": ["#rent", "#percentage-split"],
+      "notes": "Split using group default 40% / 30% / 30% room size preset",
+      "expenseDate": "2026-11-01",
+      "originalCurrency": "INR",
+      "originalAmountMinor": 6000000,
+      "groupCurrency": "INR",
+      "amountMinor": 6000000,
+      "fxRateScaled": 100000000,
+      "fxStatus": "identity",
+      "fxAuditNote": null,
+      "splitMode": "percentage",
+      "rotationSeed": 0,
+      "payers": [
+        { "memberId": "mem_apt_rohan", "paidMinor": 6000000, "originalPaidMinor": 6000000 }
+      ],
+      "splits": [
+        { "memberId": "mem_apt_arjun", "included": true, "owedMinor": 2400000, "originalOwedMinor": 2400000, "rawInputValue": 4000, "remainderMinor": 0 },
+        { "memberId": "mem_apt_rohan", "included": true, "owedMinor": 1800000, "originalOwedMinor": 1800000, "rawInputValue": 3000, "remainderMinor": 0 },
+        { "memberId": "mem_apt_neha", "included": true, "owedMinor": 1800000, "originalOwedMinor": 1800000, "rawInputValue": 3000, "remainderMinor": 0 }
+      ],
+      "currentRevisionId": "rev_apt_01_v1",
+      "revisionNumber": 1,
+      "hasUnresolvedConflict": false,
+      "conflictRevisionId": null,
+      "createdByMemberId": "mem_apt_rohan",
+      "updatedByMemberId": "mem_apt_rohan",
+      "createdAt": "2026-11-01T09:30:00Z",
+      "updatedAt": "2026-11-01T09:30:00Z",
+      "deletedAt": null,
+      "hlc": "019a72b1a050-0001-usr_rohan_02",
+      "comments": [],
+      "receipts": []
+    },
+    {
+      "id": "exp_apt_groceries_02",
+      "groupId": "grp_apt_14b",
+      "title": "Nature's Basket Weekly Groceries & Coffee",
+      "category": "groceries",
+      "tags": ["#groceries", "#kitchen"],
+      "notes": "Fresh produce, sourdough, and filter coffee beans",
+      "expenseDate": "2026-11-06",
+      "originalCurrency": "INR",
+      "originalAmountMinor": 450000,
+      "groupCurrency": "INR",
+      "amountMinor": 450000,
+      "fxRateScaled": 100000000,
+      "fxStatus": "identity",
+      "fxAuditNote": null,
+      "splitMode": "equal",
+      "rotationSeed": 1,
+      "payers": [
+        { "memberId": "mem_apt_neha", "paidMinor": 450000, "originalPaidMinor": 450000 }
+      ],
+      "splits": [
+        { "memberId": "mem_apt_arjun", "included": true, "owedMinor": 150000, "originalOwedMinor": 150000, "rawInputValue": 1, "remainderMinor": 0 },
+        { "memberId": "mem_apt_rohan", "included": true, "owedMinor": 150000, "originalOwedMinor": 150000, "rawInputValue": 1, "remainderMinor": 0 },
+        { "memberId": "mem_apt_neha", "included": true, "owedMinor": 150000, "originalOwedMinor": 150000, "rawInputValue": 1, "remainderMinor": 0 }
+      ],
+      "currentRevisionId": "rev_apt_02_v1",
+      "revisionNumber": 1,
+      "hasUnresolvedConflict": false,
+      "conflictRevisionId": null,
+      "createdByMemberId": "mem_apt_neha",
+      "updatedByMemberId": "mem_apt_neha",
+      "createdAt": "2026-11-06T18:00:00Z",
+      "updatedAt": "2026-11-06T18:00:00Z",
+      "deletedAt": null,
+      "hlc": "019a72b1a090-0001-usr_neha_04",
+      "comments": [],
+      "receipts": []
+    },
+    {
+      "id": "exp_tokyo_shinkansen_01",
+      "groupId": "grp_tokyo_2026",
+      "title": "Nozomi Shinkansen Tokyo to Kyoto (0-Decimal JPY)",
+      "category": "flights",
+      "tags": ["#shinkansen", "#jpy-zero-decimal"],
+      "notes": "Zero-decimal Japanese Yen bill; odd yen remainder rotates cleanly",
+      "expenseDate": "2026-11-04",
+      "originalCurrency": "JPY",
+      "originalAmountMinor": 28351,
+      "groupCurrency": "JPY",
+      "amountMinor": 28351,
+      "fxRateScaled": 100000000,
+      "fxStatus": "identity",
+      "fxAuditNote": null,
+      "splitMode": "equal",
+      "rotationSeed": 0,
+      "payers": [
+        { "memberId": "mem_jp_arjun", "paidMinor": 28351, "originalPaidMinor": 28351 }
+      ],
+      "splits": [
+        { "memberId": "mem_jp_arjun", "included": true, "owedMinor": 14176, "originalOwedMinor": 14176, "rawInputValue": 1, "remainderMinor": 1 },
+        { "memberId": "mem_jp_priya", "included": true, "owedMinor": 14175, "originalOwedMinor": 14175, "rawInputValue": 1, "remainderMinor": 0 }
+      ],
+      "currentRevisionId": "rev_jp_01_v1",
+      "revisionNumber": 1,
+      "hasUnresolvedConflict": false,
+      "conflictRevisionId": null,
+      "createdByMemberId": "mem_jp_arjun",
+      "updatedByMemberId": "mem_jp_arjun",
+      "createdAt": "2026-11-04T07:30:00Z",
+      "updatedAt": "2026-11-04T07:30:00Z",
+      "deletedAt": null,
+      "hlc": "019a71a0b100-0001-usr_arjun_01",
+      "comments": [],
+      "receipts": []
+    },
+    {
+      "id": "exp_tokyo_teamlab_offline_fx_02",
+      "groupId": "grp_tokyo_2026",
+      "title": "teamLab Planets Tickets (USD Card Logged Offline)",
+      "category": "activities",
+      "tags": ["#teamlab", "#offline-cached-fx"],
+      "notes": "Logged while in subway offline mode using cached USD -> JPY exchange rate",
+      "expenseDate": "2026-11-05",
+      "originalCurrency": "USD",
+      "originalAmountMinor": 6400,
+      "groupCurrency": "JPY",
+      "amountMinor": 9664,
+      "fxRateScaled": 15100000000,
+      "fxStatus": "cached_offline",
+      "fxAuditNote": "Converted from $64.00 USD at 1 USD = 151.00 JPY (cached offline rate, 2026-11-05)",
+      "splitMode": "equal",
+      "rotationSeed": 1,
+      "payers": [
+        { "memberId": "mem_jp_priya", "paidMinor": 9664, "originalPaidMinor": 6400 }
+      ],
+      "splits": [
+        { "memberId": "mem_jp_arjun", "included": true, "owedMinor": 4832, "originalOwedMinor": 3200, "rawInputValue": 1, "remainderMinor": 0 },
+        { "memberId": "mem_jp_priya", "included": true, "owedMinor": 4832, "originalOwedMinor": 3200, "rawInputValue": 1, "remainderMinor": 0 }
+      ],
+      "currentRevisionId": "rev_jp_02_v1",
+      "revisionNumber": 1,
+      "hasUnresolvedConflict": false,
+      "conflictRevisionId": null,
+      "createdByMemberId": "mem_jp_priya",
+      "updatedByMemberId": "mem_jp_priya",
+      "createdAt": "2026-11-05T13:15:00Z",
+      "updatedAt": "2026-11-05T13:15:00Z",
+      "deletedAt": null,
+      "hlc": "019a71a0b200-0001-usr_priya_03",
+      "comments": [],
+      "receipts": []
+    },
+    {
+      "id": "exp_kwd_souk_01",
+      "groupId": "grp_kuwait_stopover",
+      "title": "Souk Mubarakiya Grill Dinner (3-Decimal KWD Fils)",
+      "category": "food",
+      "tags": ["#kwd-fils", "#3-decimals"],
+      "notes": "Kuwaiti Dinar uses 1,000 fils per 1.000 KWD; 25.000 KWD split 3 ways = 8.334, 8.333, 8.333 KWD",
+      "expenseDate": "2026-11-07",
+      "originalCurrency": "KWD",
+      "originalAmountMinor": 25000,
+      "groupCurrency": "KWD",
+      "amountMinor": 25000,
+      "fxRateScaled": 100000000,
+      "fxStatus": "identity",
+      "fxAuditNote": null,
+      "splitMode": "equal",
+      "rotationSeed": 0,
+      "payers": [
+        { "memberId": "mem_kw_arjun", "paidMinor": 25000, "originalPaidMinor": 25000 }
+      ],
+      "splits": [
+        { "memberId": "mem_kw_arjun", "included": true, "owedMinor": 8334, "originalOwedMinor": 8334, "rawInputValue": 1, "remainderMinor": 1 },
+        { "memberId": "mem_kw_rohan", "included": true, "owedMinor": 8333, "originalOwedMinor": 8333, "rawInputValue": 1, "remainderMinor": 0 },
+        { "memberId": "mem_kw_priya", "included": true, "owedMinor": 8333, "originalOwedMinor": 8333, "rawInputValue": 1, "remainderMinor": 0 }
+      ],
+      "currentRevisionId": "rev_kw_01_v1",
+      "revisionNumber": 1,
+      "hasUnresolvedConflict": false,
+      "conflictRevisionId": null,
+      "createdByMemberId": "mem_kw_arjun",
+      "updatedByMemberId": "mem_kw_arjun",
+      "createdAt": "2026-11-07T20:00:00Z",
+      "updatedAt": "2026-11-07T20:00:00Z",
+      "deletedAt": null,
+      "hlc": "019a70f0c300-0001-usr_arjun_01",
+      "comments": [],
+      "receipts": []
+    }
+  ],
+  "expenseRevisions": [
+    {
+      "id": "rev_goa_04_v1_initial",
+      "expenseId": "exp_goa_dinner_conflict_04",
+      "groupId": "grp_goa_2026",
+      "revisionNumber": 1,
+      "baseRevisionId": null,
+      "actorMemberId": "mem_goa_arjun",
+      "actorDisplayName": "Arjun Mehta",
+      "action": "created",
+      "changes": [
+        { "field": "amount_minor", "fromValue": "₹0.00", "toValue": "₹6,000.00", "label": "Created expense with total ₹6,000.00 (Equal Split)" }
+      ],
+      "snapshot": {
+        "title": "Thalassa Cliff Dinner",
+        "category": "food",
+        "amountMinor": 600000,
+        "originalCurrency": "INR",
+        "originalAmountMinor": 600000,
+        "fxRateScaled": 100000000,
+        "fxStatus": "identity",
+        "splitMode": "equal",
+        "payers": [{ "memberId": "mem_goa_arjun", "paidMinor": 600000, "originalPaidMinor": 600000 }],
+        "splits": [
+          { "memberId": "mem_goa_arjun", "included": true, "owedMinor": 150000, "originalOwedMinor": 150000, "rawInputValue": 1, "remainderMinor": 0 },
+          { "memberId": "mem_goa_rohan", "included": true, "owedMinor": 150000, "originalOwedMinor": 150000, "rawInputValue": 1, "remainderMinor": 0 },
+          { "memberId": "mem_goa_priya", "included": true, "owedMinor": 150000, "originalOwedMinor": 150000, "rawInputValue": 1, "remainderMinor": 0 },
+          { "memberId": "mem_goa_kabir", "included": true, "owedMinor": 150000, "originalOwedMinor": 150000, "rawInputValue": 1, "remainderMinor": 0 }
+        ],
+        "notes": "Initial entry before dessert and lobster add-on"
+      },
+      "isConflictBranch": false,
+      "createdAt": "2026-11-10T21:15:00Z",
+      "hlc": "019a73d00100-0001-usr_arjun_01"
+    },
+    {
+      "id": "rev_goa_04_v2_rohan",
+      "expenseId": "exp_goa_dinner_conflict_04",
+      "groupId": "grp_goa_2026",
+      "revisionNumber": 2,
+      "baseRevisionId": "rev_goa_04_v1_initial",
+      "actorMemberId": "mem_goa_rohan",
+      "actorDisplayName": "Rohan Verma",
+      "action": "conflict_superseded",
+      "changes": [
+        { "field": "amount_minor", "fromValue": "₹6,000.00", "toValue": "₹6,400.00", "label": "Rohan updated total from ₹6,000.00 to ₹6,400.00 (added ₹400 tip, Equal Split)" }
+      ],
+      "snapshot": {
+        "title": "Thalassa Cliff Dinner (with Tip)",
+        "category": "food",
+        "amountMinor": 640000,
+        "originalCurrency": "INR",
+        "originalAmountMinor": 640000,
+        "fxRateScaled": 100000000,
+        "fxStatus": "identity",
+        "splitMode": "equal",
+        "payers": [{ "memberId": "mem_goa_arjun", "paidMinor": 640000, "originalPaidMinor": 640000 }],
+        "splits": [
+          { "memberId": "mem_goa_arjun", "included": true, "owedMinor": 160000, "originalOwedMinor": 160000, "rawInputValue": 1, "remainderMinor": 0 },
+          { "memberId": "mem_goa_rohan", "included": true, "owedMinor": 160000, "originalOwedMinor": 160000, "rawInputValue": 1, "remainderMinor": 0 },
+          { "memberId": "mem_goa_priya", "included": true, "owedMinor": 160000, "originalOwedMinor": 160000, "rawInputValue": 1, "remainderMinor": 0 },
+          { "memberId": "mem_goa_kabir", "included": true, "owedMinor": 160000, "originalOwedMinor": 160000, "rawInputValue": 1, "remainderMinor": 0 }
+        ],
+        "notes": "Rohan's concurrent edit adding ₹400 tip equally"
+      },
+      "isConflictBranch": true,
+      "createdAt": "2026-11-11T09:50:00Z",
+      "hlc": "019a73e4b100-0001-usr_rohan_02"
+    },
+    {
+      "id": "rev_goa_04_v2_arjun",
+      "expenseId": "exp_goa_dinner_conflict_04",
+      "groupId": "grp_goa_2026",
+      "revisionNumber": 2,
+      "baseRevisionId": "rev_goa_04_v1_initial",
+      "actorMemberId": "mem_goa_arjun",
+      "actorDisplayName": "Arjun Mehta",
+      "action": "updated",
+      "changes": [
+        { "field": "amount_minor", "fromValue": "₹6,000.00", "toValue": "₹6,800.00", "label": "Arjun (offline) updated total from ₹6,000.00 to ₹6,800.00" },
+        { "field": "split_mode", "fromValue": "equal", "toValue": "adjustment", "label": "Changed split mode from Equal to +/- Adjustment (+₹800 on Rohan)" }
+      ],
+      "snapshot": {
+        "title": "Thalassa Cliff Dinner & Pitchers",
+        "category": "food",
+        "amountMinor": 680000,
+        "originalCurrency": "INR",
+        "originalAmountMinor": 680000,
+        "fxRateScaled": 100000000,
+        "fxStatus": "identity",
+        "splitMode": "adjustment",
+        "payers": [{ "memberId": "mem_goa_arjun", "paidMinor": 680000, "originalPaidMinor": 680000 }],
+        "splits": [
+          { "memberId": "mem_goa_arjun", "included": true, "owedMinor": 150000, "originalOwedMinor": 150000, "rawInputValue": 0, "remainderMinor": 0 },
+          { "memberId": "mem_goa_rohan", "included": true, "owedMinor": 230000, "originalOwedMinor": 230000, "rawInputValue": 80000, "remainderMinor": 0 },
+          { "memberId": "mem_goa_priya", "included": true, "owedMinor": 150000, "originalOwedMinor": 150000, "rawInputValue": 0, "remainderMinor": 0 },
+          { "memberId": "mem_goa_kabir", "included": true, "owedMinor": 150000, "originalOwedMinor": 150000, "rawInputValue": 0, "remainderMinor": 0 }
+        ],
+        "notes": "Includes +₹800 lobster adjustment for Rohan."
+      },
+      "isConflictBranch": false,
+      "createdAt": "2026-11-11T10:05:00Z",
+      "hlc": "019a73e4c200-0002-usr_arjun_01"
+    }
+  ],
+  "settlements": [
+    {
+      "id": "stl_goa_01",
+      "groupId": "grp_goa_2026",
+      "batchSettlementId": null,
+      "fromMemberId": "mem_goa_kabir",
+      "toMemberId": "mem_goa_arjun",
+      "amountMinor": 300000,
+      "currency": "INR",
+      "paymentMethod": "upi",
+      "paymentReference": "UPI-431599812014",
+      "notes": "Partial settlement via GPay at airport",
+      "settledDate": "2026-11-11",
+      "createdAt": "2026-11-11T13:00:00Z",
+      "deletedAt": null,
+      "hlc": "019a73e4c700-0001-usr_arjun_01"
+    }
+  ],
+  "groupActivityLog": [
+    {
+      "id": "act_01",
+      "groupId": "grp_goa_2026",
+      "actorMemberId": "mem_goa_arjun",
+      "actorDisplayName": "Arjun Mehta",
+      "entityType": "expense",
+      "entityId": "exp_goa_dinner_conflict_04",
+      "action": "expense_conflict_flagged",
+      "summaryText": "Concurrent offline edits detected on \"Thalassa Cliff Dinner & Pitchers\"",
+      "detailNote": "Arjun Mehta (offline on flight, Rev #2A: ₹6,800.00 Adjustment Split) and Rohan Verma (online, Rev #2B: ₹6,400.00 Equal Split) both modified Base Rev #1. Active state set to latest HLC (Arjun); tap to compare or switch versions.",
+      "diffBadges": ["Base Rev #1 mismatch", "Arjun: ₹6,800.00", "Rohan: ₹6,400.00"],
+      "createdAt": "2026-11-11T10:05:30Z",
+      "hlc": "019a73e4c205-0001-usr_arjun_01"
+    },
+    {
+      "id": "act_02",
+      "groupId": "grp_goa_2026",
+      "actorMemberId": "mem_goa_arjun",
+      "actorDisplayName": "Arjun Mehta",
+      "entityType": "settlement",
+      "entityId": "stl_goa_01",
+      "action": "settlement_recorded",
+      "summaryText": "Kabir Kapoor paid Arjun Mehta ₹3,000.00 via UPI",
+      "detailNote": "Partial settlement recorded with reference UPI-431599812014",
+      "diffBadges": ["Partial Payment", "UPI", "₹3,000.00"],
+      "createdAt": "2026-11-11T13:00:00Z",
+      "hlc": "019a73e4c700-0001-usr_arjun_01"
+    },
+    {
+      "id": "act_03",
+      "groupId": "grp_goa_2026",
+      "actorMemberId": "mem_goa_rohan",
+      "actorDisplayName": "Rohan Verma",
+      "entityType": "expense",
+      "entityId": "exp_goa_scooter_exact_05",
+      "action": "expense_created",
+      "summaryText": "Rohan Verma added \"Scooter Rentals & Fuel (Exact Split)\" (₹2,400.00)",
+      "detailNote": "Exact split: Arjun ₹800.00, Rohan ₹800.00, Priya ₹400.00, Kabir ₹400.00",
+      "diffBadges": ["Exact Split", "₹2,400.00"],
+      "createdAt": "2026-11-11T12:00:00Z",
+      "hlc": "019a73e4c500-0001-usr_rohan_02"
+    },
+    {
+      "id": "act_04",
+      "groupId": "grp_goa_2026",
+      "actorMemberId": "mem_goa_arjun",
+      "actorDisplayName": "Arjun Mehta",
+      "entityType": "expense",
+      "entityId": "exp_goa_trashed_gelato_06",
+      "action": "expense_deleted",
+      "summaryText": "Arjun Mehta moved \"Duplicate Entry: Late Night Gelato\" (₹960.00) to Trash",
+      "detailNote": "Soft-deleted duplicate entry; full snapshot retained in Trash for 1-click restore",
+      "diffBadges": ["Soft Deleted", "Restorable"],
+      "createdAt": "2026-11-11T08:00:00Z",
+      "hlc": "019a73e4c600-0001-usr_arjun_01"
+    },
+    {
+      "id": "act_05",
+      "groupId": "grp_goa_2026",
+      "actorMemberId": "mem_goa_priya",
+      "actorDisplayName": "Priya Nair",
+      "entityType": "expense",
+      "entityId": "exp_goa_scuba_fx_03",
+      "action": "expense_created",
+      "summaryText": "Priya Nair added foreign-currency bill \"PADI Scuba Charter\" (€180.00 EUR -> ₹16,416.00 INR)",
+      "detailNote": "Converted at live FX rate 1 EUR = 91.20 INR; split by Shares (2:1:1:2)",
+      "diffBadges": ["FX: €180.00 EUR", "Rate: 91.20", "Shares Split"],
+      "createdAt": "2026-11-09T11:00:00Z",
+      "hlc": "019a73b20300-0001-usr_priya_03"
+    },
+    {
+      "id": "act_06",
+      "groupId": "grp_goa_2026",
+      "actorMemberId": "mem_goa_arjun",
+      "actorDisplayName": "Arjun Mehta",
+      "entityType": "expense",
+      "entityId": "exp_goa_cab_rot_02",
+      "action": "expense_created",
+      "summaryText": "Arjun Mehta added \"Airport Transfer Cab\" (₹1,000.00) with 3-way rotating remainder",
+      "detailNote": "Equal split among 3 members: ₹333.33, ₹333.34 (+₹0.01 remainder assigned to Rohan via rotation seed #1), ₹333.33",
+      "diffBadges": ["Rotating Remainder +₹0.01", "Seed #1", "Excluded: Kabir"],
+      "createdAt": "2026-11-08T16:30:00Z",
+      "hlc": "019a73a10200-0001-usr_arjun_01"
+    },
+    {
+      "id": "act_07",
+      "groupId": "grp_goa_2026",
+      "actorMemberId": "mem_goa_priya",
+      "actorDisplayName": "Priya Nair",
+      "entityType": "member",
+      "entityId": "mem_goa_priya",
+      "action": "member_claimed",
+      "summaryText": "Priya Nair signed in with Google (priya.nair@gmail.com) and linked her group ledger",
+      "detailNote": "Unclaimed placeholder profile automatically matched via verified Google OAuth email",
+      "diffBadges": ["Google OAuth Verified", "Auto-Linked"],
+      "createdAt": "2026-11-01T11:40:00Z",
+      "hlc": "019a70100200-0001-usr_priya_03"
+    },
+    {
+      "id": "act_08",
+      "groupId": "grp_apt_14b",
+      "actorMemberId": "mem_apt_rohan",
+      "actorDisplayName": "Rohan Verma",
+      "entityType": "expense",
+      "entityId": "exp_apt_rent_01",
+      "action": "expense_created",
+      "summaryText": "Rohan Verma added \"November Apartment Rent\" (₹60,000.00) using Saved Default Split (40%/30%/30%)",
+      "detailNote": "Arjun: ₹24,000.00 (40%), Rohan: ₹18,000.00 (30%), Neha: ₹18,000.00 (30%)",
+      "diffBadges": ["Percentage Split", "Saved Preset", "₹60,000.00"],
+      "createdAt": "2026-11-01T09:30:00Z",
+      "hlc": "019a72b1a050-0001-usr_rohan_02"
+    },
+    {
+      "id": "act_09",
+      "groupId": "grp_tokyo_2026",
+      "actorMemberId": "mem_jp_priya",
+      "actorDisplayName": "Priya Nair",
+      "entityType": "expense",
+      "entityId": "exp_tokyo_teamlab_offline_fx_02",
+      "action": "expense_created",
+      "summaryText": "Priya Nair logged \"teamLab Planets Tickets\" ($64.00 USD -> ¥9,664 JPY) while offline",
+      "detailNote": "Used cached offline exchange rate (1 USD = 151.00 JPY); flagged for optional live rate refresh",
+      "diffBadges": ["Offline Cached FX", "$64.00 USD -> ¥9,664"],
+      "createdAt": "2026-11-05T13:15:00Z",
+      "hlc": "019a71a0b200-0001-usr_priya_03"
+    }
+  ],
+  "sampleSplitwiseCsv": "Date,Description,Category,Cost,Currency,Arjun Mehta,Rohan Verma,Priya Nair,Kabir Kapoor\n2026-11-09,Baga Beach Shack Lunch,Food and drink,3200.00,INR,2400.00,-800.00,-800.00,-800.00\n2026-11-10,Sunset Catamaran Cruise,Entertainment,6000.00,INR,-1500.00,4500.00,-1500.00,-1500.00",
+  "sampleSplitwiseJson": "{\"groupName\":\"Imported Splitwise Trip\",\"currency\":\"INR\",\"expenses\":[{\"date\":\"2026-11-09\",\"title\":\"Chapora Fort Cabs\",\"category\":\"transport\",\"amountMinor\":160000,\"paidBy\":\"Arjun Mehta\"}]}"
+}

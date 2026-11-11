@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.superpowers/
+playwright-report/
+test-results/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+.vite-pid

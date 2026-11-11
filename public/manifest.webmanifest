@@ -1,0 +1,10 @@
+{
+  "name": "Wise-Spliter - Precision Group Ledger",
+  "short_name": "Wise-Spliter",
+  "description": "100% free, local-first multi-currency bill splitting and group expense ledger",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090D16",
+  "theme_color": "#059669",
+  "orientation": "portrait-primary"
+}
