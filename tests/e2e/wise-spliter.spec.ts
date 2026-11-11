@@ -4,7 +4,42 @@ import mockData from '../../src/data/mock-ledger-data.json' with { type: 'json' 
 test.describe('Wise-Spliter Phase 1 Full Acceptance & E2E Suite', () => {
   test('Home Dashboard (Minimalism, Top 3 Recent Groups, Contextual Guide, Direct Non-Group Split) -> Progressive Disclosure Group Workspace & Ledger', async ({
     page,
+    request,
   }) => {
+    // 0. Backend API & Centralized Supabase `wise_spliter` Schema Verification
+    const bootstrapRes = await request.get('/api/ledger/bootstrap');
+    expect(bootstrapRes.ok()).toBe(true);
+    const bootstrapBody = (await bootstrapRes.json()) as {
+      ok: boolean;
+      schema: string;
+      dataset: { groups: unknown[]; expenses: unknown[] };
+    };
+    expect(bootstrapBody.ok).toBe(true);
+    expect(bootstrapBody.schema).toBe('wise_spliter');
+    expect(bootstrapBody.dataset.groups.length).toBeGreaterThanOrEqual(4);
+    expect(bootstrapBody.dataset.expenses.length).toBeGreaterThanOrEqual(10);
+
+    const healthRes = await request.get('/api/health');
+    expect(healthRes.ok()).toBe(true);
+    const healthBody = (await healthRes.json()) as {
+      ok: boolean;
+      schema: string;
+      supabaseReachable: boolean;
+      schemaHealth?: {
+        ok: boolean;
+        schema: string;
+        groups_count: number;
+        expenses_count: number;
+      };
+    };
+    expect(healthBody.ok).toBe(true);
+    expect(healthBody.schema).toBe('wise_spliter');
+    expect(healthBody.supabaseReachable).toBe(true);
+    expect(healthBody.schemaHealth?.ok).toBe(true);
+    expect(healthBody.schemaHealth?.schema).toBe('wise_spliter');
+    expect(healthBody.schemaHealth?.groups_count).toBeGreaterThanOrEqual(4);
+    expect(healthBody.schemaHealth?.expenses_count).toBeGreaterThanOrEqual(10);
+
     await page.goto('/');
 
     // 1. Home Screen Minimalism & Contextual Help Guide

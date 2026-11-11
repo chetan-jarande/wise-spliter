@@ -4,13 +4,18 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 4173",
+    "dev": "node scripts/dev-stack.mjs",
+    "dev:web": "vite --host 0.0.0.0 --port 4173",
+    "dev:api": "bun run src/server/index.ts",
+    "api": "bun run src/server/index.ts",
     "start": "vite preview --host 0.0.0.0 --port 4173",
     "build": "tsc -b && vite build",
     "test": "vitest run tests/unit",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "migrate:up": "node scripts/apply-migration.mjs local",
+    "migrate:verify": "node scripts/apply-migration.mjs verify"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.7",

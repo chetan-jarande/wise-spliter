@@ -3,6 +3,7 @@ dist/
 .superpowers/
 playwright-report/
 test-results/
+logs/
 *.log
 .DS_Store
 .env

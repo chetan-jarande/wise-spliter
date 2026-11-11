@@ -198,7 +198,10 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       // Ignore storage quota issues
     }
     void saveDatasetToIndexedDb(dataset);
-  }, [dataset]);
+    if (isOnline) {
+      void wiseSpliterSyncEngine.pushDatasetToBackendApi(dataset);
+    }
+  }, [dataset, isOnline]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -328,6 +331,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     setPendingOutboxCount(0);
     const nowIso = new Date().toISOString();
     void wiseSpliterSyncEngine.flushOutbox(countToFlush);
+    void wiseSpliterSyncEngine.pushDatasetToBackendApi(dataset);
     setDataset((d) => ({
       ...d,
       currentUser: {

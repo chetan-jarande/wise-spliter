@@ -1,0 +1,35 @@
+name: wise-spliter
+
+services:
+  supabase-preflight:
+    image: wise-spliter:dev
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+
+  api:
+    image: wise-spliter:dev
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - API_PORT=4174
+    command: bun run src/server/index.ts
+
+  app:
+    image: wise-spliter:dev
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - APP_PORT=4173
+      - VITE_API_BASE_URL=http://api:4174
+    command: bun run dev:web --port 4173

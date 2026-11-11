@@ -1,0 +1,110 @@
+# Wise-Spliter - local container stack: Backend API, Frontend App,
+# Supabase preflight check for `wise_spliter` schema, and migration runner.
+# Modeled on merry-tools/docker-compose.yml.
+
+name: wise-spliter
+
+x-app-base: &app-base
+  image: wise-spliter:local
+  build:
+    context: .
+    dockerfile: Dockerfile
+  init: true
+  restart: unless-stopped
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+services:
+  supabase-preflight:
+    <<: *app-base
+    restart: "no"
+    environment:
+      SUPABASE_URL: http://host.docker.internal:54321
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:-sb_secret_N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz}
+      SUPABASE_SCHEMA: ${SUPABASE_SCHEMA:-wise_spliter}
+    command:
+      - bun
+      - -e
+      - |
+        const url = process.env.SUPABASE_URL || "http://host.docker.internal:54321";
+        const key = process.env.SUPABASE_SECRET_KEY;
+        const schema = process.env.SUPABASE_SCHEMA || "wise_spliter";
+        const headers = {
+          apikey: key,
+          Authorization: "Bearer " + key,
+          "Accept-Profile": schema,
+          "Content-Profile": schema,
+        };
+        const die = (msg) => {
+          console.error("\n[preflight] " + msg + "\n");
+          process.exit(1);
+        };
+        (async () => {
+          let res;
+          try {
+            res = await fetch(url + "/rest/v1/groups?limit=1", { headers });
+          } catch {
+            die("Cannot reach centralized Supabase at " + url + ". Run `make supabase-up` first.");
+          }
+          if (!res.ok) {
+            const body = await res.text();
+            die("wise_spliter.groups probe failed (HTTP " + res.status + "): " + body.slice(0, 200) + "\nRun `make migrate-up` first.");
+          }
+          const fn = await fetch(url + "/rest/v1/rpc/schema_health", {
+            method: "POST",
+            headers: { ...headers, "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          if (!fn.ok) {
+            const fnBody = await fn.text();
+            die("wise_spliter.schema_health RPC failed (HTTP " + fn.status + "): " + fnBody.slice(0, 200));
+          }
+          console.log("[preflight] OK - Centralized Supabase reachable, wise_spliter schema & RPC verified.");
+        })();
+
+  api:
+    <<: *app-base
+    ports:
+      - "4174:4174"
+    environment:
+      API_PORT: 4174
+      SUPABASE_URL: http://host.docker.internal:54321
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:-sb_secret_N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz}
+      SUPABASE_SCHEMA: ${SUPABASE_SCHEMA:-wise_spliter}
+    command: ["bun", "run", "src/server/index.ts"]
+    depends_on:
+      supabase-preflight:
+        condition: service_completed_successfully
+
+  app:
+    <<: *app-base
+    ports:
+      - "4173:4173"
+    environment:
+      APP_PORT: 4173
+      VITE_API_BASE_URL: http://api:4174
+    command: ["bun", "run", "start", "--port", "4173"]
+    depends_on:
+      api:
+        condition: service_started
+
+  migrate:
+    image: postgres:17-alpine
+    profiles: ["migrate"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./supabase/migrations:/migrations:ro
+    environment:
+      PGPASSWORD: postgres
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        for f in /migrations/*.sql; do
+          echo "==> applying $$f"
+          psql -v ON_ERROR_STOP=1 -1 \
+            -h host.docker.internal -p 54322 -U postgres -d postgres -f "$$f"
+        done
+        echo "==> all wise_spliter migrations applied"

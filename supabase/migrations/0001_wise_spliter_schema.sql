@@ -1,18 +1,20 @@
 -- Wise-Spliter Custom Supabase Schema Migration (wise_spliter)
--- Strictly isolated from `public` schema.
+-- Strictly isolated from `public` schema. Compatible with centralized local Supabase & hosted Supabase.
 
 CREATE SCHEMA IF NOT EXISTS wise_spliter;
 
 REVOKE ALL ON SCHEMA wise_spliter FROM PUBLIC, anon;
-GRANT USAGE ON SCHEMA wise_spliter TO authenticated, service_role;
+GRANT USAGE ON SCHEMA wise_spliter TO authenticated, service_role, postgres;
 
 CREATE TABLE IF NOT EXISTS wise_spliter.profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
   full_name TEXT NOT NULL,
+  avatar_initials TEXT NOT NULL DEFAULT 'US',
   avatar_url TEXT,
   default_currency TEXT NOT NULL DEFAULT 'INR',
   upi_id TEXT,
+  google_connected BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   hlc TEXT NOT NULL,
@@ -20,7 +22,7 @@ CREATE TABLE IF NOT EXISTS wise_spliter.profiles (
 );
 
 CREATE TABLE IF NOT EXISTS wise_spliter.groups (
-  id UUID PRIMARY KEY,
+  id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   category TEXT NOT NULL DEFAULT 'trip',
@@ -29,7 +31,7 @@ CREATE TABLE IF NOT EXISTS wise_spliter.groups (
   default_split_config JSONB,
   expense_seq INTEGER NOT NULL DEFAULT 0,
   invite_code TEXT NOT NULL UNIQUE,
-  created_by UUID NOT NULL REFERENCES wise_spliter.profiles(id),
+  created_by TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_accessed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -43,9 +45,9 @@ CREATE INDEX IF NOT EXISTS idx_groups_recent_activity
   WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS wise_spliter.group_members (
-  id UUID PRIMARY KEY,
-  group_id UUID NOT NULL REFERENCES wise_spliter.groups(id) ON DELETE CASCADE,
-  user_id UUID REFERENCES wise_spliter.profiles(id) ON DELETE SET NULL,
+  id TEXT PRIMARY KEY,
+  group_id TEXT NOT NULL REFERENCES wise_spliter.groups(id) ON DELETE CASCADE,
+  user_id TEXT,
   invited_email TEXT,
   display_name TEXT NOT NULL,
   avatar_initials TEXT NOT NULL DEFAULT 'GM',
@@ -60,16 +62,19 @@ CREATE TABLE IF NOT EXISTS wise_spliter.group_members (
   server_seq BIGINT GENERATED ALWAYS AS IDENTITY
 );
 
+CREATE INDEX IF NOT EXISTS idx_group_members_group_id
+  ON wise_spliter.group_members (group_id);
+
 CREATE TABLE IF NOT EXISTS wise_spliter.expenses (
-  id UUID PRIMARY KEY,
+  id TEXT PRIMARY KEY,
   -- Nullable group_id: NULL when expense is a direct non-group split created from Home screen
-  group_id UUID REFERENCES wise_spliter.groups(id) ON DELETE CASCADE,
+  group_id TEXT REFERENCES wise_spliter.groups(id) ON DELETE CASCADE,
   ad_hoc_participants JSONB NOT NULL DEFAULT '[]',
   title TEXT NOT NULL,
   category TEXT NOT NULL DEFAULT 'general',
   tags TEXT[] NOT NULL DEFAULT '{}',
   notes TEXT NOT NULL DEFAULT '',
-  expense_date DATE NOT NULL,
+  expense_date TEXT NOT NULL,
   original_currency TEXT NOT NULL,
   original_amount_minor BIGINT NOT NULL CHECK (original_amount_minor > 0),
   group_currency TEXT NOT NULL,
@@ -79,14 +84,16 @@ CREATE TABLE IF NOT EXISTS wise_spliter.expenses (
   fx_audit_note TEXT,
   split_mode TEXT NOT NULL CHECK (split_mode IN ('equal', 'exact', 'percentage', 'shares', 'adjustment')),
   rotation_seed INTEGER NOT NULL DEFAULT 0,
-  payers JSONB NOT NULL,
-  splits JSONB NOT NULL,
-  current_revision_id UUID NOT NULL,
+  payers JSONB NOT NULL DEFAULT '[]',
+  splits JSONB NOT NULL DEFAULT '[]',
+  comments JSONB NOT NULL DEFAULT '[]',
+  receipts JSONB NOT NULL DEFAULT '[]',
+  current_revision_id TEXT NOT NULL,
   revision_number INTEGER NOT NULL DEFAULT 1,
   has_unresolved_conflict BOOLEAN NOT NULL DEFAULT false,
-  conflict_revision_id UUID,
-  created_by UUID NOT NULL REFERENCES wise_spliter.profiles(id),
-  updated_by UUID NOT NULL REFERENCES wise_spliter.profiles(id),
+  conflict_revision_id TEXT,
+  created_by_member_id TEXT NOT NULL,
+  updated_by_member_id TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at TIMESTAMPTZ,
@@ -94,17 +101,20 @@ CREATE TABLE IF NOT EXISTS wise_spliter.expenses (
   server_seq BIGINT GENERATED ALWAYS AS IDENTITY
 );
 
-CREATE INDEX IF NOT EXISTS idx_expenses_standalone_creator
-  ON wise_spliter.expenses (created_by, expense_date DESC)
+CREATE INDEX IF NOT EXISTS idx_expenses_group_id
+  ON wise_spliter.expenses (group_id);
+
+CREATE INDEX IF NOT EXISTS idx_expenses_standalone
+  ON wise_spliter.expenses (created_by_member_id)
   WHERE group_id IS NULL AND deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS wise_spliter.expense_revisions (
-  id UUID PRIMARY KEY,
-  expense_id UUID NOT NULL REFERENCES wise_spliter.expenses(id) ON DELETE CASCADE,
-  group_id UUID REFERENCES wise_spliter.groups(id) ON DELETE CASCADE,
+  id TEXT PRIMARY KEY,
+  expense_id TEXT NOT NULL REFERENCES wise_spliter.expenses(id) ON DELETE CASCADE,
+  group_id TEXT REFERENCES wise_spliter.groups(id) ON DELETE CASCADE,
   revision_number INTEGER NOT NULL,
-  base_revision_id UUID,
-  actor_user_id UUID NOT NULL REFERENCES wise_spliter.profiles(id),
+  base_revision_id TEXT,
+  actor_member_id TEXT NOT NULL,
   actor_display_name TEXT NOT NULL,
   action TEXT NOT NULL,
   changes_json JSONB NOT NULL DEFAULT '[]',
@@ -116,20 +126,17 @@ CREATE TABLE IF NOT EXISTS wise_spliter.expense_revisions (
 );
 
 CREATE TABLE IF NOT EXISTS wise_spliter.settlements (
-  id UUID PRIMARY KEY,
-  group_id UUID REFERENCES wise_spliter.groups(id) ON DELETE CASCADE,
-  batch_settlement_id UUID,
-  from_member_id UUID NOT NULL,
-  to_member_id UUID NOT NULL,
-  from_display_name TEXT,
-  to_display_name TEXT,
+  id TEXT PRIMARY KEY,
+  group_id TEXT REFERENCES wise_spliter.groups(id) ON DELETE CASCADE,
+  batch_settlement_id TEXT,
+  from_member_id TEXT NOT NULL,
+  to_member_id TEXT NOT NULL,
   amount_minor BIGINT NOT NULL CHECK (amount_minor > 0),
   currency TEXT NOT NULL,
   payment_method TEXT NOT NULL DEFAULT 'upi',
   payment_reference TEXT,
   notes TEXT NOT NULL DEFAULT '',
-  settled_date DATE NOT NULL,
-  created_by UUID REFERENCES wise_spliter.profiles(id),
+  settled_date TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at TIMESTAMPTZ,
   hlc TEXT NOT NULL,
@@ -137,12 +144,12 @@ CREATE TABLE IF NOT EXISTS wise_spliter.settlements (
 );
 
 CREATE TABLE IF NOT EXISTS wise_spliter.group_activity_log (
-  id UUID PRIMARY KEY,
-  group_id UUID REFERENCES wise_spliter.groups(id) ON DELETE CASCADE,
-  actor_user_id UUID NOT NULL REFERENCES wise_spliter.profiles(id),
+  id TEXT PRIMARY KEY,
+  group_id TEXT REFERENCES wise_spliter.groups(id) ON DELETE CASCADE,
+  actor_member_id TEXT NOT NULL,
   actor_display_name TEXT NOT NULL,
   entity_type TEXT NOT NULL,
-  entity_id UUID NOT NULL,
+  entity_id TEXT NOT NULL,
   action TEXT NOT NULL,
   summary_text TEXT NOT NULL,
   detail_note TEXT NOT NULL DEFAULT '',
@@ -152,41 +159,34 @@ CREATE TABLE IF NOT EXISTS wise_spliter.group_activity_log (
   server_seq BIGINT GENERATED ALWAYS AS IDENTITY
 );
 
-CREATE OR REPLACE FUNCTION wise_spliter.is_group_member(target_group_id UUID)
-RETURNS BOOLEAN
+-- Health / readiness RPC function in wise_spliter schema for preflight & migration verification
+CREATE OR REPLACE FUNCTION wise_spliter.schema_health()
+RETURNS JSONB
 LANGUAGE sql
 SECURITY DEFINER
 STABLE
 SET search_path = wise_spliter
 AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM wise_spliter.group_members gm
-    WHERE gm.group_id = target_group_id
-      AND gm.user_id = auth.uid()
-      AND gm.removed_at IS NULL
+  SELECT jsonb_build_object(
+    'ok', true,
+    'schema', 'wise_spliter',
+    'groups_count', (SELECT count(*) FROM wise_spliter.groups),
+    'expenses_count', (SELECT count(*) FROM wise_spliter.expenses)
   );
 $$;
 
-CREATE OR REPLACE FUNCTION wise_spliter.can_access_expense(
-  target_group_id UUID,
-  creator_id UUID,
-  ad_hoc_participants JSONB
-)
-RETURNS BOOLEAN
-LANGUAGE sql
-SECURITY DEFINER
-STABLE
-SET search_path = wise_spliter
-AS $$
-  SELECT CASE
-    WHEN target_group_id IS NOT NULL THEN wise_spliter.is_group_member(target_group_id)
-    ELSE (
-      creator_id = auth.uid()
-      OR ad_hoc_participants @> jsonb_build_array(jsonb_build_object('userId', auth.uid()::text))
-    )
-  END;
-$$;
+-- Explicit grants for PostgREST roles (service_role and authenticated)
+GRANT USAGE ON SCHEMA wise_spliter TO service_role, authenticated;
+GRANT ALL ON ALL TABLES IN SCHEMA wise_spliter TO service_role, authenticated;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA wise_spliter TO service_role, authenticated;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA wise_spliter TO service_role, authenticated;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA wise_spliter
+  GRANT ALL ON TABLES TO service_role, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA wise_spliter
+  GRANT ALL ON SEQUENCES TO service_role, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA wise_spliter
+  GRANT EXECUTE ON FUNCTIONS TO service_role, authenticated;
 
 ALTER TABLE wise_spliter.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wise_spliter.groups ENABLE ROW LEVEL SECURITY;
@@ -195,3 +195,5 @@ ALTER TABLE wise_spliter.expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wise_spliter.expense_revisions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wise_spliter.settlements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wise_spliter.group_activity_log ENABLE ROW LEVEL SECURITY;
+
+NOTIFY pgrst, 'reload schema';
