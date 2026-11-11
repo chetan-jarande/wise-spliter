@@ -1,25 +1,25 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
-  ArrowRight,
-  ArrowsLeftRight,
-  Bank,
-  Check,
-  CheckCircle,
-  Copy,
-  CreditCard,
-  DeviceMobile,
-  Info,
-  Lightning,
-  LinkSimple,
-  Money,
-  QrCode,
-  Receipt,
-  ShieldCheck,
-  Sparkle,
-  UsersThree,
-  Wallet,
-  WhatsappLogo,
+  ArrowRightIcon as ArrowRight,
+  ArrowsLeftRightIcon as ArrowsLeftRight,
+  BankIcon as Bank,
+  CheckIcon as Check,
+  CheckCircleIcon as CheckCircle,
+  CopyIcon as Copy,
+  CreditCardIcon as CreditCard,
+  DeviceMobileIcon as DeviceMobile,
+  InfoIcon as Info,
+  LightningIcon as Lightning,
+  LinkSimpleIcon as LinkSimple,
+  MoneyIcon as Money,
+  QrCodeIcon as QrCode,
+  ReceiptIcon as Receipt,
+  ShieldCheckIcon as ShieldCheck,
+  SparkleIcon as Sparkle,
+  UsersThreeIcon as UsersThree,
+  WalletIcon as Wallet,
+  WhatsappLogoIcon as WhatsappLogo,
 } from '@phosphor-icons/react';
 import { useLedger } from '../../state/LedgerContext';
 import {
@@ -377,7 +377,7 @@ export function FriendsAndSettlePage() {
     }, 0);
   };
 
-  const handleRecordSettlementSubmit = (e: React.FormEvent) => {
+  const handleRecordSettlementSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!fromMember || !toMember) return;
 
@@ -1257,7 +1257,7 @@ export function FriendsAndSettlePage() {
                     value={upiUri}
                     size={132}
                     level="M"
-                    includeMargin={false}
+                    marginSize={0}
                   />
                 </div>
 

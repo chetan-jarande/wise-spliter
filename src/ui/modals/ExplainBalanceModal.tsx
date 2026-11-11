@@ -1,12 +1,12 @@
 import React, { useMemo } from 'react';
 import {
-  ArrowRight,
-  Calculator,
-  CheckCircle,
-  GitDiff,
-  Receipt,
-  Scales,
-  X,
+  ArrowRightIcon as ArrowRight,
+  CalculatorIcon as Calculator,
+  CheckCircleIcon as CheckCircle,
+  GitDiffIcon as GitDiff,
+  ReceiptIcon as Receipt,
+  ScalesIcon as Scales,
+  XIcon as X,
 } from '@phosphor-icons/react';
 import { useLedger } from '../../state/LedgerContext';
 import {

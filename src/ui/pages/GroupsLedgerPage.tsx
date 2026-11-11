@@ -1,31 +1,31 @@
 import React, { useMemo, useState } from 'react';
 import {
-  ArrowCounterClockwise,
-  ArrowRight,
-  ArrowsClockwise,
-  ArrowsLeftRight,
-  Calculator,
-  ChatCircleText,
-  CheckCircle,
-  Coins,
-  Funnel,
-  GitDiff,
-  GoogleLogo,
-  HandCoins,
-  Lightning,
-  MagnifyingGlass,
-  NotePencil,
-  Paperclip,
-  Plus,
-  Receipt,
-  Scales,
-  ShieldCheck,
-  Sparkle,
-  Trash,
-  UserPlus,
-  Users,
-  Warning,
-  X,
+  ArrowCounterClockwiseIcon as ArrowCounterClockwise,
+  ArrowRightIcon as ArrowRight,
+  ArrowsClockwiseIcon as ArrowsClockwise,
+  ArrowsLeftRightIcon as ArrowsLeftRight,
+  CalculatorIcon as Calculator,
+  ChatCircleTextIcon as ChatCircleText,
+  CheckCircleIcon as CheckCircle,
+  CoinsIcon as Coins,
+  FunnelIcon as Funnel,
+  GitDiffIcon as GitDiff,
+  GoogleLogoIcon as GoogleLogo,
+  HandCoinsIcon as HandCoins,
+  LightningIcon as Lightning,
+  MagnifyingGlassIcon as MagnifyingGlass,
+  NotePencilIcon as NotePencil,
+  PaperclipIcon as Paperclip,
+  PlusIcon as Plus,
+  ReceiptIcon as Receipt,
+  ScalesIcon as Scales,
+  ShieldCheckIcon as ShieldCheck,
+  SparkleIcon as Sparkle,
+  TrashIcon as Trash,
+  UserPlusIcon as UserPlus,
+  UsersIcon as Users,
+  WarningIcon as Warning,
+  XIcon as X,
 } from '@phosphor-icons/react';
 import { useLedger } from '../../state/LedgerContext';
 import { ExpenseCategoryKey, ExpenseItem, GroupRecord } from '../../types/ledger';
@@ -248,7 +248,7 @@ export function GroupsLedgerPage() {
     setShowCurrencyChanger(false);
   };
 
-  const handleCreateGroupSubmit = (e: React.FormEvent) => {
+  const handleCreateGroupSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!newGroupName.trim()) return;
     createGroup({
@@ -263,7 +263,7 @@ export function GroupsLedgerPage() {
     setShowCreateGroup(false);
   };
 
-  const handleAddMemberSubmit = (e: React.FormEvent) => {
+  const handleAddMemberSubmit = (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!memberNameInput.trim()) return;
     addMemberToGroup(activeGroup.id, {

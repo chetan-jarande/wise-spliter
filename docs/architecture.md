@@ -31,9 +31,16 @@ Wise-Spliter is engineered as a 5-layer local-first, mathematically deterministi
 * **Offline Receipt Blob Store (`local_receipt_blobs`):** Compressed WebP receipt images are stored immediately in the Dexie.js IndexedDB table `local_receipt_blobs` so receipts render and work 100% offline during flights and trips before cloud synchronization.
 * **Sub-Millisecond Offline Reads/Writes & `syncOutbox` FIFO Queue:** Every user action commits immediately to the local state and `IndexedDB` in `< 1ms` and appends an ordered mutation record (`id`, `entityType`, `action`, `payloadJson`, `createdAt`, `hlc`) to `syncOutbox`. Whether the user is on an airplane or flaky travel Wi-Fi, the app remains 100% interactive and flushes `syncOutbox` and pending `local_receipt_blobs` to the Backend API when connectivity is available.
 
-### Layer 4: Backend API & Sync Gatekeeper Service (`src/server/index.ts` & `src/server/supabaseAdmin.ts` on Port `4174`, Proxied at `/api/*`)
+### Layer 4: Backend API & Sync Gatekeeper Service (`src/server/index.ts`, `src/server/supabaseAdmin.ts` & `src/server/securityAndAuth.ts` on Port `4174`, Proxied at `/api/*`)
 This layer explicitly governs **"Why we have a Backend API and Who Updates the Database"**:
+* **Official `@supabase/supabase-js` Client/Server Pattern (Modeled on `merry-tools`):**
+  * **Server Admin Singleton (`src/server/supabaseAdmin.ts`):** Uses `createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }, db: { schema: SUPABASE_SCHEMA } })` from `@supabase/supabase-js` so all server-side queries, RPC calls (`schema_health`, `pull_changes`, `push_mutations`), and Storage uploads (`wise-spliter-receipts`) target the `wise_spliter` schema cleanly.
+  * **Browser Sync Client (`src/sync-engine/supabase-sync.ts`):** Uses `createClient(VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, { db: { schema: 'wise_spliter' }, auth: { persistSession: true, autoRefreshToken: true } })` for Google OAuth (`signInWithOAuth`) and session token management, paired with `.env.example` / `.env.development` / `.env.production` environment separation.
 * **Strict Secret Isolation:** The browser client **NEVER** holds or receives `SUPABASE_SECRET_KEY` (`service_role`). All privileged credentials remain strictly inside the Node/Bun Backend API process (`src/server/`).
+* **Authentication (`HTTP 401`) & User/Group Isolation (`HTTP 403` IDOR Protection in `src/server/securityAndAuth.ts`):**
+  * **Authentication (`verifyRequestAuth` -> `HTTP 401`):** Protects `/api/ledger/bootstrap`, `/api/ledger/sync`, `/api/ledger/pull-changes`, `/api/ledger/push-mutations`, and `/api/receipts/upload`. Verifies either an HMAC-SHA256 session token issued by `POST /api/auth/session` (signed with `GRANT_TOKEN_SECRET` and verified via `timingSafeEqual`) or an official Supabase Auth JWT verified via `getSupabaseAdmin().auth.getUser(token)`. Unauthenticated or tampered requests are rejected with `HTTP 401`.
+  * **User-Level & Group-Membership Isolation (`authorizeDatasetSyncForUser` & `filterDatasetForUser` -> `HTTP 403`):** Scopes read responses solely to groups where the caller is a member (`userId` or `invitedEmail`) and standalone expenses (`groupId === null`) where `adHocParticipants` contains the caller. Blocks cross-user profile impersonation, unauthorized group creation/modification, existing DB group hijacking (IDOR), and unauthorized receipt/expense targets with `HTTP 403`.
+  * **Security Headers, CORS Allowlist & Rate Limiting (`HTTP 429`):** Enforces `ALLOWED_ORIGINS` CORS headers, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Permissions-Policy`, and fixed-window per-IP rate limiting (default 120 req/min).
 * **Mathematical Invariant Gatekeeper:** Before any expense or settlement mutation touches PostgreSQL, the Backend API validates hard financial invariants:
   $$\sum_{p \in \text{payers}} p.\text{paid\_minor} == \text{amount\_minor} == \sum_{s \in \text{splits}, s.\text{included}} s.\text{owed\_minor}$$
   Payloads that violate conservation laws or have invalid split parameters are rejected with `HTTP 400` / `HTTP 422` before reaching the database.
@@ -355,3 +362,20 @@ Running `make dev` executes the following end-to-end startup pipeline:
 Running `make docker-up-dev` orchestrates the containerized development stack via Docker Compose:
 * Connects the Wise-Spliter Backend (`:4174`) and Frontend (`:4173`) containers to the centralized Supabase stack via `host.docker.internal:54321` / `:54322`.
 * Runs the migration verifier (`scripts/apply-migration.mjs`) prior to serving traffic so the `wise_spliter` schema is guaranteed ready before the UI accepts requests.
+
+---
+
+## 4. Quality Gates, Zero-Deprecation Enforcement & 6-Story E2E Verification Standard
+
+1. **Zero-Deprecation Enforcement (`scripts/check-deprecations.mjs`):**
+   * `make typecheck` runs `tsc --noEmit && node scripts/check-deprecations.mjs`, scanning every file in the TypeScript program for `reportsDeprecated` (`TS6385` / `TS6387`).
+   * Enforces canonical `@phosphor-icons/react` `*Icon` imports, React 19 `React.SyntheticEvent<HTMLFormElement>` form handlers, and pure bitwise `Uint8Array` base64 conversion (`src/portability/portability-engine.ts`).
+2. **15-Test Domain, Portability, IndexedDB & Security Unit Suite (`tests/unit/domain-and-portability.test.ts`):**
+   * Validates 170+ ISO-4217 currencies (`0, 2, 3` decimals), Splitwise-parity FX audit notes, deterministic rotating remainders, `fast-check` conservation properties, Bitmask-DP debt simplification, Dexie IndexedDB + `localReceiptBlobs` persistence, `.xlsx`/`.pdf`/`AES-256-GCM` exports, and `HTTP 401` / `HTTP 403` security isolation.
+3. **6-Story Full-Stack Playwright E2E Verification (`tests/e2e/wise-spliter.spec.ts`):**
+   * **Story 1:** Minimalist Home Dashboard (`<= 3` recent groups), `ContextualPageGuideBanner`, `HelpGuideModal`, and Direct Non-Group Split (`group_id = null` with `ad_hoc_participants`) synced via `POST /api/ledger/sync`.
+   * **Story 2:** Progressive Group Workspace, Concurrent Offline Conflict Resolution (`[Keep Yours] / [Keep Theirs]`), `ExplainBalanceModal`, all 5 Split Modes (`equal`, `exact`, `percentage`, `shares`, `adjustment`), Multiple Payers, Foreign FX conversion, Rotating Remainder, and WebP Receipt upload (`POST /api/receipts/upload`).
+   * **Story 3:** Group Management (Simplify Debts toggle, Base Currency Re-denomination Mode A/B, Unclaimed Member add/claim, and New Group creation).
+   * **Story 4:** Transparent Activity History (Group & Global), Per-Expense Revision History restore, and Trash Recovery Vault restore.
+   * **Story 5:** Friends Cross-Group Net Balances, 1-Tap Atomic Cross-Group Settle Up, UPI QR Studio, and WhatsApp Summary export.
+   * **Story 6:** Insights & Global Search across `0, 2, 3` decimal currencies (`JPY`, `INR`, `KWD`), Splitwise CSV import, `.xlsx`/`.pdf`/`AES-256-GCM` portability, and live Backend API `HTTP 401` / `HTTP 403` IDOR security verification.

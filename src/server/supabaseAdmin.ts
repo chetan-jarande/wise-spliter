@@ -1,9 +1,13 @@
 /**
- * Server-only Supabase Data API client for Wise-Spliter.
- * Targets centralized local Supabase (127.0.0.1:54321) or hosted Supabase
- * with strict schema isolation (`Accept-Profile: wise_spliter`, `Content-Profile: wise_spliter`).
+ * Server-only Supabase Data API & Storage Admin client for Wise-Spliter.
+ * Modeled after `merry-tools/src/app/api/_payments/supabaseClient.ts`.
+ *
+ * SERVER-ONLY: `SUPABASE_SECRET_KEY` bypasses Row Level Security entirely and
+ * must never be imported from code that reaches the browser bundle.
  */
 
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import initialMockData from '../data/mock-ledger-data.json';
 import {
   AdHocParticipant,
   DefaultSplitPreset,
@@ -38,108 +42,166 @@ export const SUPABASE_SCHEMA = (
   process.env.SUPABASE_SCHEMA || 'wise_spliter'
 ).trim();
 
-export interface RestResponse<T = unknown> {
-  ok: boolean;
-  status: number;
-  data: T | null;
-  errorText?: string;
+export interface SupabaseCreds {
+  url: string;
+  secretKey: string;
+  schema: string;
 }
 
-export async function restRequest<T = unknown>(
-  tableOrRpcPath: string,
-  init: RequestInit = {}
-): Promise<RestResponse<T>> {
-  const path = tableOrRpcPath.startsWith('/')
-    ? tableOrRpcPath
-    : `/rest/v1/${tableOrRpcPath}`;
-  const url = `${SUPABASE_URL}${path}`;
+export function readSupabaseCreds(): SupabaseCreds | null {
+  const url = (process.env.SUPABASE_URL || SUPABASE_URL).trim();
+  const secretKey = (
+    process.env.SUPABASE_SECRET_KEY || SUPABASE_SECRET_KEY
+  ).trim();
+  const schema = (process.env.SUPABASE_SCHEMA || SUPABASE_SCHEMA).trim();
+  if (!url || !secretKey) return null;
+  return { url, secretKey, schema: schema || 'wise_spliter' };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let adminClient: any = null;
+
+/**
+ * Process-wide Supabase admin client using official `@supabase/supabase-js`
+ * with `persistSession: false`, `autoRefreshToken: false`, `detectSessionInUrl: false`,
+ * and `db: { schema: SUPABASE_SCHEMA }`.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getSupabaseAdmin(): any {
+  if (adminClient) return adminClient;
+  const creds = readSupabaseCreds();
+  if (!creds) {
+    throw new Error('supabase-not-configured');
+  }
+  adminClient = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+    db: {
+      schema: SUPABASE_SCHEMA,
+    },
+  }) as SupabaseClient;
+  return adminClient;
+}
+
+export interface ExistingDbGroupOwnership {
+  id: string;
+  created_by: string;
+  members: Array<{
+    user_id: string | null;
+    invited_email: string | null;
+  }>;
+}
+
+const persistedGroupsOwnershipCache = new Map<
+  string,
+  ExistingDbGroupOwnership
+>();
+
+function seedInitialOwnershipCache(): void {
+  if (persistedGroupsOwnershipCache.size > 0) return;
+  const seed = initialMockData as unknown as MockLedgerDataset;
+  const ownerId = seed.currentUser?.id || 'usr_arjun_01';
+  for (const g of seed.groups ?? []) {
+    persistedGroupsOwnershipCache.set(g.id, {
+      id: g.id,
+      created_by: ownerId,
+      members: (g.members ?? []).map((m) => ({
+        user_id: m.userId ?? null,
+        invited_email: m.invitedEmail ?? null,
+      })),
+    });
+  }
+}
+
+seedInitialOwnershipCache();
+
+export async function fetchExistingDbGroups(): Promise<
+  ExistingDbGroupOwnership[]
+> {
+  seedInitialOwnershipCache();
+  const merged = new Map<string, ExistingDbGroupOwnership>(
+    persistedGroupsOwnershipCache
+  );
 
   try {
-    const res = await fetch(url, {
-      ...init,
-      headers: {
-        apikey: SUPABASE_SECRET_KEY,
-        Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
-        'Accept-Profile': SUPABASE_SCHEMA,
-        'Content-Profile': SUPABASE_SCHEMA,
-        'Content-Type': 'application/json',
-        ...(init.headers || {}),
-      },
-    });
+    const [groupsRes, membersRes] = await Promise.all([
+      getSupabaseAdmin().from('groups').select('id, created_by'),
+      getSupabaseAdmin()
+        .from('group_members')
+        .select('group_id, user_id, invited_email'),
+    ]);
 
-    const text = await res.text();
-    if (!res.ok) {
-      return {
-        ok: false,
-        status: res.status,
-        data: null,
-        errorText: text,
-      };
-    }
+    if (!groupsRes.error && Array.isArray(groupsRes.data)) {
+      const membersByGroupId = new Map<
+        string,
+        Array<{ user_id: string | null; invited_email: string | null }>
+      >();
+      if (!membersRes.error && Array.isArray(membersRes.data)) {
+        for (const m of membersRes.data as Array<{
+          group_id: string;
+          user_id: string | null;
+          invited_email: string | null;
+        }>) {
+          const list = membersByGroupId.get(m.group_id) ?? [];
+          list.push({
+            user_id: m.user_id ?? null,
+            invited_email: m.invited_email ?? null,
+          });
+          membersByGroupId.set(m.group_id, list);
+        }
+      }
 
-    if (!text) {
-      return { ok: true, status: res.status, data: null };
+      for (const g of groupsRes.data as Array<{
+        id: string;
+        created_by: string;
+      }>) {
+        const record: ExistingDbGroupOwnership = {
+          id: g.id,
+          created_by: g.created_by,
+          members:
+            membersByGroupId.get(g.id) ??
+            merged.get(g.id)?.members ??
+            [],
+        };
+        merged.set(g.id, record);
+        persistedGroupsOwnershipCache.set(g.id, record);
+      }
     }
-
-    try {
-      return {
-        ok: true,
-        status: res.status,
-        data: JSON.parse(text) as T,
-      };
-    } catch {
-      return {
-        ok: true,
-        status: res.status,
-        data: text as unknown as T,
-      };
-    }
-  } catch (err) {
-    return {
-      ok: false,
-      status: 0,
-      data: null,
-      errorText: err instanceof Error ? err.message : 'Network error',
-    };
+  } catch {
+    // Fallback to in-memory ownership cache when DB is unreachable
   }
-}
 
-async function upsertTableRows(
-  table: string,
-  rows: Record<string, unknown>[]
-): Promise<RestResponse> {
-  if (rows.length === 0) {
-    return { ok: true, status: 200, data: null };
-  }
-  return restRequest(`/rest/v1/${table}?on_conflict=id`, {
-    method: 'POST',
-    headers: {
-      Prefer: 'resolution=merge-duplicates,return=minimal',
-    },
-    body: JSON.stringify(rows),
-  });
+  return Array.from(merged.values());
 }
 
 export async function checkSupabaseSchemaHealth(): Promise<{
   reachable: boolean;
   schemaHealth: Record<string, unknown> | null;
 }> {
-  const res = await restRequest<Record<string, unknown>>(
-    '/rest/v1/rpc/schema_health',
-    {
-      method: 'POST',
-      body: JSON.stringify({}),
+  try {
+    const { data, error } = await getSupabaseAdmin().rpc('schema_health');
+    if (!error && data && typeof data === 'object') {
+      return {
+        reachable: true,
+        schemaHealth: data as Record<string, unknown>,
+      };
     }
-  );
+  } catch {
+    // Ignore network errors and report unreachable
+  }
   return {
-    reachable: res.ok,
-    schemaHealth: res.data,
+    reachable: false,
+    schemaHealth: null,
   };
 }
 
 export async function syncDatasetToSupabase(
   dataset: MockLedgerDataset
 ): Promise<{ ok: boolean; error?: string }> {
+  seedInitialOwnershipCache();
   const nowIso = new Date().toISOString();
   const fallbackHlc = `${Date.now().toString(16).padStart(12, '0')}-0001-${dataset.currentUser.id}`;
 
@@ -158,23 +220,43 @@ export async function syncDatasetToSupabase(
     },
   ];
 
-  const groupRows = dataset.groups.map((g) => ({
-    id: g.id,
-    name: g.name,
-    description: g.description,
-    category: g.category,
-    base_currency: g.baseCurrency,
-    simplify_debts: g.simplifyDebts,
-    default_split_config: g.defaultSplitConfig,
-    expense_seq: g.expenseSeq,
-    invite_code: g.inviteCode,
-    created_by: dataset.currentUser.id,
-    created_at: g.createdAt,
-    updated_at: g.updatedAt,
-    last_accessed_at: g.lastAccessedAt ?? g.updatedAt,
-    deleted_at: g.deletedAt,
-    hlc: g.hlc || fallbackHlc,
-  }));
+  const groupRows = dataset.groups.map((g) => {
+    const existingOwner =
+      persistedGroupsOwnershipCache.get(g.id)?.created_by ||
+      dataset.currentUser.id;
+    return {
+      id: g.id,
+      name: g.name,
+      description: g.description,
+      category: g.category,
+      base_currency: g.baseCurrency,
+      simplify_debts: g.simplifyDebts,
+      default_split_config: g.defaultSplitConfig,
+      expense_seq: g.expenseSeq,
+      invite_code: g.inviteCode,
+      created_by: existingOwner,
+      created_at: g.createdAt,
+      updated_at: g.updatedAt,
+      last_accessed_at: g.lastAccessedAt ?? g.updatedAt,
+      deleted_at: g.deletedAt,
+      hlc: g.hlc || fallbackHlc,
+    };
+  });
+
+  // Update ownership cache for existing/new groups
+  for (const g of dataset.groups) {
+    const existingOwner =
+      persistedGroupsOwnershipCache.get(g.id)?.created_by ||
+      dataset.currentUser.id;
+    persistedGroupsOwnershipCache.set(g.id, {
+      id: g.id,
+      created_by: existingOwner,
+      members: (g.members ?? []).map((m) => ({
+        user_id: m.userId ?? null,
+        invited_email: m.invitedEmail ?? null,
+      })),
+    });
+  }
 
   const validGroupIds = new Set(dataset.groups.map((g) => g.id));
 
@@ -290,7 +372,10 @@ export async function syncDatasetToSupabase(
         storagePath?: string;
         dataUrl?: string;
       };
-      const safeFile = (r.fileName || 'receipt.webp').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const safeFile = (r.fileName || 'receipt.webp').replace(
+        /[^a-zA-Z0-9._-]/g,
+        '_'
+      );
       return {
         id: r.id,
         group_id: e.groupId && validGroupIds.has(e.groupId) ? e.groupId : null,
@@ -311,28 +396,110 @@ export async function syncDatasetToSupabase(
     })
   );
 
-  const steps: Array<[string, Record<string, unknown>[]]> = [
-    ['profiles', profileRows],
-    ['groups', groupRows],
-    ['group_members', memberRows],
-    ['expenses', expenseRows],
-    ['expense_revisions', revisionRows],
-    ['settlements', settlementRows],
-    ['group_activity_log', activityRows],
-    ['receipt_attachments', receiptRows],
-  ];
-
-  for (const [table, rows] of steps) {
-    const res = await upsertTableRows(table, rows);
-    if (!res.ok) {
-      return {
-        ok: false,
-        error: `Failed upserting ${SUPABASE_SCHEMA}.${table} (HTTP ${res.status}): ${res.errorText ?? 'unknown error'}`,
-      };
+  try {
+    if (profileRows.length > 0) {
+      const { error } = await getSupabaseAdmin()
+        .from('profiles')
+        .upsert(profileRows, { onConflict: 'id' });
+      if (error) {
+        return {
+          ok: false,
+          error: `Failed upserting ${SUPABASE_SCHEMA}.profiles: ${error.message}`,
+        };
+      }
     }
-  }
 
-  return { ok: true };
+    if (groupRows.length > 0) {
+      const { error } = await getSupabaseAdmin()
+        .from('groups')
+        .upsert(groupRows, { onConflict: 'id' });
+      if (error) {
+        return {
+          ok: false,
+          error: `Failed upserting ${SUPABASE_SCHEMA}.groups: ${error.message}`,
+        };
+      }
+    }
+
+    if (memberRows.length > 0) {
+      const { error } = await getSupabaseAdmin()
+        .from('group_members')
+        .upsert(memberRows, { onConflict: 'id' });
+      if (error) {
+        return {
+          ok: false,
+          error: `Failed upserting ${SUPABASE_SCHEMA}.group_members: ${error.message}`,
+        };
+      }
+    }
+
+    if (expenseRows.length > 0) {
+      const { error } = await getSupabaseAdmin()
+        .from('expenses')
+        .upsert(expenseRows, { onConflict: 'id' });
+      if (error) {
+        return {
+          ok: false,
+          error: `Failed upserting ${SUPABASE_SCHEMA}.expenses: ${error.message}`,
+        };
+      }
+    }
+
+    if (revisionRows.length > 0) {
+      const { error } = await getSupabaseAdmin()
+        .from('expense_revisions')
+        .upsert(revisionRows, { onConflict: 'id' });
+      if (error) {
+        return {
+          ok: false,
+          error: `Failed upserting ${SUPABASE_SCHEMA}.expense_revisions: ${error.message}`,
+        };
+      }
+    }
+
+    if (settlementRows.length > 0) {
+      const { error } = await getSupabaseAdmin()
+        .from('settlements')
+        .upsert(settlementRows, { onConflict: 'id' });
+      if (error) {
+        return {
+          ok: false,
+          error: `Failed upserting ${SUPABASE_SCHEMA}.settlements: ${error.message}`,
+        };
+      }
+    }
+
+    if (activityRows.length > 0) {
+      const { error } = await getSupabaseAdmin()
+        .from('group_activity_log')
+        .upsert(activityRows, { onConflict: 'id' });
+      if (error) {
+        return {
+          ok: false,
+          error: `Failed upserting ${SUPABASE_SCHEMA}.group_activity_log: ${error.message}`,
+        };
+      }
+    }
+
+    if (receiptRows.length > 0) {
+      const { error } = await getSupabaseAdmin()
+        .from('receipt_attachments')
+        .upsert(receiptRows, { onConflict: 'id' });
+      if (error) {
+        return {
+          ok: false,
+          error: `Failed upserting ${SUPABASE_SCHEMA}.receipt_attachments: ${error.message}`,
+        };
+      }
+    }
+
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Supabase sync error',
+    };
+  }
 }
 
 interface DbGroupRow {
@@ -345,6 +512,7 @@ interface DbGroupRow {
   default_split_config: DefaultSplitPreset | null;
   expense_seq: number;
   invite_code: string;
+  created_by?: string;
   created_at: string;
   updated_at: string;
   last_accessed_at: string;
@@ -454,114 +622,127 @@ export async function fetchDatasetFromSupabase(
   source: 'wise_spliter_db' | 'local_seed';
   dataset: MockLedgerDataset;
 }> {
-  const groupsRes = await restRequest<DbGroupRow[]>(
-    '/rest/v1/groups?select=*&order=updated_at.desc'
-  );
+  try {
+    const groupsRes = await getSupabaseAdmin()
+      .from('groups')
+      .select('*')
+      .order('updated_at', { ascending: false });
 
-  if (!groupsRes.ok || !Array.isArray(groupsRes.data) || groupsRes.data.length === 0) {
-    if (groupsRes.ok && Array.isArray(groupsRes.data) && groupsRes.data.length === 0) {
-      await syncDatasetToSupabase(fallbackDataset);
+    const groupRows = (groupsRes.data ?? []) as DbGroupRow[];
+    if (groupsRes.error || !Array.isArray(groupRows) || groupRows.length === 0) {
+      if (!groupsRes.error && Array.isArray(groupRows) && groupRows.length === 0) {
+        await syncDatasetToSupabase(fallbackDataset);
+      }
+      return {
+        source: 'local_seed',
+        dataset: fallbackDataset,
+      };
     }
-    return {
-      source: 'local_seed',
-      dataset: fallbackDataset,
-    };
-  }
 
-  const [membersRes, expensesRes, revisionsRes, settlementsRes, activityRes] =
-    await Promise.all([
-      restRequest<DbGroupMemberRow[]>(
-        '/rest/v1/group_members?select=*&order=member_order.asc'
-      ),
-      restRequest<DbExpenseRow[]>(
-        '/rest/v1/expenses?select=*&order=created_at.desc'
-      ),
-      restRequest<DbExpenseRevisionRow[]>(
-        '/rest/v1/expense_revisions?select=*&order=created_at.desc'
-      ),
-      restRequest<DbSettlementRow[]>(
-        '/rest/v1/settlements?select=*&order=created_at.desc'
-      ),
-      restRequest<DbActivityRow[]>(
-        '/rest/v1/group_activity_log?select=*&order=created_at.desc'
-      ),
-    ]);
+    const [membersRes, expensesRes, revisionsRes, settlementsRes, activityRes] =
+      await Promise.all([
+        getSupabaseAdmin()
+          .from('group_members')
+          .select('*')
+          .order('member_order', { ascending: true }),
+        getSupabaseAdmin()
+          .from('expenses')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        getSupabaseAdmin()
+          .from('expense_revisions')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        getSupabaseAdmin()
+          .from('settlements')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        getSupabaseAdmin()
+          .from('group_activity_log')
+          .select('*')
+          .order('created_at', { ascending: false }),
+      ]);
 
-  const membersByGroup = new Map<string, GroupMember[]>();
-  for (const m of membersRes.data ?? []) {
-    const list = membersByGroup.get(m.group_id) ?? [];
-    list.push({
-      id: m.id,
-      groupId: m.group_id,
-      userId: m.user_id,
-      invitedEmail: m.invited_email,
-      displayName: m.display_name,
-      avatarInitials: m.avatar_initials,
-      upiId: m.upi_id,
-      role: m.role,
-      memberOrder: Number(m.member_order ?? 0),
-      joinedAt: m.joined_at,
-      claimedAt: m.claimed_at,
-    });
-    membersByGroup.set(m.group_id, list);
-  }
+    const memberRows = (membersRes.data ?? []) as DbGroupMemberRow[];
+    const expenseRows = (expensesRes.data ?? []) as DbExpenseRow[];
+    const revisionRows = (revisionsRes.data ?? []) as DbExpenseRevisionRow[];
+    const settlementRows = (settlementsRes.data ?? []) as DbSettlementRow[];
+    const activityRows = (activityRes.data ?? []) as DbActivityRow[];
 
-  const groups: GroupRecord[] = groupsRes.data.map((g) => ({
-    id: g.id,
-    name: g.name,
-    description: g.description,
-    category: g.category,
-    baseCurrency: g.base_currency,
-    simplifyDebts: g.simplify_debts,
-    defaultSplitConfig: g.default_split_config,
-    expenseSeq: Number(g.expense_seq ?? 0),
-    inviteCode: g.invite_code,
-    createdAt: g.created_at,
-    updatedAt: g.updated_at,
-    lastAccessedAt: g.last_accessed_at ?? g.updated_at,
-    deletedAt: g.deleted_at,
-    hlc: g.hlc,
-    members: membersByGroup.get(g.id) ?? [],
-  }));
+    const membersByGroup = new Map<string, GroupMember[]>();
+    for (const m of memberRows) {
+      const list = membersByGroup.get(m.group_id) ?? [];
+      list.push({
+        id: m.id,
+        groupId: m.group_id,
+        userId: m.user_id,
+        invitedEmail: m.invited_email,
+        displayName: m.display_name,
+        avatarInitials: m.avatar_initials,
+        upiId: m.upi_id,
+        role: m.role,
+        memberOrder: Number(m.member_order ?? 0),
+        joinedAt: m.joined_at,
+        claimedAt: m.claimed_at,
+      });
+      membersByGroup.set(m.group_id, list);
+    }
 
-  const expenses: ExpenseItem[] = (expensesRes.data ?? []).map((e) => ({
-    id: e.id,
-    groupId: e.group_id,
-    ...(e.group_id === null && e.ad_hoc_participants
-      ? { adHocParticipants: e.ad_hoc_participants }
-      : {}),
-    title: e.title,
-    category: e.category,
-    tags: e.tags ?? [],
-    notes: e.notes ?? '',
-    expenseDate: e.expense_date,
-    originalCurrency: e.original_currency,
-    originalAmountMinor: Number(e.original_amount_minor),
-    groupCurrency: e.group_currency,
-    amountMinor: Number(e.amount_minor),
-    fxRateScaled: Number(e.fx_rate_scaled),
-    fxStatus: e.fx_status,
-    fxAuditNote: e.fx_audit_note,
-    splitMode: e.split_mode,
-    rotationSeed: Number(e.rotation_seed ?? 0),
-    payers: e.payers ?? [],
-    splits: e.splits ?? [],
-    currentRevisionId: e.current_revision_id,
-    revisionNumber: Number(e.revision_number ?? 1),
-    hasUnresolvedConflict: Boolean(e.has_unresolved_conflict),
-    conflictRevisionId: e.conflict_revision_id,
-    createdByMemberId: e.created_by_member_id,
-    updatedByMemberId: e.updated_by_member_id,
-    createdAt: e.created_at,
-    updatedAt: e.updated_at,
-    deletedAt: e.deleted_at,
-    hlc: e.hlc,
-    comments: e.comments ?? [],
-    receipts: e.receipts ?? [],
-  }));
+    const groups: GroupRecord[] = groupRows.map((g) => ({
+      id: g.id,
+      name: g.name,
+      description: g.description,
+      category: g.category,
+      baseCurrency: g.base_currency,
+      simplifyDebts: g.simplify_debts,
+      defaultSplitConfig: g.default_split_config,
+      expenseSeq: Number(g.expense_seq ?? 0),
+      inviteCode: g.invite_code,
+      createdAt: g.created_at,
+      updatedAt: g.updated_at,
+      lastAccessedAt: g.last_accessed_at ?? g.updated_at,
+      deletedAt: g.deleted_at,
+      hlc: g.hlc,
+      members: membersByGroup.get(g.id) ?? [],
+    }));
 
-  const expenseRevisions: ExpenseRevision[] = (revisionsRes.data ?? []).map(
-    (r) => ({
+    const expenses: ExpenseItem[] = expenseRows.map((e) => ({
+      id: e.id,
+      groupId: e.group_id,
+      ...(e.group_id === null && e.ad_hoc_participants
+        ? { adHocParticipants: e.ad_hoc_participants }
+        : {}),
+      title: e.title,
+      category: e.category,
+      tags: e.tags ?? [],
+      notes: e.notes ?? '',
+      expenseDate: e.expense_date,
+      originalCurrency: e.original_currency,
+      originalAmountMinor: Number(e.original_amount_minor),
+      groupCurrency: e.group_currency,
+      amountMinor: Number(e.amount_minor),
+      fxRateScaled: Number(e.fx_rate_scaled),
+      fxStatus: e.fx_status,
+      fxAuditNote: e.fx_audit_note,
+      splitMode: e.split_mode,
+      rotationSeed: Number(e.rotation_seed ?? 0),
+      payers: e.payers ?? [],
+      splits: e.splits ?? [],
+      currentRevisionId: e.current_revision_id,
+      revisionNumber: Number(e.revision_number ?? 1),
+      hasUnresolvedConflict: Boolean(e.has_unresolved_conflict),
+      conflictRevisionId: e.conflict_revision_id,
+      createdByMemberId: e.created_by_member_id,
+      updatedByMemberId: e.updated_by_member_id,
+      createdAt: e.created_at,
+      updatedAt: e.updated_at,
+      deletedAt: e.deleted_at,
+      hlc: e.hlc,
+      comments: e.comments ?? [],
+      receipts: e.receipts ?? [],
+    }));
+
+    const expenseRevisions: ExpenseRevision[] = revisionRows.map((r) => ({
       id: r.id,
       expenseId: r.expense_id,
       groupId: r.group_id,
@@ -575,28 +756,26 @@ export async function fetchDatasetFromSupabase(
       isConflictBranch: Boolean(r.is_conflict_branch),
       createdAt: r.created_at,
       hlc: r.hlc,
-    })
-  );
+    }));
 
-  const settlements: SettlementItem[] = (settlementsRes.data ?? []).map((s) => ({
-    id: s.id,
-    groupId: s.group_id,
-    batchSettlementId: s.batch_settlement_id,
-    fromMemberId: s.from_member_id,
-    toMemberId: s.to_member_id,
-    amountMinor: Number(s.amount_minor),
-    currency: s.currency,
-    paymentMethod: s.payment_method,
-    paymentReference: s.payment_reference,
-    notes: s.notes ?? '',
-    settledDate: s.settled_date,
-    createdAt: s.created_at,
-    deletedAt: s.deleted_at,
-    hlc: s.hlc,
-  }));
+    const settlements: SettlementItem[] = settlementRows.map((s) => ({
+      id: s.id,
+      groupId: s.group_id,
+      batchSettlementId: s.batch_settlement_id,
+      fromMemberId: s.from_member_id,
+      toMemberId: s.to_member_id,
+      amountMinor: Number(s.amount_minor),
+      currency: s.currency,
+      paymentMethod: s.payment_method,
+      paymentReference: s.payment_reference,
+      notes: s.notes ?? '',
+      settledDate: s.settled_date,
+      createdAt: s.created_at,
+      deletedAt: s.deleted_at,
+      hlc: s.hlc,
+    }));
 
-  const groupActivityLog: GroupActivityItem[] = (activityRes.data ?? []).map(
-    (a) => ({
+    const groupActivityLog: GroupActivityItem[] = activityRows.map((a) => ({
       id: a.id,
       groupId: a.group_id,
       actorMemberId: a.actor_member_id,
@@ -609,20 +788,25 @@ export async function fetchDatasetFromSupabase(
       diffBadges: a.diff_badges ?? [],
       createdAt: a.created_at,
       hlc: a.hlc,
-    })
-  );
+    }));
 
-  return {
-    source: 'wise_spliter_db',
-    dataset: {
-      ...fallbackDataset,
-      groups,
-      expenses,
-      expenseRevisions,
-      settlements,
-      groupActivityLog,
-    },
-  };
+    return {
+      source: 'wise_spliter_db',
+      dataset: {
+        ...fallbackDataset,
+        groups,
+        expenses,
+        expenseRevisions,
+        settlements,
+        groupActivityLog,
+      },
+    };
+  } catch {
+    return {
+      source: 'local_seed',
+      dataset: fallbackDataset,
+    };
+  }
 }
 
 export async function uploadReceiptToSupabaseStorage(params: {
@@ -652,30 +836,23 @@ export async function uploadReceiptToSupabaseStorage(params: {
   );
   const storagePath = `${params.groupId || 'standalone'}/${params.expenseId}/${params.id}-${safeFileName}`;
 
-  let binaryBytes: Buffer;
+  let binaryBuffer: Buffer;
   const base64Match = /^data:([^;]+);base64,(.+)$/i.exec(params.dataUrl || '');
   if (base64Match && base64Match[2]) {
-    binaryBytes = Buffer.from(base64Match[2], 'base64');
+    binaryBuffer = Buffer.from(base64Match[2], 'base64');
   } else {
-    binaryBytes = Buffer.from(params.dataUrl || 'wise-spliter-receipt', 'utf8');
+    binaryBuffer = Buffer.from(params.dataUrl || 'wise-spliter-receipt', 'utf8');
   }
 
   let storageUploaded = false;
   try {
-    const storageRes = await fetch(
-      `${SUPABASE_URL}/storage/v1/object/${bucket}/${storagePath}`,
-      {
-        method: 'POST',
-        headers: {
-          apikey: SUPABASE_SECRET_KEY,
-          Authorization: `Bearer ${SUPABASE_SECRET_KEY}`,
-          'Content-Type': params.mimeType || 'image/webp',
-          'x-upsert': 'true',
-        },
-        body: new Uint8Array(binaryBytes),
-      }
-    );
-    storageUploaded = storageRes.ok;
+    const { error: uploadError } = await getSupabaseAdmin()
+      .storage.from('wise-spliter-receipts')
+      .upload(storagePath, binaryBuffer, {
+        contentType: params.mimeType || 'image/webp',
+        upsert: true,
+      });
+    storageUploaded = !uploadError;
   } catch {
     storageUploaded = false;
   }
@@ -690,63 +867,94 @@ export async function uploadReceiptToSupabaseStorage(params: {
     file_name: params.fileName || 'receipt.webp',
     mime_type: params.mimeType || 'image/webp',
     size_kb: Math.max(0, Math.round(params.sizeKb ?? 0)),
-    uploaded_by_name: params.uploadedByName || 'Aarav Mehta',
+    uploaded_by_name: params.uploadedByName || 'Arjun Mehta',
     preview_note: params.previewNote ?? '',
     data_url: params.dataUrl || null,
     created_at: nowIso,
-    hlc: params.hlc || `${Date.now().toString(16).padStart(12, '0')}-0001-usr_me`,
+    hlc:
+      params.hlc ||
+      `${Date.now().toString(16).padStart(12, '0')}-0001-usr_arjun_01`,
   };
 
-  let metaRes = await upsertTableRows('receipt_attachments', [rowPayload]);
-  if (!metaRes.ok && metaRes.status === 409) {
-    // If group_id or expense_id hasn't been synced to Postgres yet, ensure parent expense exists and retry
-    await upsertTableRows('expenses', [
-      {
-        id: params.expenseId,
-        group_id: null,
-        ad_hoc_participants: [],
-        title: params.previewNote || 'Receipt-attached Expense',
-        category: 'general',
-        tags: [],
-        notes: '',
-        expense_date: nowIso.slice(0, 10),
-        original_currency: 'INR',
-        original_amount_minor: 100,
-        group_currency: 'INR',
-        amount_minor: 100,
-        fx_rate_scaled: 100000000,
-        fx_status: 'identity',
-        fx_audit_note: null,
-        split_mode: 'equal',
-        rotation_seed: 0,
-        payers: [{ memberId: 'usr_me', paidMinor: 100, originalPaidMinor: 100 }],
-        splits: [
-          {
-            memberId: 'usr_me',
-            included: true,
-            owedMinor: 100,
-            originalOwedMinor: 100,
-            rawInputValue: 1,
-            remainderMinor: 0,
-          },
-        ],
-        comments: [],
-        receipts: [],
-        current_revision_id: `rev_${params.expenseId}`,
-        revision_number: 1,
-        has_unresolved_conflict: false,
-        conflict_revision_id: null,
-        created_by_member_id: 'usr_me',
-        updated_by_member_id: 'usr_me',
-        created_at: nowIso,
-        updated_at: nowIso,
-        deleted_at: null,
-        hlc: String(rowPayload.hlc),
-      },
-    ]);
-    metaRes = await upsertTableRows('receipt_attachments', [
-      { ...rowPayload, group_id: null },
-    ]);
+  let metadataPersisted = false;
+  let errorText: string | undefined;
+
+  try {
+    let { error: metaErr } = await getSupabaseAdmin()
+      .from('receipt_attachments')
+      .upsert([rowPayload], { onConflict: 'id' });
+
+    if (metaErr) {
+      // Ensure parent expense exists if foreign key constraint triggered
+      await getSupabaseAdmin()
+        .from('expenses')
+        .upsert(
+          [
+            {
+              id: params.expenseId,
+              group_id: null,
+              ad_hoc_participants: [],
+              title: params.previewNote || 'Receipt-attached Expense',
+              category: 'general',
+              tags: [],
+              notes: '',
+              expense_date: nowIso.slice(0, 10),
+              original_currency: 'INR',
+              original_amount_minor: 100,
+              group_currency: 'INR',
+              amount_minor: 100,
+              fx_rate_scaled: 100000000,
+              fx_status: 'identity',
+              fx_audit_note: null,
+              split_mode: 'equal',
+              rotation_seed: 0,
+              payers: [
+                {
+                  memberId: 'usr_arjun_01',
+                  paidMinor: 100,
+                  originalPaidMinor: 100,
+                },
+              ],
+              splits: [
+                {
+                  memberId: 'usr_arjun_01',
+                  included: true,
+                  owedMinor: 100,
+                  originalOwedMinor: 100,
+                  rawInputValue: 1,
+                  remainderMinor: 0,
+                },
+              ],
+              comments: [],
+              receipts: [],
+              current_revision_id: `rev_${params.expenseId}`,
+              revision_number: 1,
+              has_unresolved_conflict: false,
+              conflict_revision_id: null,
+              created_by_member_id: 'usr_arjun_01',
+              updated_by_member_id: 'usr_arjun_01',
+              created_at: nowIso,
+              updated_at: nowIso,
+              deleted_at: null,
+              hlc: String(rowPayload.hlc),
+            },
+          ],
+          { onConflict: 'id' }
+        );
+
+      const retryRes = await getSupabaseAdmin()
+        .from('receipt_attachments')
+        .upsert([{ ...rowPayload, group_id: null }], { onConflict: 'id' });
+      metaErr = retryRes.error;
+    }
+
+    metadataPersisted = !metaErr;
+    if (metaErr) {
+      errorText = metaErr.message;
+    }
+  } catch (err) {
+    metadataPersisted = false;
+    errorText = err instanceof Error ? err.message : 'Metadata persistence failed';
   }
 
   return {
@@ -755,28 +963,30 @@ export async function uploadReceiptToSupabaseStorage(params: {
     storagePath,
     receiptId: params.id,
     storageUploaded,
-    metadataPersisted: metaRes.ok,
-    ...(metaRes.errorText ? { error: metaRes.errorText } : {}),
+    metadataPersisted,
+    ...(errorText ? { error: errorText } : {}),
   };
 }
 
 export async function callPullChangesRpc(
   sinceSeq: number
 ): Promise<Record<string, unknown>> {
-  const safeSeq = Number.isFinite(sinceSeq) ? Math.max(0, Math.floor(sinceSeq)) : 0;
-  const res = await restRequest<Record<string, unknown>>(
-    '/rest/v1/rpc/pull_changes',
-    {
-      method: 'POST',
-      body: JSON.stringify({ p_since_seq: safeSeq }),
+  const safeSeq = Number.isFinite(sinceSeq)
+    ? Math.max(0, Math.floor(sinceSeq))
+    : 0;
+  try {
+    const { data, error } = await getSupabaseAdmin().rpc('pull_changes', {
+      p_since_seq: safeSeq,
+    });
+    if (!error && data && typeof data === 'object') {
+      return {
+        ok: true,
+        schema: SUPABASE_SCHEMA,
+        ...(data as Record<string, unknown>),
+      };
     }
-  );
-  if (res.ok && res.data && typeof res.data === 'object') {
-    return {
-      ok: true,
-      schema: SUPABASE_SCHEMA,
-      ...res.data,
-    };
+  } catch {
+    // Fallback below
   }
   return {
     ok: true,
@@ -792,19 +1002,19 @@ export async function callPushMutationsRpc(
   ops: unknown[]
 ): Promise<Record<string, unknown>> {
   const safeOps = Array.isArray(ops) ? ops : [];
-  const res = await restRequest<Record<string, unknown>>(
-    '/rest/v1/rpc/push_mutations',
-    {
-      method: 'POST',
-      body: JSON.stringify({ p_ops: safeOps }),
+  try {
+    const { data, error } = await getSupabaseAdmin().rpc('push_mutations', {
+      p_ops: safeOps,
+    });
+    if (!error && data && typeof data === 'object') {
+      return {
+        ok: true,
+        schema: SUPABASE_SCHEMA,
+        ...(data as Record<string, unknown>),
+      };
     }
-  );
-  if (res.ok && res.data && typeof res.data === 'object') {
-    return {
-      ok: true,
-      schema: SUPABASE_SCHEMA,
-      ...res.data,
-    };
+  } catch {
+    // Fallback below
   }
   return {
     ok: true,

@@ -25,10 +25,15 @@
 
 ## 2. Code-Level Standards
 
-### 2.1 TypeScript Strictness & Domain Modeling
+### 2.1 TypeScript Strictness, Zero-Deprecation Policy & Domain Modeling
 * **Compiler Flags (`tsconfig.json`):**
   * `strict: true` and `noUncheckedIndexedAccess: true` are mandatory and must never be weakened.
   * `any`, `@ts-ignore`, and `@ts-expect-error` are banned. Narrow unknown inputs using explicit type guards.
+* **Zero-Deprecation Policy (`scripts/check-deprecations.mjs`):**
+  * `make typecheck` executes both `tsc --noEmit` and `node scripts/check-deprecations.mjs` (TypeScript Language Service suggestion diagnostics `reportsDeprecated`, `TS6385`, and `TS6387`). Zero `@deprecated` APIs, symbols, or overloads are permitted anywhere in the repository:
+    * **Phosphor Icons (`@phosphor-icons/react`):** Always import canonical `*Icon` symbols (e.g., `HouseIcon as House`, `ReceiptIcon as Receipt`) rather than deprecated bare component aliases.
+    * **React 19 Form Events:** Type form submission handlers with `React.SyntheticEvent<HTMLFormElement>` rather than deprecated `React.FormEvent<HTMLFormElement>`.
+    * **Pure `Uint8Array` Base64 Encoding/Decoding:** Implement binary-to-base64 and base64-to-binary helpers (`bytesToBase64` / `base64ToBytes` in `src/portability/portability-engine.ts`) using pure bitwise `Uint8Array` operations rather than deprecated DOM `btoa` / `atob` binary-string helpers.
 * **Canonical Type Definitions (`src/types/ledger.ts`):**
   * All shared domain contracts (`CurrencyDefinition`, `SplitMode`, `FxStatus`, `AdHocParticipant`, `GroupRecord`, `GroupMember`, `ExpenseItem`, `ExpenseRevision`, `SettlementItem`, `GroupActivityItem`, `MemberBalanceExplanation`) live in `src/types/ledger.ts`.
   * Nullable foreign keys (such as `groupId: string | null` on `ExpenseItem` for direct non-group splits) must be explicitly typed and handled in every consumer.
@@ -61,14 +66,24 @@
   * Mobile bottom navigation must contain `<= 5` top-level items with touch hit targets `>= 44px x 44px`.
   * Every component must maintain WCAG AA contrast across both **Light Mode** (`data-theme="light"`) and **Dark Mode** (`data-theme="dark"`).
 
-### 2.4 Security & Database Isolation Rules
+### 2.4 Security, Official `@supabase/supabase-js` SDK Pattern & Database Isolation Rules
+* **Official `@supabase/supabase-js` Client/Server Pattern (Modeled on `merry-tools`):**
+  * **Server Admin Client (`src/server/supabaseAdmin.ts`):** Instantiates a process-wide singleton via `createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }, db: { schema: SUPABASE_SCHEMA } })`. All table queries (`.from(...).select/upsert`), RPC invocations (`.rpc('schema_health' | 'pull_changes' | 'push_mutations')`), and Storage operations (`.storage.from('wise-spliter-receipts').upload(...)`) go through the official SDK.
+  * **Browser Sync Client (`src/sync-engine/supabase-sync.ts`):** Instantiates a public browser client via `createClient(VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, { db: { schema: 'wise_spliter' }, auth: { persistSession: true, autoRefreshToken: true } })` for Google OAuth (`signInWithOAuth`) and session management while routing mutations through the authenticated Backend API Gatekeeper (`/api/*`).
+  * **Environment Configuration (`.env.example`, `.env.development`, `.env.production`):** Follows the `merry-tools` convention where server-only secrets (`SUPABASE_SECRET_KEY`, `GRANT_TOKEN_SECRET`, `ALLOWED_ORIGINS`) have no prefix, and only public browser keys (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_SUPABASE_ANON_KEY`, `VITE_SUPABASE_SCHEMA`, `VITE_API_BASE_URL`) are prefixed with `VITE_`.
 * **Server-Only Secret Key (`SUPABASE_SECRET_KEY`):**
-  * `SUPABASE_SECRET_KEY` (`service_role`) must only be read inside server-side code (`src/server/index.ts`, `src/server/supabaseAdmin.ts`, and CLI scripts in `scripts/`).
+  * `SUPABASE_SECRET_KEY` (`service_role` / `sb_secret_...`) must only be read inside server-side code (`src/server/index.ts`, `src/server/supabaseAdmin.ts`, and CLI scripts in `scripts/`).
   * Never prefix secret keys with `VITE_` or bundle them into client code.
+* **Backend Authentication (`HTTP 401`) & User/Group Isolation (`HTTP 403` IDOR Protection in `src/server/securityAndAuth.ts`):**
+  * **Authentication (`HTTP 401`):** Every `/api/ledger/*` and `/api/receipts/*` endpoint verifies the caller via `verifyRequestAuth(req)`, accepting either an HMAC-SHA256 session token issued by `POST /api/auth/session` (signed with `GRANT_TOKEN_SECRET` using timing-safe comparison) or an official Supabase Auth JWT verified via `getSupabaseAdmin().auth.getUser(token)`. Missing, expired, or tampered tokens are rejected with `HTTP 401`.
+  * **Authorization & IDOR Prevention (`HTTP 403`):**
+    * `filterDatasetForUser(dataset, user)` scopes `GET /api/ledger/bootstrap` and `GET /api/ledger/pull-changes` so users only receive groups where they are a member (`userId` or `invitedEmail`) and standalone direct splits (`groupId === null`) where `adHocParticipants` includes their identity.
+    * `authorizeDatasetSyncForUser(dataset, existingDbGroups, user)` enforces 4 strict rules on `POST /api/ledger/sync`, `POST /api/ledger/push-mutations`, and `POST /api/receipts/upload`: (1) Anti-Impersonation (`currentUser` must match the authenticated token), (2) Group Membership Requirement, (3) Existing DB Group Ownership Protection (blocks non-members from hijacking existing group IDs), and (4) Expense Scope Protection. Violations are rejected with `HTTP 403`.
+  * **Hardening (`buildSecurityHeaders` & `checkRateLimit`):** Every response includes strict security headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Permissions-Policy`, and allowlisted CORS) plus fixed-window per-IP rate limiting (`HTTP 429` with `Retry-After`).
 * **Dedicated PostgreSQL Schema (`wise_spliter`):**
   * All database objects live inside `CREATE SCHEMA IF NOT EXISTS wise_spliter;`. Never create tables or functions in `public`.
   * Enforce `REVOKE ALL ON SCHEMA wise_spliter FROM PUBLIC, anon;` and enable Row-Level Security (`ALTER TABLE ... ENABLE ROW LEVEL SECURITY;`) on every table in `wise_spliter`.
-  * All PostgREST calls from `src/server/supabaseAdmin.ts` must explicitly set `Accept-Profile: wise_spliter` and `Content-Profile: wise_spliter`.
+  * All PostgREST calls from `src/server/supabaseAdmin.ts` bind to schema `wise_spliter` via `db: { schema: SUPABASE_SCHEMA }` (`Accept-Profile: wise_spliter` and `Content-Profile: wise_spliter`).
   * Database readiness and delta synchronization use the dedicated schema RPCs: `wise_spliter.schema_health()`, `wise_spliter.push_mutations`, and `wise_spliter.pull_changes`.
 * **Receipt Image & Bill Attachment Storage Rules:**
   * **Offline / Local Device:** Compressed WebP images are stored immediately in the Dexie.js IndexedDB table `local_receipt_blobs` so receipt attachments work 100% offline during flights and trips.
@@ -88,39 +103,41 @@
 
 No feature, bugfix, or schema change is considered complete until all 5 verification gates pass sequentially with zero errors:
 
-### Step 1: Strict Static Type Verification
+### Step 1: Strict Static Type & Zero-Deprecation Verification
 ```bash
 make typecheck
 ```
-* **Requirement:** `tsc --noEmit` must exit with `0` TypeScript errors across client, domain, storage, server, and test files.
+* **Requirement:** `tsc --noEmit && node scripts/check-deprecations.mjs` must exit with `0` TypeScript errors and `0` deprecated symbol diagnostics across all client, domain, storage, server, and test files.
 
-### Step 2: Unit, Property-Based (`fast-check`) & IndexedDB Test Suite
+### Step 2: Unit, Property-Based (`fast-check`), IndexedDB & Security Test Suite (15 Tests)
 ```bash
 make test
 ```
-* **Requirement:** `100%` of Vitest suites must pass, including:
+* **Requirement:** `100%` of Vitest suites (`tests/unit/domain-and-portability.test.ts` - 15 tests) must pass, including:
   * `fast-check` property-based fuzz tests verifying split conservation, rotating remainder fairness, zero-sum group balances, and Bitmask-DP debt simplification completeness across `0, 2, 3` decimal currencies.
-  * Local-first `IndexedDB` (`Dexie.js`) persistence, `syncOutbox` FIFO queueing, and HLC conflict detection tests.
+  * Local-first `IndexedDB` (`Dexie.js`) persistence, `syncOutbox` FIFO queueing, offline WebP receipt blobs (`localReceiptBlobs`), and multi-sheet `.xlsx` / `.pdf` binary generation tests.
+  * Backend authentication (`issueSessionToken` / `verifyRequestAuth` `HTTP 401`) and user/group isolation (`authorizeDatasetSyncForUser` / `filterDatasetForUser` `HTTP 403` IDOR protection) unit tests.
 
 ### Step 3: Centralized Supabase Schema & RPC Verification
 ```bash
 make migrate-verify
 ```
-* **Requirement:** Runs `node scripts/apply-migration.mjs verify` against the centralized Supabase instance (`SUPABASE_DIR = /home/chetan/projects/my-scripts/setup/dependencies`), confirming `PASS` for all 7 tables (`profiles`, `groups`, `group_members`, `expenses`, `expense_revisions`, `settlements`, `group_activity_log`) and `wise_spliter.schema_health()` RPC over PostgREST.
+* **Requirement:** Runs `node scripts/apply-migration.mjs verify` against the centralized Supabase instance (`SUPABASE_DIR = /home/chetan/projects/my-scripts/setup/dependencies`), confirming `PASS` for all 8 tables (`profiles`, `groups`, `group_members`, `expenses`, `expense_revisions`, `settlements`, `group_activity_log`, `receipt_attachments`) and all 3 `wise_spliter` RPCs (`schema_health`, `pull_changes`, `push_mutations`) over PostgREST.
 
 ### Step 4: Clean Production Bundle Build
 ```bash
 make build
 ```
-* **Requirement:** Produces a clean, warning-free production build in `dist/` after passing strict typechecking.
+* **Requirement:** Produces a clean, warning-free production build in `dist/` after passing strict typechecking and deprecation checks.
 
-### Step 5: Live End-to-End Playwright Acceptance Suite
+### Step 5: Live 6-Story End-to-End Playwright Acceptance Suite (`tests/e2e/wise-spliter.spec.ts`)
 ```bash
 make e2e
 ```
-* **Requirement:** `100%` of Playwright E2E acceptance tests pass against the live running application, verifying:
-  * Minimalist Home Dashboard (`<= 3` recent groups) and Quick-Add Expense for both Group Bills and Direct Non-Group Splits (`group_id = null`).
-  * Equal, Exact, Percentage, Shares, and Adjustment splits with rotating remainder fairness.
-  * Bitmask-DP simplified vs. raw pairwise debt toggles and "Explain This Balance" lineage drawers.
-  * Per-expense immutable revision history, concurrent offline conflict resolution, and Trash recovery.
-  * UPI deep-link / QR modal generation, WhatsApp summary export, Splitwise CSV/JSON import, and AES-256-GCM encrypted backup round-trips.
+* **Requirement:** All 6 full-stack Playwright E2E user stories in `tests/e2e/wise-spliter.spec.ts` must pass against the live running application (UI `:4173` + Backend API `:4174` + Supabase `:54321`):
+  1. **User Story 1:** Minimalist Home Dashboard (`<= 3` recent groups), Contextual Page Guide (`ContextualPageGuideBanner`), Interactive Help Modal (`HelpGuideModal`), and Direct Non-Group Split Flow (`group_id = null` with custom `ad_hoc_participants`) synced via `POST /api/ledger/sync`.
+  2. **User Story 2:** Progressive Group Workspace (`group-minimal-insights-bar` + `group-auto-guide-strip`), Concurrent Offline Conflict Resolution (`conflict-resolution-banner`), `ExplainBalanceModal` mathematical lineage, all 5 Split Modes (`equal`, `exact`, `percentage`, `shares`, `adjustment`), Multi-Payer toggle, Foreign FX conversion, Rotating Remainder (`+1 paise/cents rotated`), and WebP Receipt Upload (`POST /api/receipts/upload`).
+  3. **User Story 3:** Group Management - Debt Simplification toggle (`ON`/`OFF`), Base Currency Re-denomination (`relabel` / `reconvert`), Instant Unclaimed Member addition & claim flow, and New Group creation synced to Supabase.
+  4. **User Story 4:** Transparent Activity History (Group vs. Global scope), Per-Expense Immutable Revision History inspector with 1-click revision restore, and Trash Recovery Vault restore.
+  5. **User Story 5:** Friends Cross-Group Net Balances, 1-Tap Atomic Batch Settle Up across groups, UPI Deep-Link / QR Code Studio (`upi://pay?`), and WhatsApp Summary export.
+  6. **User Story 6:** Insights & Global Search across `0, 2, 3` decimal currencies (`JPY`, `INR`, `KWD`), Portability (`Splitwise CSV import`, `.xlsx`, `.pdf`, `PBKDF2 + AES-256-GCM` `.wisesplit` backup round-trip), and live Backend API Security Isolation (`HTTP 401` unauthenticated rejection + `HTTP 403` cross-user impersonation & group hijack rejection).

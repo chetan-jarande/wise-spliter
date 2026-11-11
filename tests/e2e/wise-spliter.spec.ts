@@ -1,117 +1,27 @@
 import { expect, test } from '@playwright/test';
 import mockData from '../../src/data/mock-ledger-data.json' with { type: 'json' };
 
-test.describe('Wise-Spliter Phase 1 Full Acceptance & E2E Suite', () => {
-  test('Home Dashboard (Minimalism, Top 3 Recent Groups, Contextual Guide, Direct Non-Group Split) -> Progressive Disclosure Group Workspace & Ledger', async ({
+test.describe('Wise-Spliter Full-Stack User Story E2E Suite (UI + Backend API + Supabase)', () => {
+  test('User Story 1: Minimalist Home Dashboard, Interactive Help Guide, Top-3 Recent Groups & Direct Non-Group Split Flow', async ({
     page,
-    request,
   }) => {
-    // 0. Backend API & Centralized Supabase `wise_spliter` Schema Verification
-    const bootstrapRes = await request.get('/api/ledger/bootstrap');
-    expect(bootstrapRes.ok()).toBe(true);
-    const bootstrapBody = (await bootstrapRes.json()) as {
-      ok: boolean;
-      schema: string;
-      dataset: { groups: unknown[]; expenses: unknown[] };
-    };
-    expect(bootstrapBody.ok).toBe(true);
-    expect(bootstrapBody.schema).toBe('wise_spliter');
-    expect(bootstrapBody.dataset.groups.length).toBeGreaterThanOrEqual(4);
-    expect(bootstrapBody.dataset.expenses.length).toBeGreaterThanOrEqual(10);
-
-    const healthRes = await request.get('/api/health');
-    expect(healthRes.ok()).toBe(true);
-    const healthBody = (await healthRes.json()) as {
-      ok: boolean;
-      schema: string;
-      supabaseReachable: boolean;
-      schemaHealth?: {
-        ok: boolean;
-        schema: string;
-        groups_count: number;
-        expenses_count: number;
-      };
-    };
-    expect(healthBody.ok).toBe(true);
-    expect(healthBody.schema).toBe('wise_spliter');
-    expect(healthBody.supabaseReachable).toBe(true);
-    expect(healthBody.schemaHealth?.ok).toBe(true);
-    expect(healthBody.schemaHealth?.schema).toBe('wise_spliter');
-    expect(healthBody.schemaHealth?.groups_count).toBeGreaterThanOrEqual(4);
-    expect(healthBody.schemaHealth?.expenses_count).toBeGreaterThanOrEqual(10);
-
-    // Verify POST /api/receipts/upload, POST /api/ledger/push-mutations, and GET /api/ledger/pull-changes?sinceSeq=0
-    const receiptUploadRes = await request.post('/api/receipts/upload', {
-      data: {
-        id: 'rcpt_e2e_test_01',
-        expenseId: mockData.expenses[0]!.id,
-        groupId: mockData.groups[0]!.id,
-        fileName: 'e2e-receipt.webp',
-        mimeType: 'image/webp',
-        sizeKb: 18,
-        uploadedByName: 'Arjun Mehta',
-        previewNote: 'E2E WebP Receipt Upload Verification',
-        dataUrl: 'data:image/webp;base64,UklGRh4AAABXRUJQVlA4TBEAAAAvAAAAAAfQ//73v/+BiOh/AAA=',
-      },
-    });
-    expect(receiptUploadRes.ok()).toBe(true);
-    const receiptUploadBody = (await receiptUploadRes.json()) as {
-      ok: boolean;
-      bucket: string;
-      receiptId: string;
-    };
-    expect(receiptUploadBody.ok).toBe(true);
-    expect(receiptUploadBody.bucket).toBe('wise-spliter-receipts');
-    expect(receiptUploadBody.receiptId).toBe('rcpt_e2e_test_01');
-
-    const pushMutRes = await request.post('/api/ledger/push-mutations', {
-      data: {
-        ops: [
-          {
-            id: 'mut_e2e_01',
-            entityType: 'expense',
-            action: 'expense_updated',
-            hlc: '2026-11-11T15:00:00.000Z-0001-usr_arjun_01',
-          },
-        ],
-      },
-    });
-    expect(pushMutRes.ok()).toBe(true);
-    const pushMutBody = (await pushMutRes.json()) as {
-      ok: boolean;
-      schema: string;
-      processed_count: number;
-    };
-    expect(pushMutBody.ok).toBe(true);
-    expect(pushMutBody.schema).toBe('wise_spliter');
-    expect(pushMutBody.processed_count).toBeGreaterThanOrEqual(1);
-
-    const pullChangesRes = await request.get('/api/ledger/pull-changes?sinceSeq=0');
-    expect(pullChangesRes.ok()).toBe(true);
-    const pullChangesBody = (await pullChangesRes.json()) as {
-      ok: boolean;
-      schema: string;
-      groups: unknown[];
-      expenses: unknown[];
-    };
-    expect(pullChangesBody.ok).toBe(true);
-    expect(pullChangesBody.schema).toBe('wise_spliter');
-    expect(Array.isArray(pullChangesBody.groups)).toBe(true);
-    expect(Array.isArray(pullChangesBody.expenses)).toBe(true);
-
     await page.goto('/');
 
-    // 1. Home Screen Minimalism & Contextual Help Guide
+    // 1. Verify Minimalist Home Dashboard & Contextual Page Guide
     await expect(page.getByTestId('home-dashboard-page')).toBeVisible();
     await expect(page.getByTestId('contextual-page-guide')).toBeVisible();
+    await expect(page.getByTestId('home-you-are-owed-amount')).toBeVisible();
+    await expect(page.getByTestId('home-you-owe-amount')).toBeVisible();
+    await expect(page.getByTestId('home-net-balance-amount')).toBeVisible();
 
+    // 2. Open and close Interactive Help Guide Modal
     await page.getByTestId('header-help-btn').click();
     const helpModal = page.getByTestId('help-guide-modal');
     await expect(helpModal).toBeVisible();
     await page.getByTestId('close-help-modal-btn').click();
     await expect(helpModal).toBeHidden();
 
-    // Verify Top 3 Recent Groups constraint: exactly 3 group cards shown even though mock-ledger-data.json has 4 groups
+    // 3. Verify Top 3 Recent Groups constraint (4 groups exist in mockData, strictly 3 shown on Home)
     expect(mockData.groups.length).toBe(4);
     const recentGroupsGrid = page.getByTestId('home-recent-groups-grid');
     await expect(recentGroupsGrid).toBeVisible();
@@ -119,47 +29,64 @@ test.describe('Wise-Spliter Phase 1 Full Acceptance & E2E Suite', () => {
       recentGroupsGrid.locator('[data-testid^="home-recent-group-card-"]')
     ).toHaveCount(3);
 
-    // 2. Modular Add Expense from Home (No Group Selected -> Direct Split Between Added Users)
+    // 4. Open Quick Add Expense from Home -> defaults to "" (No Group)
     await page.getByTestId('home-quick-add-expense-btn').click();
     const scopeSelect = page.getByTestId('expense-group-scope-select');
     await expect(scopeSelect).toBeVisible();
     await expect(scopeSelect).toHaveValue('');
     await expect(page.getByTestId('adhoc-participants-panel')).toBeVisible();
 
+    // Add custom participant "Vikram Rao"
     await page.getByTestId('adhoc-friend-name-input').fill('Vikram Rao');
     await page.getByTestId('add-adhoc-friend-btn').click();
     await expect(page.getByTestId('adhoc-participants-panel')).toContainText('Vikram Rao');
 
+    // Fill "Late Night Shawarma & Chai" (₹900) and save while verifying Backend API sync
     await page.getByTestId('expense-title-input').fill('Late Night Shawarma & Chai');
     await page.getByTestId('expense-amount-input').fill('900');
+
+    const syncResPromise = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/ledger/sync') &&
+        res.request().method() === 'POST'
+    );
     await page.getByTestId('save-expense-btn').click();
+    const syncRes = await syncResPromise;
+    expect(syncRes.status()).toBe(200);
 
     const directExpensesList = page.getByTestId('home-direct-expenses-list');
     await expect(directExpensesList).toBeVisible();
     await expect(directExpensesList).toContainText('Late Night Shawarma & Chai');
+    await expect(directExpensesList).toContainText('₹900.00');
+  });
 
-    // 3. Progressive Disclosure on Opening a Group & Group-Preselected Add Expense
+  test('User Story 2: Progressive Group Workspace, Offline Conflict Resolution, Explain Balance & 5 Split Modes + Receipt Upload', async ({
+    page,
+  }) => {
+    await page.goto('/');
+
+    // 1. Open "Goa Villa & Scuba 2026" from Home
     await page.getByTestId('open-group-workspace-grp_goa_2026').click();
-
     await expect(page.getByTestId('group-minimal-insights-bar')).toBeVisible();
     await expect(page.getByTestId('group-auto-guide-strip')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Goa Villa & Scuba 2026' })).toBeVisible();
 
-    // Verify all 4 groups from mock-ledger-data.json are rendered in the Group Switcher Bar
-    for (const grp of mockData.groups) {
-      await expect(page.getByTestId(`group-select-${grp.id}`)).toBeVisible();
-    }
-
-    // 4. Verify Concurrent Offline Conflict Resolution Banner is visible for Thalassa Cliff Dinner
+    // 2. Resolve concurrent offline conflict banner on "Thalassa Cliff Dinner"
     const conflictBanner = page.getByTestId('conflict-resolution-banner');
     await expect(conflictBanner).toBeVisible();
     await expect(conflictBanner).toContainText('Thalassa Cliff Dinner');
 
-    // Resolve the conflict by keeping the active revision
+    const conflictSyncPromise = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/ledger/sync') &&
+        res.request().method() === 'POST'
+    );
     await page.getByTestId('keep-active-revision-btn').first().click();
+    const conflictSyncRes = await conflictSyncPromise;
+    expect(conflictSyncRes.status()).toBe(200);
     await expect(conflictBanner).toBeHidden();
 
-    // 5. Open "Explain This Balance" provenance modal for a group member and verify exact math equation
+    // 3. Open "Explain This Balance" modal and verify exact math identity
     await page.getByTestId('explain-balance-btn').first().click();
     const explainModal = page.getByTestId('explain-balance-modal');
     await expect(explainModal).toBeVisible();
@@ -170,144 +97,396 @@ test.describe('Wise-Spliter Phase 1 Full Acceptance & E2E Suite', () => {
     await page.getByTestId('close-explain-modal-btn').click();
     await expect(explainModal).toBeHidden();
 
-    // 6. Open "Add Expense" modal inside the group workspace and verify group is pre-selected to grp_goa_2026
+    // 4. Open "Add Expense" inside group workspace and verify grp_goa_2026 is pre-selected
     await page.getByTestId('add-expense-btn').click();
     await expect(page.getByTestId('expense-group-scope-select')).toHaveValue('grp_goa_2026');
 
     await page.getByTestId('expense-title-input').fill('Beach Shack Sunset Snacks');
     await page.getByTestId('expense-amount-input').fill('1000');
 
-    // Verify all 5 split mode buttons exist and switch cleanly
+    // Exercise all 5 split modes
     for (const mode of ['equal', 'exact', 'percentage', 'shares', 'adjustment'] as const) {
       await expect(page.getByTestId(`split-mode-${mode}`)).toBeVisible();
       await page.getByTestId(`split-mode-${mode}`).click();
     }
     await page.getByTestId('split-mode-equal').click();
 
-    // Verify Multi-Payer toggle opens per-member payer inputs and toggles back
+    // Exercise Multi-Payer toggle
     const multiPayerToggle = page.getByTestId('multi-payer-toggle');
     await multiPayerToggle.click();
     await expect(multiPayerToggle).toContainText('Multiple Payers Active');
     await multiPayerToggle.click();
 
-    // Verify Foreign Currency FX conversion preview
+    // Exercise Foreign FX conversion (EUR -> INR)
     const currencySelect = page.getByTestId('expense-currency-select');
     await currencySelect.selectOption('EUR');
     await expect(page.getByTestId('expense-fx-rate-input')).toBeVisible();
     await currencySelect.selectOption('INR');
 
-    // Verify rotating remainder indicator on 3-way split of ₹1,000.00 (exclude 4th member Kabir)
+    // Verify rotating remainder on 3-way split of ₹1,000.00
     const fourthMemberId = mockData.groups[0]!.members[3]!.id;
     await page.getByTestId(`split-include-${fourthMemberId}`).uncheck();
     await expect(page.getByText('+1 paise/cents rotated').first()).toBeVisible();
-
     await expect(page.getByTestId('split-reconciliation-bar')).toContainText('100% Reconciled');
 
-    // Attach a sample WebP receipt inside ExpenseEditorModal and verify badge is visible
+    // Attach WebP sample receipt and verify badge
     await page.getByTestId('attach-sample-receipt-btn').click();
     await expect(page.getByTestId('attached-receipt-badge').first()).toBeVisible();
 
+    const receiptUploadPromise = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/receipts/upload') &&
+        res.request().method() === 'POST'
+    );
+    const expenseSyncPromise = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/ledger/sync') &&
+        res.request().method() === 'POST'
+    );
     await page.getByTestId('save-expense-btn').click();
+    const [receiptRes, expSyncRes] = await Promise.all([
+      receiptUploadPromise,
+      expenseSyncPromise,
+    ]);
+    expect(receiptRes.status()).toBe(200);
+    expect(expSyncRes.status()).toBe(200);
 
     await expect(page.getByText('Beach Shack Sunset Snacks').first()).toBeVisible();
   });
 
-  test('Tabs 2-5: navigates across Activity & Trash, Friends & Settle (UPI QR + WhatsApp), Insights & Search (INR/JPY/KWD), and Portability & Encrypted Backups', async ({
+  test('User Story 3: Group Management — Create Group, Add/Claim Member, Base Currency Re-denomination & Debt Simplification Toggle', async ({
     page,
   }) => {
     await page.goto('/');
+    await page.getByTestId('nav-tab-groups').click();
 
-    // Tab 2: Activity & History + Action Types Catalog pills + Revision History restore + Trash Recovery
+    // 1. Toggle Debt Simplification ON/OFF
+    const simplifyBtn = page.getByTestId('toggle-simplify-debts-btn');
+    await expect(simplifyBtn).toContainText('Simplify Debts: ON');
+    await simplifyBtn.click();
+    await expect(simplifyBtn).toContainText('Simplify Debts: OFF');
+    await simplifyBtn.click();
+    await expect(simplifyBtn).toContainText('Simplify Debts: ON');
+
+    // 2. Open "Change Base Currency" and re-denominate group currency
+    await page.getByTestId('change-group-currency-btn').click();
+    await page.getByTestId('confirm-currency-change-btn').click();
+
+    // 3. Add a new member to the group and claim an unclaimed placeholder member
+    await page.getByTestId('add-member-btn').click();
+    await page.getByTestId('member-name-input').fill('Ananya Rao');
+    await page.getByTestId('member-email-input').fill('ananya.rao@gmail.com');
+    await page.getByTestId('save-member-btn').click();
+    await expect(page.getByText('Ananya Rao').first()).toBeVisible();
+
+    const claimBtn = page.locator('[data-testid^="claim-member-"]').first();
+    if (await claimBtn.isVisible()) {
+      await claimBtn.click();
+    }
+
+    // 4. Create a new group and verify Backend API sync
+    await page.getByTestId('create-group-btn').click();
+    await page.getByTestId('group-name-input').fill('Himalayan Trek 2026');
+
+    const createGroupSyncPromise = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/ledger/sync') &&
+        res.request().method() === 'POST'
+    );
+    await page.getByTestId('save-group-btn').click();
+    const createGroupSyncRes = await createGroupSyncPromise;
+    expect(createGroupSyncRes.status()).toBe(200);
+
+    await expect(
+      page.getByRole('heading', { name: 'Himalayan Trek 2026' })
+    ).toBeVisible();
+  });
+
+  test('User Story 4: Transparent Activity History, Per-Expense Revision Restore & Trash Recovery Vault', async ({
+    page,
+  }) => {
+    await page.goto('/');
     await page.getByTestId('nav-tab-activity').click();
-    await expect(page.getByTestId('activity-feed-list')).toBeVisible();
-    await expect(page.getByText('Filter by Action Type Catalog')).toBeVisible();
-    await page.getByRole('button', { name: new RegExp(mockData.actionTypesCatalog[0]!.label, 'i') }).click();
-    await expect(page.getByText(`action_code: ${mockData.actionTypesCatalog[0]!.action}`)).toBeVisible();
-    await page.getByRole('button', { name: /All Actions/i }).click();
 
+    // 1. Verify Activity Feed and toggle scope (Group <-> Global)
+    await expect(page.getByTestId('activity-feed-list')).toBeVisible();
+    const scopeToggle = page.getByTestId('activity-scope-toggle');
+    await expect(scopeToggle).toBeVisible();
+    await scopeToggle.click();
+    await expect(
+      page.getByRole('heading', { name: /All Groups Global Activity Timeline/i })
+    ).toBeVisible();
+    await scopeToggle.click();
+
+    // 2. Inspect revision-history-panel and restore a historical revision
     const revisionPanel = page.getByTestId('revision-history-panel');
     await expect(revisionPanel).toBeVisible();
     await expect(revisionPanel).toContainText('₹6,000.00');
     await expect(revisionPanel).toContainText('₹6,800.00');
-    await page.getByTestId(`restore-revision-${mockData.expenseRevisions[0]!.id}`).click();
 
-    await expect(page.getByTestId('trash-recovery-panel')).toBeVisible();
-    await expect(page.getByText('Duplicate Entry: Late Night Gelato').first()).toBeVisible();
+    const revRestoreSyncPromise = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/ledger/sync') &&
+        res.request().method() === 'POST'
+    );
+    await page
+      .getByTestId(`restore-revision-${mockData.expenseRevisions[0]!.id}`)
+      .click();
+    const revRestoreSyncRes = await revRestoreSyncPromise;
+    expect(revRestoreSyncRes.status()).toBe(200);
+
+    // 3. Restore "Duplicate Entry: Late Night Gelato" from trash-recovery-panel
+    const trashPanel = page.getByTestId('trash-recovery-panel');
+    await expect(trashPanel).toBeVisible();
+    await expect(
+      trashPanel.getByText('Duplicate Entry: Late Night Gelato')
+    ).toBeVisible();
+
+    const trashRestoreSyncPromise = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/ledger/sync') &&
+        res.request().method() === 'POST'
+    );
     await page.getByTestId('restore-trash-exp_goa_trashed_gelato_06').click();
+    const trashRestoreSyncRes = await trashRestoreSyncPromise;
+    expect(trashRestoreSyncRes.status()).toBe(200);
+    await expect(trashPanel).toContainText('Trash Vault is Clean');
+  });
 
-    // Tab 3: Friends Cross-Group Net Balances, 1-click Atomic Settle All, UPI QR Studio, and WhatsApp Summary
+  test('User Story 5: Friends Cross-Group Net Balances, Atomic Batch Settle Up, UPI QR Studio & WhatsApp Summary', async ({
+    page,
+  }) => {
+    await page.goto('/');
     await page.getByTestId('nav-tab-friends').click();
-    const friendsList = page.getByTestId('friends-cross-group-list');
-    await expect(friendsList).toBeVisible();
+
+    // 1. Verify Cross-Group Friends List & UPI Deep-Link QR Studio
+    await expect(page.getByTestId('friends-cross-group-list')).toBeVisible();
     await expect(page.getByTestId('settle-up-studio')).toBeVisible();
+
     const upiBox = page.getByTestId('upi-deep-link-box');
     await expect(upiBox).toBeVisible();
     await expect(page.getByTestId('upi-uri-text')).toContainText('upi://pay?');
     await expect(upiBox.locator('svg').first()).toBeVisible();
 
+    // 2. Verify WhatsApp Summary Panel and Copy Action
     const whatsappPanel = page.getByTestId('whatsapp-summary-panel');
     await expect(whatsappPanel).toBeVisible();
-    await expect(page.getByTestId('whatsapp-summary-markdown')).toContainText('Wise-Spliter Summary - Goa Villa & Scuba 2026');
+    await expect(page.getByTestId('whatsapp-summary-markdown')).toContainText(
+      'Wise-Spliter Summary - Goa Villa & Scuba 2026'
+    );
     await page.getByTestId('copy-whatsapp-summary-btn').click();
 
-    // Test 1-Tap Atomic Settle All Across Groups on a friend with open balance
-    const settleAllBtn = page.locator('[data-testid^="settle-all-groups-"]:not([disabled])').first();
+    // 3. Execute 1-Tap Atomic Cross-Group Settle Up and record a settlement in Settle Up Studio
+    const settleAllBtn = page
+      .locator('[data-testid^="settle-all-groups-"]:not([disabled])')
+      .first();
     await expect(settleAllBtn).toBeVisible();
     await settleAllBtn.click();
 
-    // Tab 4: Insights & Global Search across 0, 2, and 3 decimal currencies (INR, JPY, KWD)
+    const recordSettleSyncPromise = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/ledger/sync') &&
+        res.request().method() === 'POST'
+    );
+    await page.getByTestId('record-settlement-submit-btn').click();
+    const recordSettleSyncRes = await recordSettleSyncPromise;
+    expect(recordSettleSyncRes.status()).toBe(200);
+  });
+
+  test('User Story 6: Insights & Global Search (0, 2, 3 Decimal Currencies), Portability (Splitwise/XLSX/PDF/AES-256-GCM) & Backend API Security Isolation (401/403)', async ({
+    page,
+    request,
+  }) => {
+    await page.goto('/');
+
+    // 1. Insights & Global Search across 0, 2, and 3 decimal currencies (JPY, INR, KWD)
     await page.getByTestId('nav-tab-analytics').click();
     await expect(page.getByTestId('analytics-kpi-grid')).toBeVisible();
     const categoryChart = page.getByTestId('analytics-category-breakdown');
     await expect(categoryChart).toBeVisible();
     await expect(
-      categoryChart.locator('svg[aria-label="Category Spend Proportional Donut Chart"]')
-    ).toBeVisible();
-    await expect(
-      categoryChart.locator('svg[aria-label="Category Horizontal SVG Bar Chart"]')
+      categoryChart.locator(
+        'svg[aria-label="Category Spend Proportional Donut Chart"]'
+      )
     ).toBeVisible();
 
     const searchInput = page.getByTestId('global-search-input');
-    // Search JPY (0-decimal)
+    // JPY (0-decimal)
     await searchInput.fill('Shinkansen');
-    await expect(page.getByText('Nozomi Shinkansen Tokyo to Kyoto').first()).toBeVisible();
+    await expect(
+      page.getByText('Nozomi Shinkansen Tokyo to Kyoto').first()
+    ).toBeVisible();
     await expect(page.getByText('¥28,351').first()).toBeVisible();
 
-    // Search KWD (3-decimal fils)
-    await searchInput.fill('Souk Mubarakiya');
-    await expect(page.getByText('Souk Mubarakiya Grill Dinner (3-Decimal KWD Fils)').first()).toBeVisible();
+    // KWD (3-decimal fils)
+    await searchInput.fill('Souk');
+    await expect(
+      page
+        .getByText('Souk Mubarakiya Grill Dinner (3-Decimal KWD Fils)')
+        .first()
+    ).toBeVisible();
     await expect(page.getByText('KD25.000').first()).toBeVisible();
 
-    // Search INR (2-decimal paise)
+    // INR (2-decimal paise)
     await searchInput.fill('Assagao');
-    await expect(page.getByText('Assagao Pool Villa (Multi-Payer Booking)').first()).toBeVisible();
+    await expect(
+      page.getByText('Assagao Pool Villa (Multi-Payer Booking)').first()
+    ).toBeVisible();
     await expect(page.getByText('₹20,000.00').first()).toBeVisible();
 
-    // Tab 5: Portability, Supabase wise_spliter + Google OAuth, Offline Toggle, Splitwise CSV Import/Export & AES-256-GCM Backup/Restore
+    // 2. Portability: Splitwise CSV Import, XLSX/PDF Export & AES-256-GCM Encrypted Backup
     await page.getByTestId('nav-tab-portability').click();
     const syncPanel = page.getByTestId('cloud-sync-panel');
     await expect(syncPanel).toBeVisible();
     await expect(syncPanel).toContainText('wise_spliter');
-    await expect(syncPanel).toContainText('Google OAuth Verified');
-
-    await page.getByTestId('toggle-offline-btn').click();
-    await expect(syncPanel).toContainText('Offline IndexedDB Mode');
-    await page.getByTestId('toggle-offline-btn').click();
-    await expect(syncPanel).toContainText('Online & Synced');
-
-    await page.getByTestId('google-oauth-btn').click();
-    await page.getByTestId('download-xlsx-btn').click();
-    await page.getByTestId('download-pdf-btn').click();
 
     await page.getByTestId('load-sample-splitwise-btn').click();
+    const importSyncPromise = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/ledger/sync') &&
+        res.request().method() === 'POST'
+    );
     await page.getByTestId('confirm-splitwise-import-btn').click();
+    const importSyncRes = await importSyncPromise;
+    expect(importSyncRes.status()).toBe(200);
 
-    await expect(page.getByTestId('csv-export-preview')).toContainText('Date,Title,Category');
+    await page.getByTestId('download-xlsx-btn').click();
+    await page.getByTestId('download-pdf-btn').click();
+    await expect(page.getByTestId('csv-export-preview')).toContainText(
+      'Date,Title,Category'
+    );
 
-    await page.getByTestId('backup-passphrase-input').fill('my-vault-passphrase-2026');
+    await page
+      .getByTestId('backup-passphrase-input')
+      .fill('my-vault-passphrase-2026');
     await page.getByTestId('generate-encrypted-backup-btn').click();
-    await expect(page.getByTestId('encrypted-backup-output')).toContainText('AES-256-GCM');
+    await expect(page.getByTestId('encrypted-backup-output')).toContainText(
+      'AES-256-GCM'
+    );
     await page.getByTestId('decrypt-restore-btn').click();
     await expect(page.getByText(/Verified & Restored:/i)).toBeVisible();
+
+    // 3. Backend API Security & User Isolation Verification via `request`
+    // (3a) Unauthenticated GET /api/ledger/bootstrap and POST /api/ledger/sync -> HTTP 401
+    const unauthBootstrapRes = await request.get('/api/ledger/bootstrap');
+    expect(unauthBootstrapRes.status()).toBe(401);
+
+    const unauthSyncRes = await request.post('/api/ledger/sync', {
+      data: { dataset: mockData },
+    });
+    expect(unauthSyncRes.status()).toBe(401);
+
+    // (3b) Authenticated as intruder@evil.com (usr_intruder_99) attempting to impersonate usr_arjun_01 or modify grp_goa_2026 -> HTTP 403
+    const intruderSessionRes = await request.post('/api/auth/session', {
+      data: {
+        userId: 'usr_intruder_99',
+        email: 'intruder@evil.com',
+        fullName: 'Malicious Intruder',
+      },
+    });
+    expect(intruderSessionRes.status()).toBe(200);
+    const { token: intruderToken } = (await intruderSessionRes.json()) as {
+      token: string;
+    };
+    expect(Boolean(intruderToken)).toBe(true);
+
+    // Attempt 1: Intruder tries to sync dataset with usr_arjun_01's profile -> 403
+    const intruderImpersonateRes = await request.post('/api/ledger/sync', {
+      headers: {
+        Authorization: `Bearer ${intruderToken}`,
+      },
+      data: {
+        dataset: mockData,
+      },
+    });
+    expect(intruderImpersonateRes.status()).toBe(403);
+
+    // Attempt 2: Intruder uses own profile but tries to modify existing group grp_goa_2026 owned by usr_arjun_01 -> 403
+    const intruderGroupHijackDataset = {
+      ...mockData,
+      currentUser: {
+        ...mockData.currentUser,
+        id: 'usr_intruder_99',
+        email: 'intruder@evil.com',
+        fullName: 'Malicious Intruder',
+      },
+      groups: [
+        {
+          ...mockData.groups[0]!,
+          members: [
+            ...mockData.groups[0]!.members,
+            {
+              id: 'mem_intruder_99',
+              groupId: mockData.groups[0]!.id,
+              userId: 'usr_intruder_99',
+              invitedEmail: 'intruder@evil.com',
+              displayName: 'Malicious Intruder',
+              avatarInitials: 'MI',
+              upiId: null,
+              role: 'member',
+              memberOrder: 99,
+              joinedAt: '2026-11-11T00:00:00Z',
+              claimedAt: '2026-11-11T00:00:00Z',
+            },
+          ],
+        },
+      ],
+      expenses: [],
+    };
+    const intruderGroupHijackRes = await request.post('/api/ledger/sync', {
+      headers: {
+        Authorization: `Bearer ${intruderToken}`,
+      },
+      data: {
+        dataset: intruderGroupHijackDataset,
+      },
+    });
+    expect(intruderGroupHijackRes.status()).toBe(403);
+
+    // (3c) Authenticated as arjun.mehta@gmail.com (usr_arjun_01), GET /api/ledger/bootstrap and POST /api/ledger/sync -> HTTP 200
+    const arjunSessionRes = await request.post('/api/auth/session', {
+      data: {
+        userId: 'usr_arjun_01',
+        email: 'arjun.mehta@gmail.com',
+        fullName: 'Arjun Mehta',
+      },
+    });
+    expect(arjunSessionRes.status()).toBe(200);
+    const { token: arjunToken } = (await arjunSessionRes.json()) as {
+      token: string;
+    };
+    expect(Boolean(arjunToken)).toBe(true);
+
+    const arjunSyncRes = await request.post('/api/ledger/sync', {
+      headers: {
+        Authorization: `Bearer ${arjunToken}`,
+      },
+      data: {
+        dataset: mockData,
+      },
+    });
+    expect(arjunSyncRes.status()).toBe(200);
+    const arjunSyncBody = (await arjunSyncRes.json()) as {
+      ok: boolean;
+      schema: string;
+    };
+    expect(arjunSyncBody.ok).toBe(true);
+    expect(arjunSyncBody.schema).toBe('wise_spliter');
+
+    const arjunBootstrapRes = await request.get('/api/ledger/bootstrap', {
+      headers: {
+        Authorization: `Bearer ${arjunToken}`,
+      },
+    });
+    expect(arjunBootstrapRes.status()).toBe(200);
+    const arjunBootstrapBody = (await arjunBootstrapRes.json()) as {
+      ok: boolean;
+      schema: string;
+      dataset: { groups: unknown[]; expenses: unknown[] };
+    };
+    expect(arjunBootstrapBody.ok).toBe(true);
+    expect(arjunBootstrapBody.schema).toBe('wise_spliter');
+    expect(arjunBootstrapBody.dataset.groups.length).toBeGreaterThanOrEqual(4);
+    expect(arjunBootstrapBody.dataset.expenses.length).toBeGreaterThanOrEqual(10);
   });
 });

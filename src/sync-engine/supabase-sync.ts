@@ -13,6 +13,15 @@ const DEFAULT_SUPABASE_URL = 'http://127.0.0.1:54321';
 const DEFAULT_SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 
+const DEFAULT_SUPABASE_PUBLISHABLE_KEY =
+  'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH';
+
+const DEFAULT_SESSION_USER = {
+  id: 'usr_arjun_01',
+  email: 'arjun.mehta@gmail.com',
+  fullName: 'Arjun Mehta',
+};
+
 function createWiseSpliterBrowserClient() {
   const metaEnv = (
     import.meta as unknown as {
@@ -20,11 +29,17 @@ function createWiseSpliterBrowserClient() {
     }
   ).env;
   const supabaseUrl = metaEnv?.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
-  const supabaseAnonKey =
-    metaEnv?.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
+  const supabasePublishableKey =
+    metaEnv?.VITE_SUPABASE_PUBLISHABLE_KEY ||
+    metaEnv?.VITE_SUPABASE_ANON_KEY ||
+    DEFAULT_SUPABASE_PUBLISHABLE_KEY ||
+    DEFAULT_SUPABASE_ANON_KEY;
+  const supabaseSchema =
+    (metaEnv?.VITE_SUPABASE_SCHEMA as typeof WISE_SPLITER_SCHEMA | undefined) ||
+    WISE_SPLITER_SCHEMA;
 
-  return createClient(supabaseUrl, supabaseAnonKey, {
-    db: { schema: WISE_SPLITER_SCHEMA },
+  return createClient(supabaseUrl, supabasePublishableKey, {
+    db: { schema: supabaseSchema },
     auth: {
       persistSession: true,
       autoRefreshToken: true,
@@ -45,6 +60,69 @@ export function getBrowserSupabaseClient(): WiseSpliterSupabaseClient {
   return browserSupabaseClient;
 }
 
+let cachedSessionToken: string | null = null;
+let cachedSessionUserKey: string | null = null;
+
+/**
+ * Acquires and caches a signed Backend API session token via `POST /api/auth/session`
+ * (or falls back to an active Supabase Auth access token), scoped to `user`.
+ */
+export async function ensureBackendSessionToken(
+  user: {
+    id: string;
+    email: string;
+    fullName: string;
+  } = DEFAULT_SESSION_USER
+): Promise<string | null> {
+  const targetUser = {
+    id: user.id?.trim() || DEFAULT_SESSION_USER.id,
+    email: (user.email?.trim() || DEFAULT_SESSION_USER.email).toLowerCase(),
+    fullName: user.fullName?.trim() || DEFAULT_SESSION_USER.fullName,
+  };
+  const userKey = `${targetUser.id}:${targetUser.email}`;
+
+  if (cachedSessionToken && cachedSessionUserKey === userKey) {
+    return cachedSessionToken;
+  }
+
+  try {
+    const res = await fetch('/api/auth/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: targetUser.id,
+        email: targetUser.email,
+        fullName: targetUser.fullName,
+      }),
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { ok?: boolean; token?: string };
+      if (data.token && typeof data.token === 'string') {
+        cachedSessionToken = data.token;
+        cachedSessionUserKey = userKey;
+        return cachedSessionToken;
+      }
+    }
+  } catch {
+    // Fallback to active Supabase Auth session or offline mode
+  }
+
+  try {
+    const client = getBrowserSupabaseClient();
+    const { data } = await client.auth.getSession();
+    const accessToken = data?.session?.access_token;
+    if (accessToken) {
+      cachedSessionToken = accessToken;
+      cachedSessionUserKey = userKey;
+      return cachedSessionToken;
+    }
+  } catch {
+    // Offline or unit-test environment
+  }
+
+  return cachedSessionToken;
+}
+
 export interface GoogleOAuthSignInResult {
   ok: boolean;
   provider: 'google';
@@ -55,7 +133,7 @@ export interface GoogleOAuthSignInResult {
 }
 
 export async function signInWithGoogleOAuth(
-  email = 'aarav.mehta@wisespliter.in'
+  email = 'arjun.mehta@gmail.com'
 ): Promise<GoogleOAuthSignInResult> {
   const client = getBrowserSupabaseClient();
   let oauthUrl: string | null = null;
@@ -104,13 +182,18 @@ export interface ReceiptUploadResponse {
 }
 
 export async function uploadReceiptAttachment(
-  payload: ReceiptUploadPayload
+  payload: ReceiptUploadPayload,
+  user?: { id: string; email: string; fullName: string }
 ): Promise<ReceiptUploadResponse> {
   const fallbackPath = `${payload.groupId || 'standalone'}/${payload.expenseId}/${payload.id}-${payload.fileName}`;
   try {
+    const token = await ensureBackendSessionToken(user);
     const res = await fetch('/api/receipts/upload', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify(payload),
     });
     if (res.ok) {
@@ -145,14 +228,19 @@ export interface DeltaChangesResponse {
 }
 
 export async function pullDeltaChanges(
-  sinceSeq = 0
+  sinceSeq = 0,
+  user?: { id: string; email: string; fullName: string }
 ): Promise<DeltaChangesResponse> {
   try {
+    const token = await ensureBackendSessionToken(user);
     const res = await fetch(
       `/api/ledger/pull-changes?sinceSeq=${encodeURIComponent(String(sinceSeq))}`,
       {
         method: 'GET',
-        headers: { Accept: 'application/json' },
+        headers: {
+          Accept: 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       }
     );
     if (res.ok) {
@@ -209,6 +297,14 @@ export class WiseSpliterCloudSyncEngine {
     return getBrowserSupabaseClient();
   }
 
+  public async ensureBackendSessionToken(user?: {
+    id: string;
+    email: string;
+    fullName: string;
+  }): Promise<string | null> {
+    return ensureBackendSessionToken(user);
+  }
+
   public getConnectionTarget(): WiseSpliterConnectionTarget {
     return {
       schema: this.schema,
@@ -237,15 +333,17 @@ export class WiseSpliterCloudSyncEngine {
   }
 
   public async uploadReceiptAttachment(
-    payload: ReceiptUploadPayload
+    payload: ReceiptUploadPayload,
+    user?: { id: string; email: string; fullName: string }
   ): Promise<ReceiptUploadResponse> {
-    return uploadReceiptAttachment(payload);
+    return uploadReceiptAttachment(payload, user);
   }
 
   public async pullDeltaChanges(
-    sinceSeq = 0
+    sinceSeq = 0,
+    user?: { id: string; email: string; fullName: string }
   ): Promise<DeltaChangesResponse> {
-    return pullDeltaChanges(sinceSeq);
+    return pullDeltaChanges(sinceSeq, user);
   }
 
   public async queueMutation(op: SyncOutboxMutation): Promise<void> {
@@ -287,9 +385,17 @@ export class WiseSpliterCloudSyncEngine {
   ): Promise<WiseSpliterSyncReport> {
     let persistedToSupabase = false;
     try {
+      const token = await ensureBackendSessionToken({
+        id: dataset.currentUser.id,
+        email: dataset.currentUser.email,
+        fullName: dataset.currentUser.fullName,
+      });
       const res = await fetch('/api/ledger/sync', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ dataset }),
       });
       if (res.ok) {
@@ -306,7 +412,9 @@ export class WiseSpliterCloudSyncEngine {
     return report;
   }
 
-  public async flushOutbox(overrideCount?: number): Promise<WiseSpliterSyncReport> {
+  public async flushOutbox(
+    overrideCount?: number
+  ): Promise<WiseSpliterSyncReport> {
     const outboxItems = await listSyncOutboxMutations();
     const pushedMutations =
       typeof overrideCount === 'number'
@@ -315,9 +423,13 @@ export class WiseSpliterCloudSyncEngine {
 
     if (outboxItems.length > 0) {
       try {
+        const token = await ensureBackendSessionToken();
         await fetch('/api/ledger/push-mutations', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify({ ops: outboxItems }),
         });
       } catch {
@@ -338,7 +450,9 @@ export class WiseSpliterCloudSyncEngine {
     return report;
   }
 
-  public async syncNow(overridePendingCount?: number): Promise<WiseSpliterSyncReport> {
+  public async syncNow(
+    overridePendingCount?: number
+  ): Promise<WiseSpliterSyncReport> {
     return this.flushOutbox(overridePendingCount);
   }
 }

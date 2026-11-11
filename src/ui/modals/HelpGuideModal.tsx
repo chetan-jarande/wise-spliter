@@ -1,15 +1,15 @@
 import React, { useMemo, useState } from 'react';
 import {
-  ArrowRight,
-  BookOpen,
-  CaretDown,
-  CaretUp,
-  CheckCircle,
-  Compass,
-  Info,
-  Question,
-  Sparkle,
-  X,
+  ArrowRightIcon as ArrowRight,
+  BookOpenIcon as BookOpen,
+  CaretDownIcon as CaretDown,
+  CaretUpIcon as CaretUp,
+  CheckCircleIcon as CheckCircle,
+  CompassIcon as Compass,
+  InfoIcon as Info,
+  QuestionIcon as Question,
+  SparkleIcon as Sparkle,
+  XIcon as X,
 } from '@phosphor-icons/react';
 import { HelpGuideSection } from '../../types/ledger';
 import { useLedger } from '../../state/LedgerContext';

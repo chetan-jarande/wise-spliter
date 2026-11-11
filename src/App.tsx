@@ -1,19 +1,19 @@
 import React from 'react';
 import {
-  ArrowsLeftRight,
-  ChartPolar,
-  ClockCounterClockwise,
-  CloudArrowUp,
-  CloudSlash,
-  Database,
-  House,
-  Moon,
-  Question,
-  Receipt,
-  ShieldCheck,
-  Sun,
-  UsersThree,
-  X,
+  ArrowsLeftRightIcon as ArrowsLeftRight,
+  ChartPolarIcon as ChartPolar,
+  ClockCounterClockwiseIcon as ClockCounterClockwise,
+  CloudArrowUpIcon as CloudArrowUp,
+  CloudSlashIcon as CloudSlash,
+  DatabaseIcon as Database,
+  HouseIcon as House,
+  MoonIcon as Moon,
+  QuestionIcon as Question,
+  ReceiptIcon as Receipt,
+  ShieldCheckIcon as ShieldCheck,
+  SunIcon as Sun,
+  UsersThreeIcon as UsersThree,
+  XIcon as X,
 } from '@phosphor-icons/react';
 import { ActivePageTab, useLedger } from './state/LedgerContext';
 import { HomeDashboardPage } from './ui/pages/HomeDashboardPage';

@@ -1,18 +1,18 @@
 import React, { useMemo, useState } from 'react';
 import {
-  ArrowCounterClockwise,
-  ArrowsLeftRight,
-  CheckCircle,
-  ClockCounterClockwise,
-  Funnel,
-  GitBranch,
-  GlobeHemisphereWest,
-  MagnifyingGlass,
-  ShieldCheck,
-  Sparkle,
-  Trash,
-  Users,
-  WarningOctagon,
+  ArrowCounterClockwiseIcon as ArrowCounterClockwise,
+  ArrowsLeftRightIcon as ArrowsLeftRight,
+  CheckCircleIcon as CheckCircle,
+  ClockCounterClockwiseIcon as ClockCounterClockwise,
+  FunnelIcon as Funnel,
+  GitBranchIcon as GitBranch,
+  GlobeHemisphereWestIcon as GlobeHemisphereWest,
+  MagnifyingGlassIcon as MagnifyingGlass,
+  ShieldCheckIcon as ShieldCheck,
+  SparkleIcon as Sparkle,
+  TrashIcon as Trash,
+  UsersIcon as Users,
+  WarningOctagonIcon as WarningOctagon,
 } from '@phosphor-icons/react';
 import { useLedger } from '../../state/LedgerContext';
 import {

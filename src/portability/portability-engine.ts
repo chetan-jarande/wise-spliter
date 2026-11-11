@@ -226,19 +226,44 @@ export function exportGroupToCsv(
   return rows.join('\n');
 }
 
+const BASE64_ALPHABET =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
 function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]!);
+  let result = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i += 3) {
+    const b0 = bytes[i]!;
+    const b1 = i + 1 < len ? bytes[i + 1]! : 0;
+    const b2 = i + 2 < len ? bytes[i + 2]! : 0;
+    const triplet = (b0 << 16) | (b1 << 8) | b2;
+
+    result += BASE64_ALPHABET[(triplet >> 18) & 0x3f];
+    result += BASE64_ALPHABET[(triplet >> 12) & 0x3f];
+    result += i + 1 < len ? BASE64_ALPHABET[(triplet >> 6) & 0x3f] : '=';
+    result += i + 2 < len ? BASE64_ALPHABET[triplet & 0x3f] : '=';
   }
-  return btoa(binary);
+  return result;
 }
 
 function base64ToBytes(b64: string): Uint8Array {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
+  const clean = b64.replace(/[\r\n\s]/g, '');
+  if (clean.length === 0) return new Uint8Array(0);
+  const padLen = clean.endsWith('==') ? 2 : clean.endsWith('=') ? 1 : 0;
+  const byteLen = Math.floor((clean.length * 3) / 4) - padLen;
+  const bytes = new Uint8Array(byteLen);
+  let outIdx = 0;
+
+  for (let i = 0; i < clean.length; i += 4) {
+    const c0 = BASE64_ALPHABET.indexOf(clean[i]!);
+    const c1 = BASE64_ALPHABET.indexOf(clean[i + 1]!);
+    const c2 = clean[i + 2] === '=' ? 0 : BASE64_ALPHABET.indexOf(clean[i + 2]!);
+    const c3 = clean[i + 3] === '=' ? 0 : BASE64_ALPHABET.indexOf(clean[i + 3]!);
+
+    const triplet = (c0 << 18) | (c1 << 12) | (c2 << 6) | c3;
+    if (outIdx < byteLen) bytes[outIdx++] = (triplet >> 16) & 0xff;
+    if (outIdx < byteLen) bytes[outIdx++] = (triplet >> 8) & 0xff;
+    if (outIdx < byteLen) bytes[outIdx++] = triplet & 0xff;
   }
   return bytes;
 }

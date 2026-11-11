@@ -35,6 +35,13 @@ import {
   saveDatasetToIndexedDb,
   saveReceiptBlobLocally,
 } from '../../src/storage/local-db';
+import {
+  authorizeDatasetSyncForUser,
+  filterDatasetForUser,
+  issueSessionToken,
+  verifyRequestAuth,
+} from '../../src/server/securityAndAuth';
+import type { IncomingMessage } from 'node:http';
 import mockData from '../../src/data/mock-ledger-data.json';
 import { ExpenseItem, GroupRecord, MockLedgerDataset, SettlementItem } from '../../src/types/ledger';
 
@@ -413,5 +420,209 @@ describe('Wise-Spliter Core Financial & Ledger Engine Verification', () => {
     expect(blobs[0]?.fileName).toBe('beach-shack-receipt.webp');
     expect(blobs[0]?.storageBucket).toBe('wise-spliter-receipts');
     expect(blobs[0]?.uploadedToCloud).toBe(true);
+  });
+
+  it('verifies issueSessionToken and verifyRequestAuth (valid token succeeds; missing or tampered token returns 401)', async () => {
+    const token = issueSessionToken({
+      userId: 'usr_arjun_01',
+      email: 'Arjun.Mehta@gmail.com',
+      fullName: 'Arjun Mehta',
+    });
+    expect(typeof token).toBe('string');
+    expect(token.split('.').length).toBe(3);
+
+    const validReq = {
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
+    } as unknown as IncomingMessage;
+    const validRes = await verifyRequestAuth(validReq);
+    expect(validRes.authenticated).toBe(true);
+    if (validRes.authenticated) {
+      expect(validRes.user.userId).toBe('usr_arjun_01');
+      expect(validRes.user.email).toBe('arjun.mehta@gmail.com');
+    }
+
+    const missingReq = {
+      headers: {},
+    } as unknown as IncomingMessage;
+    const missingRes = await verifyRequestAuth(missingReq);
+    expect(missingRes.authenticated).toBe(false);
+    if (!missingRes.authenticated) {
+      expect(missingRes.status).toBe(401);
+    }
+
+    const tamperedReq = {
+      headers: {
+        authorization: `Bearer ${token}tamperedSignature`,
+      },
+    } as unknown as IncomingMessage;
+    const tamperedRes = await verifyRequestAuth(tamperedReq);
+    expect(tamperedRes.authenticated).toBe(false);
+    if (!tamperedRes.authenticated) {
+      expect(tamperedRes.status).toBe(401);
+    }
+  });
+
+  it('verifies authorizeDatasetSyncForUser enforces anti-impersonation (403), existing group ownership protection (403), and valid member access', () => {
+    const baseDataset = JSON.parse(JSON.stringify(mockData)) as MockLedgerDataset;
+    const existingDbGroups = baseDataset.groups.map((g) => ({
+      id: g.id,
+      created_by: 'usr_arjun_01',
+      members: g.members.map((m) => ({
+        user_id: m.userId,
+        invited_email: m.invitedEmail,
+      })),
+    }));
+
+    // 1. User B attempting to impersonate User A's profile -> 403
+    const impersonationRes = authorizeDatasetSyncForUser(
+      baseDataset,
+      existingDbGroups,
+      { userId: 'usr_intruder_99', email: 'intruder@evil.com' }
+    );
+    expect(impersonationRes.authorized).toBe(false);
+    expect(impersonationRes.status).toBe(403);
+
+    // 2. User B attempting to modify an existing group owned by User A where User B is not a member in DB -> 403
+    const hijackedDataset: MockLedgerDataset = {
+      ...baseDataset,
+      currentUser: {
+        ...baseDataset.currentUser,
+        id: 'usr_intruder_99',
+        email: 'intruder@evil.com',
+      },
+      groups: [
+        {
+          ...baseDataset.groups[0]!,
+          members: [
+            ...baseDataset.groups[0]!.members,
+            {
+              id: 'mem_intruder_99',
+              groupId: baseDataset.groups[0]!.id,
+              userId: 'usr_intruder_99',
+              invitedEmail: 'intruder@evil.com',
+              displayName: 'Intruder',
+              avatarInitials: 'IN',
+              upiId: null,
+              role: 'member',
+              memberOrder: 99,
+              joinedAt: '2026-11-11T00:00:00Z',
+              claimedAt: '2026-11-11T00:00:00Z',
+            },
+          ],
+        },
+      ],
+      expenses: [],
+    };
+    const hijackGroupRes = authorizeDatasetSyncForUser(
+      hijackedDataset,
+      existingDbGroups,
+      { userId: 'usr_intruder_99', email: 'intruder@evil.com' }
+    );
+    expect(hijackGroupRes.authorized).toBe(false);
+    expect(hijackGroupRes.status).toBe(403);
+
+    // 3. Valid group member User A succeeds -> authorized: true
+    const validMemberRes = authorizeDatasetSyncForUser(
+      baseDataset,
+      existingDbGroups,
+      { userId: 'usr_arjun_01', email: 'arjun.mehta@gmail.com' }
+    );
+    expect(validMemberRes.authorized).toBe(true);
+  });
+
+  it('verifies filterDatasetForUser isolates groups and standalone expenses so User B never sees User A private groups', () => {
+    const baseDataset = JSON.parse(JSON.stringify(mockData)) as MockLedgerDataset;
+    const standalonePrivateExpense: ExpenseItem = {
+      id: 'exp_private_arjun_only',
+      groupId: null,
+      adHocParticipants: [
+        {
+          id: 'usr_arjun_01',
+          displayName: 'Arjun Mehta',
+          invitedEmail: 'arjun.mehta@gmail.com',
+          upiId: 'arjun.mehta@okicici',
+          avatarInitials: 'AM',
+          memberOrder: 0,
+        },
+        {
+          id: 'adhoc_rohan',
+          displayName: 'Rohan Verma',
+          invitedEmail: 'rohan.verma@gmail.com',
+          upiId: 'rohan.verma@okaxis',
+          avatarInitials: 'RV',
+          memberOrder: 1,
+        },
+      ],
+      title: 'Private Arjun & Rohan Lunch',
+      category: 'food',
+      tags: ['#direct-split'],
+      notes: 'Private standalone split',
+      expenseDate: '2026-11-11',
+      originalCurrency: 'INR',
+      originalAmountMinor: 50000,
+      groupCurrency: 'INR',
+      amountMinor: 50000,
+      fxRateScaled: 100000000,
+      fxStatus: 'identity',
+      fxAuditNote: null,
+      splitMode: 'equal',
+      rotationSeed: 0,
+      payers: [{ memberId: 'usr_arjun_01', paidMinor: 50000, originalPaidMinor: 50000 }],
+      splits: [
+        {
+          memberId: 'usr_arjun_01',
+          included: true,
+          owedMinor: 25000,
+          originalOwedMinor: 25000,
+          rawInputValue: 1,
+          remainderMinor: 0,
+        },
+        {
+          memberId: 'adhoc_rohan',
+          included: true,
+          owedMinor: 25000,
+          originalOwedMinor: 25000,
+          rawInputValue: 1,
+          remainderMinor: 0,
+        },
+      ],
+      currentRevisionId: 'rev_priv_1',
+      revisionNumber: 1,
+      hasUnresolvedConflict: false,
+      conflictRevisionId: null,
+      createdByMemberId: 'usr_arjun_01',
+      updatedByMemberId: 'usr_arjun_01',
+      createdAt: '2026-11-11T10:00:00Z',
+      updatedAt: '2026-11-11T10:00:00Z',
+      deletedAt: null,
+      hlc: '2026-11-11T10:00:00.000Z-0001-usr_arjun_01',
+      comments: [],
+      receipts: [],
+    };
+
+    const datasetWithStandalone: MockLedgerDataset = {
+      ...baseDataset,
+      expenses: [...baseDataset.expenses, standalonePrivateExpense],
+    };
+
+    const filteredForUserB = filterDatasetForUser(datasetWithStandalone, {
+      userId: 'usr_intruder_99',
+      email: 'intruder@evil.com',
+    });
+    expect(filteredForUserB.groups.length).toBe(0);
+    expect(filteredForUserB.expenses.length).toBe(0);
+    expect(filteredForUserB.settlements.length).toBe(0);
+    expect(filteredForUserB.currentUser.id).toBe('usr_intruder_99');
+
+    const filteredForUserA = filterDatasetForUser(datasetWithStandalone, {
+      userId: 'usr_arjun_01',
+      email: 'arjun.mehta@gmail.com',
+    });
+    expect(filteredForUserA.groups.length).toBe(baseDataset.groups.length);
+    expect(
+      filteredForUserA.expenses.some((e) => e.id === 'exp_private_arjun_only')
+    ).toBe(true);
   });
 });
