@@ -24,6 +24,11 @@ const SUPABASE_URL = (process.env.SUPABASE_URL || 'http://127.0.0.1:54321').trim
 const SUPABASE_SECRET_KEY = (
   process.env.SUPABASE_SECRET_KEY || 'sb_secret_N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz'
 ).trim();
+const SUPABASE_PUBLISHABLE_KEY = (
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH'
+).trim();
 const SUPABASE_SCHEMA = (process.env.SUPABASE_SCHEMA || 'wise_spliter').trim();
 const DB_HOST = (process.env.SUPABASE_DB_HOST || '127.0.0.1').trim();
 const DB_PORT = (process.env.SUPABASE_DB_PORT || '54322').trim();
@@ -185,7 +190,22 @@ async function verifySchemaAndTables() {
   });
   check(
     rpc.ok && rpc.text.includes('"wise_spliter"'),
-    `RPC ${SUPABASE_SCHEMA}.schema_health() callable (HTTP ${rpc.status})`
+    `RPC ${SUPABASE_SCHEMA}.schema_health() callable by service_role (HTTP ${rpc.status})`
+  );
+
+  let healthPayload = null;
+  try {
+    healthPayload = rpc.ok ? JSON.parse(rpc.text) : null;
+  } catch {
+    healthPayload = null;
+  }
+  check(
+    Boolean(healthPayload && Number(healthPayload.rls_forced_count) >= REQUIRED_TABLES.length),
+    `FORCE ROW LEVEL SECURITY active on all ${REQUIRED_TABLES.length} ${SUPABASE_SCHEMA} tables (count=${healthPayload?.rls_forced_count ?? 0})`
+  );
+  check(
+    Boolean(healthPayload && healthPayload.authenticated_rpc_blocked === true),
+    `SECURITY DEFINER RPCs revoked from PUBLIC, anon, and authenticated roles`
   );
 
   const pullRpc = await apiProbe('/rest/v1/rpc/pull_changes', {
@@ -195,7 +215,7 @@ async function verifySchemaAndTables() {
   });
   check(
     pullRpc.ok && pullRpc.text.includes('"wise_spliter"'),
-    `RPC ${SUPABASE_SCHEMA}.pull_changes() callable (HTTP ${pullRpc.status})`
+    `RPC ${SUPABASE_SCHEMA}.pull_changes() callable by service_role (HTTP ${pullRpc.status})`
   );
 
   const pushRpc = await apiProbe('/rest/v1/rpc/push_mutations', {
@@ -205,7 +225,31 @@ async function verifySchemaAndTables() {
   });
   check(
     pushRpc.ok && pushRpc.text.includes('"wise_spliter"'),
-    `RPC ${SUPABASE_SCHEMA}.push_mutations() callable (HTTP ${pushRpc.status})`
+    `RPC ${SUPABASE_SCHEMA}.push_mutations() callable by service_role (HTTP ${pushRpc.status})`
+  );
+
+  section(`[Verify] Probing PostgREST Security Posture (anon/public isolation)`);
+
+  const anonHeaders = {
+    apikey: SUPABASE_PUBLISHABLE_KEY,
+    Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+  };
+  const anonGroupsProbe = await apiProbe('/rest/v1/groups?limit=1', {
+    headers: anonHeaders,
+  });
+  check(
+    !anonGroupsProbe.ok && (anonGroupsProbe.status === 401 || anonGroupsProbe.status === 403),
+    `Direct anon table read on ${SUPABASE_SCHEMA}.groups rejected (HTTP ${anonGroupsProbe.status})`
+  );
+
+  const anonPullProbe = await apiProbe('/rest/v1/rpc/pull_changes', {
+    method: 'POST',
+    headers: { ...anonHeaders, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_since_seq: 0 }),
+  });
+  check(
+    !anonPullProbe.ok && (anonPullProbe.status === 401 || anonPullProbe.status === 403 || anonPullProbe.status === 404),
+    `Direct anon RPC call to ${SUPABASE_SCHEMA}.pull_changes() rejected (HTTP ${anonPullProbe.status})`
   );
 }
 
