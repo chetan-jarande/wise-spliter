@@ -62,19 +62,25 @@ const EXTRA_ISO_CURRENCIES: Array<[string, string, string, CurrencyDecimals]> = 
 export const SUPPORTED_CURRENCIES: Record<string, CurrencyDefinition> = {};
 
 for (const c of PRIMARY_CURRENCIES) {
-  SUPPORTED_CURRENCIES[c.code] = c;
+  const normCode = c.code.trim().toUpperCase();
+  SUPPORTED_CURRENCIES[normCode] = { ...c, code: normCode };
 }
 for (const [code, name, symbol, decimals] of EXTRA_ISO_CURRENCIES) {
-  if (!SUPPORTED_CURRENCIES[code]) {
-    SUPPORTED_CURRENCIES[code] = {
-      code,
+  const normCode = code.trim().toUpperCase();
+  if (!SUPPORTED_CURRENCIES[normCode]) {
+    SUPPORTED_CURRENCIES[normCode] = {
+      code: normCode,
       name,
       symbol,
       decimals,
-      flagCode: code.slice(0, 2).toUpperCase(),
+      flagCode: normCode.slice(0, 2),
     };
   }
 }
+
+const KNOWN_CURRENCY_SYMBOLS: string[] = Array.from(
+  new Set(Object.values(SUPPORTED_CURRENCIES).map((c) => c.symbol))
+).sort((a, b) => b.length - a.length);
 
 export function getCurrency(code: string): CurrencyDefinition {
   const upper = code.trim().toUpperCase();
@@ -96,25 +102,200 @@ export function getMinorScaleFactor(currencyCode: string): bigint {
   return 100n;
 }
 
+/**
+ * Pure BigInt integer division with deterministic commercial half-away-from-zero rounding.
+ * Works accurately for any signed numerator and positive denominator (even or odd).
+ */
+export function divRoundHalfAwayFromZero(numerator: bigint, denominator: bigint): bigint {
+  if (denominator === 0n) {
+    throw new RangeError('Division by zero in divRoundHalfAwayFromZero');
+  }
+  const sign = (numerator < 0n) !== (denominator < 0n) ? -1n : 1n;
+  const absNum = numerator < 0n ? -numerator : numerator;
+  const absDen = denominator < 0n ? -denominator : denominator;
+
+  const quotient = absNum / absDen;
+  const remainder = absNum % absDen;
+  const rounded = remainder * 2n >= absDen ? quotient + 1n : quotient;
+  return rounded === 0n ? 0n : sign * rounded;
+}
+
+function stripCurrencyAffixes(input: string, targetCurrency: CurrencyDefinition): {
+  cleaned: string;
+  isNegative: boolean;
+  validSign: boolean;
+} {
+  let s = input.trim();
+  let signChar: '+' | '-' | null = null;
+
+  const consumeSign = (): boolean => {
+    if (s.startsWith('-') || s.startsWith('+')) {
+      if (signChar !== null) return false;
+      signChar = s[0] as '+' | '-';
+      s = s.slice(1).trim();
+    }
+    return true;
+  };
+
+  if (!consumeSign()) {
+    return { cleaned: s, isNegative: false, validSign: false };
+  }
+
+  // Strip leading target currency code/symbol or known symbol
+  const upperS = s.toUpperCase();
+  if (upperS.startsWith(targetCurrency.code) && (s.length === targetCurrency.code.length || /[\s\d.,+-]/.test(s[targetCurrency.code.length] ?? ''))) {
+    s = s.slice(targetCurrency.code.length).trim();
+  } else if (s.startsWith(targetCurrency.symbol)) {
+    s = s.slice(targetCurrency.symbol.length).trim();
+  } else {
+    const codeMatch = /^([A-Z]{3})\s+/.exec(s);
+    if (codeMatch && codeMatch[1] && SUPPORTED_CURRENCIES[codeMatch[1]]) {
+      s = s.slice(codeMatch[0].length).trim();
+    } else {
+      for (const sym of KNOWN_CURRENCY_SYMBOLS) {
+        if (sym && s.startsWith(sym) && !/^[A-Za-z]+$/.test(sym)) {
+          s = s.slice(sym.length).trim();
+          break;
+        }
+      }
+    }
+  }
+
+  if (!consumeSign()) {
+    return { cleaned: s, isNegative: false, validSign: false };
+  }
+
+  // Strip trailing currency code or non-alphabetic symbol (e.g. "25.50 INR" or "50.00€")
+  const trailingUpper = s.toUpperCase();
+  if (
+    trailingUpper.endsWith(targetCurrency.code) &&
+    s.length > targetCurrency.code.length &&
+    /[\s\d.]/.test(s[s.length - targetCurrency.code.length - 1] ?? '')
+  ) {
+    s = s.slice(0, s.length - targetCurrency.code.length).trim();
+  } else if (
+    s.endsWith(targetCurrency.symbol) &&
+    !/^[A-Za-z]+$/.test(targetCurrency.symbol)
+  ) {
+    s = s.slice(0, s.length - targetCurrency.symbol.length).trim();
+  } else {
+    const trailCodeMatch = /\s+([A-Z]{3})$/.exec(s);
+    if (trailCodeMatch && trailCodeMatch[1] && SUPPORTED_CURRENCIES[trailCodeMatch[1]]) {
+      s = s.slice(0, s.length - trailCodeMatch[0].length).trim();
+    } else {
+      for (const sym of KNOWN_CURRENCY_SYMBOLS) {
+        if (sym && !/^[A-Za-z]+$/.test(sym) && s.endsWith(sym)) {
+          s = s.slice(0, s.length - sym.length).trim();
+          break;
+        }
+      }
+    }
+  }
+
+  return {
+    cleaned: s,
+    isNegative: signChar === '-',
+    validSign: true,
+  };
+}
+
+function parseUnsignedDecimalToScaledBigInt(
+  cleaned: string,
+  decimals: number
+): { ok: boolean; magnitude: bigint; error?: string } {
+  if (!cleaned) {
+    return { ok: false, magnitude: 0n, error: 'Empty numeric string' };
+  }
+  if (/[eE]/.test(cleaned)) {
+    return { ok: false, magnitude: 0n, error: 'Scientific notation is not permitted' };
+  }
+
+  const dotParts = cleaned.split('.');
+  if (dotParts.length > 2) {
+    return { ok: false, magnitude: 0n, error: 'Multiple decimal points' };
+  }
+
+  const rawWhole = dotParts[0] ?? '';
+  const rawFrac = dotParts[1] ?? '';
+
+  // Reject commas in fractional part or non-digit/comma chars in whole part
+  if (/[^0-9,]/.test(rawWhole) || /[^0-9]/.test(rawFrac)) {
+    return { ok: false, magnitude: 0n, error: 'Invalid characters in numeric input' };
+  }
+  if (rawWhole.startsWith(',') || rawWhole.endsWith(',') || rawWhole.includes(',,')) {
+    return { ok: false, magnitude: 0n, error: 'Malformed grouping separator' };
+  }
+
+  const wholeDigits = rawWhole.replace(/,/g, '');
+  if (wholeDigits.length === 0 && rawFrac.length === 0) {
+    return { ok: false, magnitude: 0n, error: 'No digits present' };
+  }
+
+  const normalizedWhole = wholeDigits || '0';
+  const keptFrac = decimals === 0 ? '' : rawFrac.padEnd(decimals, '0').slice(0, decimals);
+  const baseMag = BigInt(normalizedWhole + keptFrac);
+  const nextFracDigit = rawFrac[decimals] ?? '0';
+  const roundedMag = nextFracDigit >= '5' ? baseMag + 1n : baseMag;
+
+  return { ok: true, magnitude: roundedMag };
+}
+
+export function tryParseMajorToMinorBigInt(
+  majorInput: string | number,
+  currencyCode: string
+): { ok: boolean; value: bigint; error?: string } {
+  const currency = getCurrency(currencyCode);
+  const { decimals } = currency;
+
+  let rawStr: string;
+  if (typeof majorInput === 'number') {
+    if (!Number.isFinite(majorInput) || Math.abs(majorInput) >= 1e21) {
+      return { ok: false, value: 0n, error: 'Non-finite or unsafe floating-point number' };
+    }
+    rawStr =
+      Math.abs(majorInput) > 0 && Math.abs(majorInput) < 1e-4
+        ? majorInput.toFixed(decimals + 6)
+        : String(majorInput);
+  } else {
+    rawStr = String(majorInput);
+  }
+
+  const trimmed = rawStr.trim();
+  if (!trimmed || trimmed === '-' || trimmed === '+' || trimmed === '.' || trimmed === '-.' || trimmed === '+.') {
+    return { ok: false, value: 0n, error: 'Incomplete or empty numeric input' };
+  }
+
+  const { cleaned, isNegative, validSign } = stripCurrencyAffixes(trimmed, currency);
+  if (!validSign) {
+    return { ok: false, value: 0n, error: 'Duplicate or malformed sign prefix' };
+  }
+
+  const parsed = parseUnsignedDecimalToScaledBigInt(cleaned, decimals);
+  if (!parsed.ok) {
+    return { ok: false, value: 0n, error: parsed.error };
+  }
+
+  const signed = parsed.magnitude === 0n ? 0n : isNegative ? -parsed.magnitude : parsed.magnitude;
+  return { ok: true, value: signed };
+}
+
+export function parseMajorToMinorStrict(
+  majorInput: string | number,
+  currencyCode: string
+): bigint {
+  const res = tryParseMajorToMinorBigInt(majorInput, currencyCode);
+  if (!res.ok) {
+    throw new RangeError(
+      `Invalid monetary input "${String(majorInput)}" for ${currencyCode}: ${res.error ?? 'parse error'}`
+    );
+  }
+  return res.value;
+}
+
 export function parseMajorToMinor(majorInput: string | number, currencyCode: string): number {
-  const { decimals } = getCurrency(currencyCode);
-  const raw = String(majorInput).replace(/,/g, '').trim();
-  if (!raw || raw === '-' || raw === '.') return 0;
-
-  const isNegative = raw.startsWith('-');
-  const unsigned = isNegative ? raw.slice(1) : raw;
-  const parts = unsigned.split('.');
-  const wholePart = parts[0] ? parts[0].replace(/\D/g, '') || '0' : '0';
-  const fracRaw = parts[1] ? parts[1].replace(/\D/g, '') : '';
-
-  const paddedFrac =
-    decimals === 0
-      ? ''
-      : fracRaw.padEnd(decimals, '0').slice(0, decimals);
-
-  const combined = BigInt(wholePart + paddedFrac);
-  const signed = isNegative ? -combined : combined;
-  return Number(signed);
+  const res = tryParseMajorToMinorBigInt(majorInput, currencyCode);
+  if (!res.ok || res.value === 0n) return 0;
+  return Number(res.value);
 }
 
 export function formatMinorToMajor(
@@ -123,7 +304,15 @@ export function formatMinorToMajor(
   includeSymbol = true
 ): string {
   const { decimals, symbol } = getCurrency(currencyCode);
-  const val = BigInt(Math.trunc(Number(minorAmount)));
+  let val: bigint;
+  if (typeof minorAmount === 'bigint') {
+    val = minorAmount;
+  } else if (!Number.isFinite(minorAmount)) {
+    val = 0n;
+  } else {
+    val = BigInt(Math.trunc(minorAmount));
+  }
+
   const isNegative = val < 0n;
   const abs = isNegative ? -val : val;
 
@@ -141,44 +330,116 @@ export function formatMinorToMajor(
 }
 
 export function parseFxRateToScaled(rateDecimal: string | number): number {
-  const num = Number(rateDecimal);
-  if (!Number.isFinite(num) || num <= 0) return 100000000;
-  return Math.round(num * 100000000);
+  if (typeof rateDecimal === 'number') {
+    if (!Number.isFinite(rateDecimal) || rateDecimal <= 0 || rateDecimal >= 1e12) {
+      return 100000000;
+    }
+    const fixed = rateDecimal < 1e-4 ? rateDecimal.toFixed(12) : String(rateDecimal);
+    const parsed = parseUnsignedDecimalToScaledBigInt(fixed, 8);
+    if (!parsed.ok || parsed.magnitude <= 0n) return 100000000;
+    return Number(parsed.magnitude);
+  }
+
+  const trimmed = String(rateDecimal).trim();
+  if (!trimmed || trimmed.startsWith('-')) return 100000000;
+  const unsigned = trimmed.startsWith('+') ? trimmed.slice(1).trim() : trimmed;
+  const parsed = parseUnsignedDecimalToScaledBigInt(unsigned, 8);
+  if (!parsed.ok || parsed.magnitude <= 0n) return 100000000;
+  return Number(parsed.magnitude);
 }
 
 export function formatScaledFxRate(fxRateScaled: number): string {
+  if (!Number.isFinite(fxRateScaled) || fxRateScaled <= 0) {
+    return '1.00';
+  }
   const rate = fxRateScaled / 100000000;
   return rate.toFixed(rate >= 10 ? 2 : 4).replace(/\.?0+$/, (m) => (m === '.00' ? '.00' : m));
 }
 
+function formatAuditFxRateBigInt(rateScaled: bigint): string {
+  const whole = rateScaled / 100000000n;
+  const frac8 = (rateScaled % 100000000n).toString().padStart(8, '0');
+  // Keep at least 2 decimals; retain up to 6 decimals when sub-cent FX precision is present
+  const trimmedFrac = frac8.slice(0, 6).replace(/0+$/, '');
+  const finalFrac = trimmedFrac.length < 2 ? frac8.slice(0, 2) : trimmedFrac;
+  return `${whole.toString()}.${finalFrac}`;
+}
+
+/**
+ * Pure BigInt foreign-to-base minor unit converter.
+ * Prevents IEEE-754 MAX_SAFE_INTEGER overflow even when originalMinor * rateScaled * toScale >= 10^22.
+ */
+export function convertForeignToBaseMinor(
+  originalMinor: bigint | number,
+  fromCurrency: string,
+  toCurrency: string,
+  fxRateScaled: bigint | number
+): bigint {
+  const from = fromCurrency.trim().toUpperCase();
+  const to = toCurrency.trim().toUpperCase();
+  const origBig =
+    typeof originalMinor === 'bigint'
+      ? originalMinor
+      : Number.isFinite(originalMinor)
+      ? BigInt(Math.round(originalMinor))
+      : 0n;
+
+  if (from === to) {
+    return origBig;
+  }
+
+  const rawRateBig =
+    typeof fxRateScaled === 'bigint'
+      ? fxRateScaled
+      : Number.isFinite(fxRateScaled)
+      ? BigInt(Math.round(fxRateScaled))
+      : 100000000n;
+  const rateBig = rawRateBig > 0n ? rawRateBig : 100000000n;
+
+  const fromScale = getMinorScaleFactor(from);
+  const toScale = getMinorScaleFactor(to);
+
+  const numerator = origBig * rateBig * toScale;
+  const denominator = fromScale * 100000000n;
+  return divRoundHalfAwayFromZero(numerator, denominator);
+}
+
 export function convertMinorAmountWithFx(params: {
-  originalMinor: number;
+  originalMinor: number | bigint;
   fromCurrency: string;
   toCurrency: string;
-  fxRateScaled: number;
+  fxRateScaled: number | bigint;
   fxStatus: FxStatus;
   dateIso: string;
 }): { convertedMinor: number; fxAuditNote: string | null } {
-  const from = params.fromCurrency.toUpperCase();
-  const to = params.toCurrency.toUpperCase();
+  const from = params.fromCurrency.trim().toUpperCase();
+  const to = params.toCurrency.trim().toUpperCase();
+  const origBig =
+    typeof params.originalMinor === 'bigint'
+      ? params.originalMinor
+      : Number.isFinite(params.originalMinor)
+      ? BigInt(Math.round(params.originalMinor))
+      : 0n;
+
   if (from === to) {
     return {
-      convertedMinor: params.originalMinor,
+      convertedMinor: origBig === 0n ? 0 : Number(origBig),
       fxAuditNote: null,
     };
   }
 
-  const fromScale = getMinorScaleFactor(from);
-  const toScale = getMinorScaleFactor(to);
-  const origBig = BigInt(Math.round(params.originalMinor));
-  const rateBig = BigInt(Math.round(params.fxRateScaled));
+  const rawRateBig =
+    typeof params.fxRateScaled === 'bigint'
+      ? params.fxRateScaled
+      : Number.isFinite(params.fxRateScaled)
+      ? BigInt(Math.round(params.fxRateScaled))
+      : 100000000n;
+  const rateBig = rawRateBig > 0n ? rawRateBig : 100000000n;
 
-  const numerator = origBig * rateBig * toScale;
-  const denominator = fromScale * 100000000n;
-  const convertedBig = (numerator + denominator / 2n) / denominator;
+  const convertedBig = convertForeignToBaseMinor(origBig, from, to, rateBig);
 
-  const formattedOrig = formatMinorToMajor(params.originalMinor, from, true);
-  const rateReadable = (params.fxRateScaled / 100000000).toFixed(2);
+  const formattedOrig = formatMinorToMajor(origBig, from, true);
+  const rateReadable = formatAuditFxRateBigInt(rateBig);
   const statusLabel =
     params.fxStatus === 'cached_offline'
       ? 'cached offline rate'
@@ -187,7 +448,7 @@ export function convertMinorAmountWithFx(params: {
       : 'live rate';
 
   return {
-    convertedMinor: Number(convertedBig),
+    convertedMinor: convertedBig === 0n ? 0 : Number(convertedBig),
     fxAuditNote: `Converted from ${formattedOrig} ${from} at 1 ${from} = ${rateReadable} ${to} (${statusLabel}, ${params.dateIso})`,
   };
 }

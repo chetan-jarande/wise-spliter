@@ -7,6 +7,91 @@ import {
   SettlementItem,
 } from '../types/ledger';
 import { formatMinorToMajor, parseMajorToMinor } from '../domain/money/currencies';
+import { allocateProportionalMinorAmounts } from '../domain/splits/split-calculator';
+
+/**
+ * Neutralizes spreadsheet formula injection (OWASP CSV Injection) on untrusted text cells
+ * starting with '=', '+', '-', '@', '\t', or '\r' while leaving normal strings intact.
+ */
+export function sanitizeSpreadsheetCell(value: string): string {
+  if (!value) return '';
+  if (/^[=+\-@\t\r]/.test(value)) {
+    return `'${value}`;
+  }
+  return value;
+}
+
+function escapeCsvTextField(raw: string, alwaysQuote = false): string {
+  const safe = sanitizeSpreadsheetCell(raw);
+  if (alwaysQuote || /[",\r\n]/.test(safe)) {
+    return `"${safe.replace(/"/g, '""')}"`;
+  }
+  return safe;
+}
+
+/**
+ * RFC-4180 compliant CSV row tokenizer supporting quoted fields with embedded commas,
+ * escaped double quotes (""), CRLF/LF newlines, and UTF-8 BOM stripping.
+ */
+export function parseRfc4180CsvRows(csvText: string): string[][] {
+  const text = csvText.startsWith('\uFEFF') ? csvText.slice(1) : csvText;
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentField = '';
+  let inQuotes = false;
+  let fieldWasQuoted = false;
+
+  const pushField = () => {
+    currentRow.push(fieldWasQuoted ? currentField : currentField.trim());
+    currentField = '';
+    fieldWasQuoted = false;
+  };
+
+  const pushRow = () => {
+    if (currentRow.some((cell) => cell.length > 0)) {
+      rows.push(currentRow);
+    }
+    currentRow = [];
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!;
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          currentField += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        currentField += ch;
+      }
+    } else if (ch === '"' && currentField.trim().length === 0) {
+      inQuotes = true;
+      fieldWasQuoted = true;
+      currentField = '';
+    } else if (ch === ',') {
+      pushField();
+    } else if (ch === '\r') {
+      if (text[i + 1] === '\n') i++;
+      pushField();
+      pushRow();
+    } else if (ch === '\n') {
+      pushField();
+      pushRow();
+    } else {
+      currentField += ch;
+    }
+  }
+
+  if (currentField.length > 0 || fieldWasQuoted || currentRow.length > 0) {
+    pushField();
+    pushRow();
+  }
+
+  return rows;
+}
 
 export function buildUpiPaymentUri(params: {
   payeeUpiId: string;
@@ -15,12 +100,16 @@ export function buildUpiPaymentUri(params: {
   currency: string;
   note: string;
 }): string {
-  const majorStr = formatMinorToMajor(params.amountMinor, params.currency, false).replace(/,/g, '');
+  const normCurrency = params.currency.trim().toUpperCase() || 'INR';
+  const safeAmountMinor = Number.isFinite(params.amountMinor)
+    ? Math.max(0, Math.round(params.amountMinor))
+    : 0;
+  const majorStr = formatMinorToMajor(safeAmountMinor, normCurrency, false).replace(/,/g, '');
   const query = [
     `pa=${encodeURIComponent(params.payeeUpiId.trim())}`,
     `pn=${encodeURIComponent(params.payeeName.trim())}`,
     `am=${encodeURIComponent(majorStr)}`,
-    `cu=${encodeURIComponent(params.currency.toUpperCase())}`,
+    `cu=${encodeURIComponent(normCurrency)}`,
     `tn=${encodeURIComponent(params.note.trim())}`,
   ].join('&');
   return `upi://pay?${query}`;
@@ -39,9 +128,11 @@ export function generateWhatsAppGroupSummary(params: {
     amountMinor: number;
   }>;
 }): string {
+  const normCurrency = params.currency.trim().toUpperCase() || 'INR';
+  const zeroStr = formatMinorToMajor(0, normCurrency, false);
   const lines: string[] = [
     `*Wise-Spliter Summary - ${params.groupName}*`,
-    `Total Group Spend: ${formatMinorToMajor(params.totalSpendMinor, params.currency)}`,
+    `Total Group Spend: ${formatMinorToMajor(params.totalSpendMinor, normCurrency)}`,
     `Mode: ${params.simplifyDebts ? 'Simplified Minimum Transfers' : 'Direct Pairwise Balances'}`,
     '',
     '*Net Positions:*',
@@ -49,11 +140,11 @@ export function generateWhatsAppGroupSummary(params: {
 
   for (const b of params.netBalances) {
     if (b.netMinor > 0) {
-      lines.push(`• ${b.name}: gets back ${formatMinorToMajor(b.netMinor, params.currency)}`);
+      lines.push(`• ${b.name}: gets back ${formatMinorToMajor(b.netMinor, normCurrency)}`);
     } else if (b.netMinor < 0) {
-      lines.push(`• ${b.name}: owes ${formatMinorToMajor(-b.netMinor, params.currency)}`);
+      lines.push(`• ${b.name}: owes ${formatMinorToMajor(-b.netMinor, normCurrency)}`);
     } else {
-      lines.push(`• ${b.name}: settled (0.00)`);
+      lines.push(`• ${b.name}: settled (${zeroStr})`);
     }
   }
 
@@ -62,14 +153,14 @@ export function generateWhatsAppGroupSummary(params: {
     lines.push('All balances settled!');
   } else {
     for (const t of params.transfers) {
-      const amt = formatMinorToMajor(t.amountMinor, params.currency);
+      const amt = formatMinorToMajor(t.amountMinor, normCurrency);
       lines.push(`• *${t.fromName}* pays *${t.toName}* ${amt}`);
-      if (t.toUpiId && params.currency === 'INR') {
+      if (t.toUpiId && normCurrency === 'INR') {
         const upiUri = buildUpiPaymentUri({
           payeeUpiId: t.toUpiId,
           payeeName: t.toName,
           amountMinor: t.amountMinor,
-          currency: params.currency,
+          currency: normCurrency,
           note: `${params.groupName} settlement`,
         });
         lines.push(`  UPI Pay: ${upiUri}`);
@@ -90,28 +181,54 @@ export interface ParsedSplitwiseExpense {
   splits: Array<{ memberName: string; owedMinor: number }>;
 }
 
+function mapSplitwiseCategory(rawCat: string | undefined): string {
+  const lower = (rawCat ?? '').toLowerCase();
+  if (lower.includes('food') || lower.includes('dining') || lower.includes('drink') || lower.includes('restaurant')) {
+    return 'food';
+  }
+  if (lower.includes('hotel') || lower.includes('lodging') || lower.includes('rent')) {
+    return lower.includes('rent') ? 'utilities' : 'lodging';
+  }
+  if (lower.includes('taxi') || lower.includes('cab') || lower.includes('transport') || lower.includes('gas') || lower.includes('parking')) {
+    return 'transport';
+  }
+  if (lower.includes('flight') || lower.includes('plane') || lower.includes('train')) {
+    return 'flights';
+  }
+  if (lower.includes('grocer')) {
+    return 'groceries';
+  }
+  if (lower.includes('utilit') || lower.includes('electric') || lower.includes('internet') || lower.includes('water')) {
+    return 'utilities';
+  }
+  return 'general';
+}
+
 export function parseSplitwiseCsv(csvText: string): {
   memberNames: string[];
   expenses: ParsedSplitwiseExpense[];
 } {
-  const lines = csvText
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
-  if (lines.length < 2) {
+  const rows = parseRfc4180CsvRows(csvText);
+  if (rows.length < 2) {
     return { memberNames: [], expenses: [] };
   }
 
-  const headers = lines[0]!.split(',').map((h) => h.trim());
-  const memberNames = headers.slice(5);
+  const headers = rows[0]!.map((h) => h.trim());
+  const memberNames = headers.slice(5).filter((m) => m.length > 0);
   const expenses: ParsedSplitwiseExpense[] = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i]!.split(',').map((c) => c.trim());
+  for (let i = 1; i < rows.length; i++) {
+    const cols = rows[i]!;
     if (cols.length < 5 + memberNames.length) continue;
-    const [date, title, rawCat, costStr, currency] = cols;
+    const date = cols[0]?.trim() ?? '';
+    const title = cols[1]?.trim() ?? '';
+    const rawCat = cols[2]?.trim() ?? '';
+    const costStr = cols[3]?.trim() ?? '';
+    const currency = (cols[4]?.trim() ?? '').toUpperCase();
+
     if (!date || !title || !costStr || !currency) continue;
     if (title.toLowerCase().includes('total balance')) continue;
+    if (rawCat.toLowerCase() === 'payment') continue;
 
     const amountMinor = parseMajorToMinor(costStr, currency);
     if (amountMinor <= 0) continue;
@@ -121,7 +238,6 @@ export function parseSplitwiseCsv(csvText: string): {
       deltaMinor: parseMajorToMinor(cols[5 + idx] ?? '0', currency),
     }));
 
-    // In Splitwise CSV: positive delta = net lent, negative delta = net owed
     const payers: Array<{ memberName: string; paidMinor: number }> = [];
     const splits: Array<{ memberName: string; owedMinor: number }> = [];
 
@@ -142,21 +258,65 @@ export function parseSplitwiseCsv(csvText: string): {
           });
         }
       }
-    } else {
-      const perPerson = Math.floor(amountMinor / memberNames.length);
-      payers.push({ memberName: memberNames[0] ?? 'Member', paidMinor: amountMinor });
-      memberNames.forEach((m, idx) => {
-        splits.push({
-          memberName: m,
-          owedMinor: idx === 0 ? amountMinor - perPerson * (memberNames.length - 1) : perPerson,
+    } else if (creditors.length > 1) {
+      // Multi-creditor Splitwise row: reconstruct paid & owed while preserving exact net deltas
+      const totalPositiveDelta = creditors.reduce((acc, c) => acc + c.deltaMinor, 0);
+      const selfPoolBig = BigInt(Math.max(0, amountMinor - totalPositiveDelta));
+      const credWeights = creditors.map((c) => BigInt(c.deltaMinor));
+      const selfAlloc = allocateProportionalMinorAmounts(selfPoolBig, credWeights, 0).amounts;
+      const creditorSelfMap = new Map<string, number>();
+      creditors.forEach((c, idx) => {
+        const selfShare = Number(selfAlloc[idx]!);
+        creditorSelfMap.set(c.memberName, selfShare);
+        payers.push({
+          memberName: c.memberName,
+          paidMinor: c.deltaMinor + selfShare,
         });
       });
+
+      for (const d of netDeltas) {
+        if (creditorSelfMap.has(d.memberName)) {
+          splits.push({
+            memberName: d.memberName,
+            owedMinor: creditorSelfMap.get(d.memberName)!,
+          });
+        } else {
+          splits.push({
+            memberName: d.memberName,
+            owedMinor: Math.max(0, -d.deltaMinor),
+          });
+        }
+      }
+    } else {
+      const count = memberNames.length;
+      if (count > 0) {
+        const alloc = allocateProportionalMinorAmounts(
+          BigInt(amountMinor),
+          memberNames.map(() => 1n),
+          0
+        ).amounts;
+        payers.push({ memberName: memberNames[0]!, paidMinor: amountMinor });
+        memberNames.forEach((m, idx) => {
+          splits.push({
+            memberName: m,
+            owedMinor: Number(alloc[idx]!),
+          });
+        });
+      }
+    }
+
+    // Reconcile any 1-subunit CSV rounding residual on splits
+    const splitSum = splits.reduce((acc, s) => acc + s.owedMinor, 0);
+    if (splitSum !== amountMinor && splits.length > 0) {
+      const residual = amountMinor - splitSum;
+      const targetSplit = splits.find((s) => s.owedMinor + residual >= 0) ?? splits[0]!;
+      targetSplit.owedMinor = Math.max(0, targetSplit.owedMinor + residual);
     }
 
     expenses.push({
       date,
       title,
-      category: rawCat?.toLowerCase().includes('food') ? 'food' : 'general',
+      category: mapSplitwiseCategory(rawCat),
       currency,
       amountMinor,
       payers,
@@ -172,7 +332,7 @@ export function exportGroupToCsv(
   expenses: ExpenseItem[],
   settlements: SettlementItem[]
 ): string {
-  const memberCols = group.members.map((m) => m.displayName);
+  const memberCols = group.members.map((m) => escapeCsvTextField(m.displayName, false));
   const header = ['Type', 'Date', 'Title', 'Category', 'Currency', 'Total', 'SplitMode', ...memberCols].join(',');
   const rows: string[] = [header];
 
@@ -180,7 +340,9 @@ export function exportGroupToCsv(
     if (exp.deletedAt) continue;
     const totalStr = formatMinorToMajor(exp.amountMinor, exp.groupCurrency, false).replace(/,/g, '');
     const memberValues = group.members.map((m) => {
-      const paid = exp.payers.find((p) => p.memberId === m.id)?.paidMinor ?? 0;
+      const paid = exp.payers
+        .filter((p) => p.memberId === m.id)
+        .reduce((acc, p) => acc + p.paidMinor, 0);
       const owed = exp.splits.find((s) => s.memberId === m.id && s.included)?.owedMinor ?? 0;
       const net = paid - owed;
       return formatMinorToMajor(net, exp.groupCurrency, false).replace(/,/g, '');
@@ -188,12 +350,12 @@ export function exportGroupToCsv(
     rows.push(
       [
         'EXPENSE',
-        exp.expenseDate,
-        `"${exp.title.replace(/"/g, '""')}"`,
-        exp.category,
-        exp.groupCurrency,
+        escapeCsvTextField(exp.expenseDate, false),
+        escapeCsvTextField(exp.title, true),
+        escapeCsvTextField(exp.category, false),
+        escapeCsvTextField(exp.groupCurrency, false),
         totalStr,
-        exp.splitMode,
+        escapeCsvTextField(exp.splitMode, false),
         ...memberValues,
       ].join(',')
     );
@@ -202,20 +364,22 @@ export function exportGroupToCsv(
   for (const stl of settlements) {
     if (stl.deletedAt) continue;
     const totalStr = formatMinorToMajor(stl.amountMinor, stl.currency, false).replace(/,/g, '');
+    const zeroStr = formatMinorToMajor(0, stl.currency, false).replace(/,/g, '');
     const fromName = group.members.find((m) => m.id === stl.fromMemberId)?.displayName ?? 'Member';
     const toName = group.members.find((m) => m.id === stl.toMemberId)?.displayName ?? 'Member';
     const memberValues = group.members.map((m) => {
+      if (m.id === stl.fromMemberId && m.id === stl.toMemberId) return zeroStr;
       if (m.id === stl.fromMemberId) return totalStr;
       if (m.id === stl.toMemberId) return `-${totalStr}`;
-      return '0.00';
+      return zeroStr;
     });
     rows.push(
       [
         'SETTLEMENT',
-        stl.settledDate,
-        `"${fromName} paid ${toName} (${stl.paymentMethod.toUpperCase()})"`,
+        escapeCsvTextField(stl.settledDate, false),
+        escapeCsvTextField(`${fromName} paid ${toName} (${stl.paymentMethod.toUpperCase()})`, true),
         'settlement',
-        stl.currency,
+        escapeCsvTextField(stl.currency, false),
         totalStr,
         'direct',
         ...memberValues,
@@ -358,12 +522,17 @@ export function exportGroupToExcelBuffer(
   settlements: SettlementItem[]
 ): Uint8Array {
   const activeExpenses = expenses.filter((e) => !e.deletedAt);
-  const activeSettlements = settlements.filter((s) => !s.deletedAt);
+  const activeSettlements = settlements.filter(
+    (s) => !s.deletedAt && s.fromMemberId !== s.toMemberId && s.amountMinor > 0
+  );
   const totalSpendMinor = activeExpenses.reduce((acc, e) => acc + e.amountMinor, 0);
+  const zeroBaseMajor = formatMinorToMajor(0, group.baseCurrency, false);
 
   const summaryRows = group.members.map((member) => {
     const totalPaidMinor = activeExpenses.reduce((acc, exp) => {
-      const paid = exp.payers.find((p) => p.memberId === member.id)?.paidMinor ?? 0;
+      const paid = exp.payers
+        .filter((p) => p.memberId === member.id)
+        .reduce((sum, p) => sum + p.paidMinor, 0);
       return acc + paid;
     }, 0);
     const totalOwedMinor = activeExpenses.reduce((acc, exp) => {
@@ -380,12 +549,12 @@ export function exportGroupToExcelBuffer(
       totalPaidMinor - totalOwedMinor + settlementsSentMinor - settlementsReceivedMinor;
 
     return {
-      GroupName: group.name,
+      GroupName: sanitizeSpreadsheetCell(group.name),
       BaseCurrency: group.baseCurrency,
       TotalGroupSpend: formatMinorToMajor(totalSpendMinor, group.baseCurrency, false),
-      MemberName: member.displayName,
-      Email: member.invitedEmail ?? '',
-      UpiId: member.upiId ?? '',
+      MemberName: sanitizeSpreadsheetCell(member.displayName),
+      Email: sanitizeSpreadsheetCell(member.invitedEmail ?? ''),
+      UpiId: sanitizeSpreadsheetCell(member.upiId ?? ''),
       TotalPaid: formatMinorToMajor(totalPaidMinor, group.baseCurrency, false),
       TotalShareOwed: formatMinorToMajor(totalOwedMinor, group.baseCurrency, false),
       SettlementsSent: formatMinorToMajor(settlementsSentMinor, group.baseCurrency, false),
@@ -408,10 +577,10 @@ export function exportGroupToExcelBuffer(
             )
             .join(', ');
           const row: Record<string, string | number> = {
-            ExpenseID: exp.id,
-            Date: exp.expenseDate,
-            Title: exp.title,
-            Category: exp.category,
+            ExpenseID: sanitizeSpreadsheetCell(exp.id),
+            Date: sanitizeSpreadsheetCell(exp.expenseDate),
+            Title: sanitizeSpreadsheetCell(exp.title),
+            Category: sanitizeSpreadsheetCell(exp.category),
             OriginalCurrency: exp.originalCurrency,
             OriginalAmount: formatMinorToMajor(
               exp.originalAmountMinor,
@@ -421,14 +590,16 @@ export function exportGroupToExcelBuffer(
             BaseCurrency: exp.groupCurrency,
             ConvertedAmount: formatMinorToMajor(exp.amountMinor, exp.groupCurrency, false),
             SplitMode: exp.splitMode,
-            PaidBy: payerNames,
+            PaidBy: sanitizeSpreadsheetCell(payerNames),
             ReceiptsCount: exp.receipts?.length ?? 0,
           };
           for (const m of group.members) {
-            const paid = exp.payers.find((p) => p.memberId === m.id)?.paidMinor ?? 0;
+            const paid = exp.payers
+              .filter((p) => p.memberId === m.id)
+              .reduce((sum, p) => sum + p.paidMinor, 0);
             const owed =
               exp.splits.find((s) => s.memberId === m.id && s.included)?.owedMinor ?? 0;
-            row[`${m.displayName} (Net)`] = formatMinorToMajor(
+            row[`${sanitizeSpreadsheetCell(m.displayName)} (Net)`] = formatMinorToMajor(
               paid - owed,
               exp.groupCurrency,
               false
@@ -443,9 +614,9 @@ export function exportGroupToExcelBuffer(
             Title: 'No active expenses',
             Category: '',
             OriginalCurrency: group.baseCurrency,
-            OriginalAmount: '0.00',
+            OriginalAmount: zeroBaseMajor,
             BaseCurrency: group.baseCurrency,
-            ConvertedAmount: '0.00',
+            ConvertedAmount: zeroBaseMajor,
             SplitMode: 'equal',
             PaidBy: '',
             ReceiptsCount: 0,
@@ -462,15 +633,15 @@ export function exportGroupToExcelBuffer(
             group.members.find((m) => m.id === stl.toMemberId)?.displayName ??
             stl.toMemberId;
           return {
-            SettlementID: stl.id,
-            Date: stl.settledDate,
-            FromMember: fromName,
-            ToMember: toName,
+            SettlementID: sanitizeSpreadsheetCell(stl.id),
+            Date: sanitizeSpreadsheetCell(stl.settledDate),
+            FromMember: sanitizeSpreadsheetCell(fromName),
+            ToMember: sanitizeSpreadsheetCell(toName),
             Currency: stl.currency,
             Amount: formatMinorToMajor(stl.amountMinor, stl.currency, false),
             PaymentMethod: stl.paymentMethod.toUpperCase(),
-            Reference: stl.paymentReference ?? '',
-            Notes: stl.notes ?? '',
+            Reference: sanitizeSpreadsheetCell(stl.paymentReference ?? ''),
+            Notes: sanitizeSpreadsheetCell(stl.notes ?? ''),
           };
         })
       : [
@@ -480,7 +651,7 @@ export function exportGroupToExcelBuffer(
             FromMember: '',
             ToMember: '',
             Currency: group.baseCurrency,
-            Amount: '0.00',
+            Amount: zeroBaseMajor,
             PaymentMethod: '',
             Reference: '',
             Notes: 'No recorded settlements',
