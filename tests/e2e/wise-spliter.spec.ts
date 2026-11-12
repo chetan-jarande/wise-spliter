@@ -7,8 +7,10 @@ test.describe('Wise-Spliter Full-Stack User Story E2E Suite (UI + Backend API + 
   }) => {
     await page.goto('/');
 
-    // 1. Verify Minimalist Home Dashboard & Contextual Page Guide
+    // 1. Verify Minimalist Home Dashboard, Plain-English Standing, Quick-Start & Contextual Page Guide
     await expect(page.getByTestId('home-dashboard-page')).toBeVisible();
+    await expect(page.getByTestId('home-plain-english-hero-summary')).toBeVisible();
+    await expect(page.getByTestId('first-time-quickstart-strip')).toBeVisible();
     await expect(page.getByTestId('contextual-page-guide')).toBeVisible();
     await expect(page.getByTestId('home-you-are-owed-amount')).toBeVisible();
     await expect(page.getByTestId('home-you-owe-amount')).toBeVisible();
@@ -41,9 +43,11 @@ test.describe('Wise-Spliter Full-Stack User Story E2E Suite (UI + Backend API + 
     await page.getByTestId('add-adhoc-friend-btn').click();
     await expect(page.getByTestId('adhoc-participants-panel')).toContainText('Vikram Rao');
 
-    // Fill "Late Night Shawarma & Chai" (₹900) and save while verifying Backend API sync
+    // Fill "Late Night Shawarma & Chai" (₹900) and verify Settl presets + Splitwise live sentence + Backend API sync
+    await expect(page.getByTestId('ux-quick-amount-presets')).toBeVisible();
     await page.getByTestId('expense-title-input').fill('Late Night Shawarma & Chai');
     await page.getByTestId('expense-amount-input').fill('900');
+    await expect(page.getByTestId('ux-live-split-sentence')).toBeVisible();
 
     const syncResPromise = page.waitForResponse(
       (res) =>
@@ -58,6 +62,7 @@ test.describe('Wise-Spliter Full-Stack User Story E2E Suite (UI + Backend API + 
     await expect(directExpensesList).toBeVisible();
     await expect(directExpensesList).toContainText('Late Night Shawarma & Chai');
     await expect(directExpensesList).toContainText('₹900.00');
+    await expect(directExpensesList.getByTestId('expense-personal-impact-pill').first()).toBeVisible();
   });
 
   test('User Story 2: Progressive Group Workspace, Offline Conflict Resolution, Explain Balance & 5 Split Modes + Receipt Upload', async ({
@@ -86,10 +91,11 @@ test.describe('Wise-Spliter Full-Stack User Story E2E Suite (UI + Backend API + 
     expect(conflictSyncRes.status()).toBe(200);
     await expect(conflictBanner).toBeHidden();
 
-    // 3. Open "Explain This Balance" modal and verify exact math identity
+    // 3. Open "Explain This Balance" modal and verify plain-English verdict + exact math identity
     await page.getByTestId('explain-balance-btn').first().click();
     const explainModal = page.getByTestId('explain-balance-modal');
     await expect(explainModal).toBeVisible();
+    await expect(page.getByTestId('explain-plain-english-verdict')).toBeVisible();
     await expect(explainModal).toContainText(
       'Exact Ledger Identity: Total Paid - Total Share + Settlements Sent - Settlements Received = Net Balance'
     );
@@ -376,24 +382,54 @@ test.describe('Wise-Spliter Full-Stack User Story E2E Suite (UI + Backend API + 
     });
     expect(unauthSyncRes.status()).toBe(401);
 
-    // (3b) Authenticated as intruder@evil.com (usr_intruder_99) attempting to impersonate usr_arjun_01 or modify grp_goa_2026 -> HTTP 403
-    const intruderSessionRes = await request.post('/api/auth/session', {
+    // (3b) Security Breach Checks:
+    //  - Unauthenticated POST /api/auth/session attempting to mint non-demo tokens MUST be rejected -> HTTP 401
+    const unauthMintIntruderRes = await request.post('/api/auth/session', {
       data: {
         userId: 'usr_intruder_99',
         email: 'intruder@evil.com',
         fullName: 'Malicious Intruder',
       },
     });
-    expect(intruderSessionRes.status()).toBe(200);
-    const { token: intruderToken } = (await intruderSessionRes.json()) as {
-      token: string;
-    };
-    expect(Boolean(intruderToken)).toBe(true);
+    expect(unauthMintIntruderRes.status()).toBe(401);
 
-    // Attempt 1: Intruder tries to sync dataset with usr_arjun_01's profile -> 403
+    const unauthMintRohanRes = await request.post('/api/auth/session', {
+      data: {
+        userId: 'usr_rohan_02',
+        email: 'rohan.verma@gmail.com',
+        fullName: 'Rohan Verma',
+      },
+    });
+    expect(unauthMintRohanRes.status()).toBe(401);
+
+    //  - Disallowed cross-site Origin CSRF attempt on POST /api/auth/demo -> HTTP 403
+    const csrfEvilOriginRes = await request.post('/api/auth/demo', {
+      headers: {
+        Origin: 'https://evil.attacker.example',
+      },
+      data: {},
+    });
+    expect(csrfEvilOriginRes.status()).toBe(403);
+
+    //  - Authenticated as collaborator rohan.verma@gmail.com attempting cross-tenant impersonation or private group hijack -> HTTP 403
+    const rohanApiLoginRes = await request.post('/api/auth/login', {
+      data: {
+        email: 'rohan.verma@gmail.com',
+        password: 'WiseSpliter@2026',
+      },
+    });
+    expect(rohanApiLoginRes.status()).toBe(200);
+    const { token: rohanToken, profile: rohanProfile } =
+      (await rohanApiLoginRes.json()) as {
+        token: string;
+        profile: { id: string; email: string; fullName: string };
+      };
+    expect(Boolean(rohanToken)).toBe(true);
+
+    // Attempt 1: Collaborator tries to sync dataset impersonating usr_arjun_01 -> 403
     const intruderImpersonateRes = await request.post('/api/ledger/sync', {
       headers: {
-        Authorization: `Bearer ${intruderToken}`,
+        Authorization: `Bearer ${rohanToken}`,
       },
       data: {
         dataset: mockData,
@@ -401,27 +437,30 @@ test.describe('Wise-Spliter Full-Stack User Story E2E Suite (UI + Backend API + 
     });
     expect(intruderImpersonateRes.status()).toBe(403);
 
-    // Attempt 2: Intruder uses own profile but tries to modify existing group grp_goa_2026 owned by usr_arjun_01 -> 403
+    // Attempt 2: Collaborator uses own profile but tries to hijack private group grp_tokyo_2026 (where Rohan is NOT a member) -> 403
+    const tokyoGroup = mockData.groups.find(
+      (g) => g.id === 'grp_tokyo_2026'
+    )!;
     const intruderGroupHijackDataset = {
       ...mockData,
       currentUser: {
         ...mockData.currentUser,
-        id: 'usr_intruder_99',
-        email: 'intruder@evil.com',
-        fullName: 'Malicious Intruder',
+        id: rohanProfile.id,
+        email: rohanProfile.email,
+        fullName: rohanProfile.fullName,
       },
       groups: [
         {
-          ...mockData.groups[0]!,
+          ...tokyoGroup,
           members: [
-            ...mockData.groups[0]!.members,
+            ...tokyoGroup.members,
             {
-              id: 'mem_intruder_99',
-              groupId: mockData.groups[0]!.id,
-              userId: 'usr_intruder_99',
-              invitedEmail: 'intruder@evil.com',
-              displayName: 'Malicious Intruder',
-              avatarInitials: 'MI',
+              id: 'mem_rohan_hijack_99',
+              groupId: tokyoGroup.id,
+              userId: rohanProfile.id,
+              invitedEmail: rohanProfile.email,
+              displayName: rohanProfile.fullName,
+              avatarInitials: 'RV',
               upiId: null,
               role: 'member',
               memberOrder: 99,
@@ -432,16 +471,33 @@ test.describe('Wise-Spliter Full-Stack User Story E2E Suite (UI + Backend API + 
         },
       ],
       expenses: [],
+      expenseRevisions: [],
+      settlements: [],
+      groupActivityLog: [],
     };
     const intruderGroupHijackRes = await request.post('/api/ledger/sync', {
       headers: {
-        Authorization: `Bearer ${intruderToken}`,
+        Authorization: `Bearer ${rohanToken}`,
       },
       data: {
         dataset: intruderGroupHijackDataset,
       },
     });
     expect(intruderGroupHijackRes.status()).toBe(403);
+
+    // Attempt 3: Direct PostgREST :54321 bypass attempt on SECURITY DEFINER RPC pull_changes -> 401/403
+    const directPostgrestBypassRes = await request.post(
+      'http://127.0.0.1:54321/rest/v1/rpc/pull_changes',
+      {
+        headers: {
+          'Accept-Profile': 'wise_spliter',
+          'Content-Profile': 'wise_spliter',
+          apikey: 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH',
+        },
+        data: { p_since_seq: 0 },
+      }
+    );
+    expect([401, 403]).toContain(directPostgrestBypassRes.status());
 
     // (3c) Authenticated as arjun.mehta@gmail.com (usr_arjun_01), GET /api/ledger/bootstrap and POST /api/ledger/sync -> HTTP 200
     const arjunSessionRes = await request.post('/api/auth/session', {
@@ -551,5 +607,105 @@ test.describe('Wise-Spliter Full-Stack User Story E2E Suite (UI + Backend API + 
     await expect(page.getByTestId('header-user-pill')).toContainText(
       'Rohan Verma'
     );
+
+    // (4c) 1-Tap Demo Profile Sandbox Login switches back to Arjun Mehta (Demo) via POST /api/auth/demo (HTTP 200)
+    await page.getByTestId('header-user-pill').click();
+    await expect(authModal).toBeVisible();
+    const demoLoginBtn = page.getByTestId('demo-profile-login-btn');
+    await expect(demoLoginBtn).toBeVisible();
+    await expect(page.getByTestId('dev-google-oauth-btn')).toBeVisible();
+
+    const demoLoginResPromise = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/auth/demo') &&
+        res.request().method() === 'POST'
+    );
+    await demoLoginBtn.click();
+    const demoLoginRes = await demoLoginResPromise;
+    expect(demoLoginRes.status()).toBe(200);
+    await expect(authModal).toBeHidden();
+    await expect(page.getByTestId('header-user-pill')).toContainText(
+      'Arjun Mehta'
+    );
+  });
+
+  test('User Story 7: Math & UX Scenario - Settl Quick Presets, 3-Way Rotating Remainder, Personal Impact Badge & INR->KWD (3-Decimal) FX Re-conversion Sync', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await page.getByTestId('nav-tab-groups').click();
+
+    // 1. Create an isolated 3-member group so baseline groups stay untouched
+    await page.getByTestId('create-group-btn').click();
+    await page.getByTestId('group-name-input').fill('Math & FX Precision Lab');
+    const createSync = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/ledger/sync') &&
+        res.request().method() === 'POST'
+    );
+    await page.getByTestId('save-group-btn').click();
+    expect((await createSync).status()).toBe(200);
+    await expect(page.getByTestId('empty-group-onboarding-card')).toBeVisible();
+
+    // Add 2 friends -> 3 members total (indivisible 3-way remainder scenario)
+    for (const friend of [
+      { name: 'Neha Kulkarni', email: 'neha.k@example.com' },
+      { name: 'Kabir Bedi', email: 'kabir.b@example.com' },
+    ]) {
+      await page.getByTestId('add-member-btn').click();
+      await page.getByTestId('member-name-input').fill(friend.name);
+      await page.getByTestId('member-email-input').fill(friend.email);
+      await page.getByTestId('save-member-btn').click();
+      await expect(page.getByText(friend.name).first()).toBeVisible();
+    }
+
+    // 2. Add a ₹1,000 bill using Settl quick-amount preset chips (2 x +₹500)
+    await page.getByTestId('add-expense-btn').click();
+    await page.getByTestId('expense-title-input').fill('3-Way Odd Paisa Dinner');
+    await page.getByTestId('quick-amount-chip-500').click();
+    await page.getByTestId('quick-amount-chip-500').click();
+    await expect(page.getByTestId('expense-amount-input')).toHaveValue('1000');
+    await expect(page.getByTestId('ux-live-split-sentence')).toContainText('equally');
+    await expect(page.getByText('+1 paise/cents rotated').first()).toBeVisible();
+    await expect(page.getByTestId('split-reconciliation-bar')).toContainText(
+      '100% Reconciled'
+    );
+
+    const billSync = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/ledger/sync') &&
+        res.request().method() === 'POST'
+    );
+    await page.getByTestId('save-expense-btn').click();
+    expect((await billSync).status()).toBe(200);
+
+    // Verify Splitwise-style personal impact pill ("you lent ₹666.66" since Arjun gets ₹333.34 share on seed 0)
+    await expect(
+      page.getByTestId('expense-personal-impact-pill').first()
+    ).toContainText('you lent');
+
+    // 3. Re-convert group base currency from INR (2 decimals) -> KWD (3 decimals, fils) via Mode B FX conversion
+    // and verify the backend financial invariant gatekeeper accepts the re-denominated ledger (HTTP 200, not 422!)
+    await page.getByTestId('change-group-currency-btn').click();
+    await page.getByTestId('change-currency-target-select').selectOption('KWD');
+    const reconvertModeBtn = page.getByRole('button', {
+      name: /Mode B: Convert existing bills via FX rate/i,
+    });
+    await reconvertModeBtn.click();
+
+    const reconvertSync = page.waitForResponse(
+      (res) =>
+        res.url().includes('/api/ledger/sync') &&
+        res.request().method() === 'POST'
+    );
+    await page.getByTestId('confirm-currency-change-btn').click();
+    expect((await reconvertSync).status()).toBe(200);
+
+    // Toggle Simplify Debts OFF -> ON to exercise both raw bilateral and Bitmask-DP paths
+    const simplifyBtn = page.getByTestId('toggle-simplify-debts-btn');
+    await simplifyBtn.click();
+    await expect(simplifyBtn).toContainText('Simplify Debts: OFF');
+    await simplifyBtn.click();
+    await expect(simplifyBtn).toContainText('Simplify Debts: ON');
   });
 });
