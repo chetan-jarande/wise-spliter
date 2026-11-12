@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   ArrowCounterClockwiseIcon as ArrowCounterClockwise,
   ArrowsLeftRightIcon as ArrowsLeftRight,
+  CaretDownIcon as CaretDown,
   CheckCircleIcon as CheckCircle,
   ClockCounterClockwiseIcon as ClockCounterClockwise,
   FunnelIcon as Funnel,
@@ -192,26 +193,26 @@ export function ActivityAndTrashPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header & Scope / Action Catalog Controls */}
+      {/* Header & Scope / Action Filter Controls */}
       <DoubleBezelCard>
         <div className="flex flex-col gap-5">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div className="space-y-1.5">
-              <div className="inline-flex items-center gap-2">
+              <div className="inline-flex flex-wrap items-center gap-2">
                 <StatusBadge tone="emerald">
                   <ShieldCheck weight="fill" className="w-3.5 h-3.5" />
-                  <span>Append-Only HLC Audit Trail</span>
+                  <span>Full Edit Transparency</span>
                 </StatusBadge>
                 <StatusBadge tone="blue">
                   <GitBranch weight="bold" className="w-3.5 h-3.5" />
-                  <span>Causal Revision DAG</span>
+                  <span>1-Tap Version &amp; Trash Restore</span>
                 </StatusBadge>
               </div>
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-                Transparent Group Activity, Revision Inspector & Trash Vault
+                Activity Timeline, Edit History &amp; Trash
               </h1>
               <p className="text-sm text-slate-600 dark:text-slate-400 max-w-3xl">
-                Every bill entry, field edit, currency change, offline conflict branch, and soft-deletion is stamped with a Hybrid Logical Clock (HLC) and preserved with 1-click rollback.
+                See every bill added, edited, settled, or deleted across your groups - and restore any earlier version or trashed bill in one tap.
               </p>
             </div>
 
@@ -229,14 +230,14 @@ export function ActivityAndTrashPage() {
                   e.stopPropagation();
                   setScope('group');
                 }}
-                className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all ${
+                className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all cursor-pointer ${
                   scope === 'group'
-                    ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                    ? 'bg-emerald-500 text-slate-950 shadow-sm pointer-events-none'
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 <Users weight="bold" className="w-4 h-4" />
-                <span>Current Group Activity</span>
+                <span>This Group</span>
                 <span className="font-mono tabular-nums text-[11px] px-1.5 py-0.5 rounded-full bg-black/10 dark:bg-white/10">
                   {currentGroupActivityCount}
                 </span>
@@ -247,14 +248,14 @@ export function ActivityAndTrashPage() {
                   e.stopPropagation();
                   setScope('global');
                 }}
-                className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all ${
+                className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all cursor-pointer ${
                   scope === 'global'
-                    ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                    ? 'bg-emerald-500 text-slate-950 shadow-sm pointer-events-none'
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 <GlobeHemisphereWest weight="bold" className="w-4 h-4" />
-                <span>All Groups Global Timeline</span>
+                <span>All Groups</span>
                 <span className="font-mono tabular-nums text-[11px] px-1.5 py-0.5 rounded-full bg-black/10 dark:bg-white/10">
                   {globalActivityCount}
                 </span>
@@ -267,7 +268,7 @@ export function ActivityAndTrashPage() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 <Funnel weight="bold" className="w-4 h-4 text-emerald-500" />
-                <span>Filter by Action Type Catalog ({dataset.actionTypesCatalog.length} Event Schemas)</span>
+                <span>Filter Updates by Type</span>
               </div>
               <div className="relative w-full sm:w-72">
                 <MagnifyingGlass
@@ -278,7 +279,7 @@ export function ActivityAndTrashPage() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search actor, bill title, HLC..."
+                  placeholder="Search person, bill title, or change..."
                   aria-label="Search activity log"
                   className="w-full rounded-xl pl-9 pr-3 py-1.5 text-xs bg-slate-100/90 dark:bg-slate-800/80 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 border border-slate-300/70 dark:border-white/10 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                 />
@@ -375,7 +376,7 @@ export function ActivityAndTrashPage() {
                       <span className="font-mono tabular-nums font-semibold text-slate-700 dark:text-slate-200">
                         {filteredActivities.length}
                       </span>{' '}
-                      immutable ledger events ordered by HLC timestamp
+                      updates in chronological order
                     </p>
                   </div>
                 </div>
@@ -458,27 +459,19 @@ export function ActivityAndTrashPage() {
                                   {formatIsoTimestamp(item.createdAt)}
                                 </span>
                               </div>
-                              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 font-mono tabular-nums">
+                              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                                 {item.summaryText}
                               </p>
                             </div>
                           </div>
-
-                          <span
-                            title="Hybrid Logical Clock Stamp"
-                            className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] font-mono tabular-nums bg-slate-200/70 dark:bg-slate-800/90 text-slate-600 dark:text-slate-300 ring-1 ring-slate-300/60 dark:ring-white/10 shrink-0"
-                          >
-                            <span>HLC:</span>
-                            <span>{item.hlc}</span>
-                          </span>
                         </div>
 
-                        <p className="text-xs text-slate-600 dark:text-slate-300 pl-12 leading-relaxed font-mono tabular-nums">
+                        <p className="text-xs text-slate-600 dark:text-slate-300 pl-12 leading-relaxed">
                           {item.detailNote}
                         </p>
 
-                        {item.diffBadges.length > 0 && (
-                          <div className="flex flex-wrap items-center gap-1.5 pl-12 pt-0.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2 pl-12 pt-0.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             {item.diffBadges.map((badge, idx) => (
                               <span
                                 key={`${item.id}_badge_${idx}`}
@@ -488,7 +481,17 @@ export function ActivityAndTrashPage() {
                               </span>
                             ))}
                           </div>
-                        )}
+
+                          <details className="ws-disclosure text-[11px] text-slate-400">
+                            <summary className="inline-flex items-center gap-1 hover:text-slate-600 dark:hover:text-slate-200">
+                              <span>Audit Stamp</span>
+                              <CaretDown className="w-3 h-3" weight="bold" />
+                            </summary>
+                            <span className="mt-1 block font-mono tabular-nums text-[10px]">
+                              HLC: {item.hlc}
+                            </span>
+                          </details>
+                        </div>
                       </div>
                     );
                   })}
@@ -614,14 +617,6 @@ export function ActivityAndTrashPage() {
                                 />
                               </div>
 
-                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
-                                <span>id: {rev.id}</span>
-                                <span>
-                                  baseRevisionId: {rev.baseRevisionId ?? 'ROOT (Initial)'}
-                                </span>
-                                <span>HLC: {rev.hlc}</span>
-                              </div>
-
                               {/* Structured Field-by-Field Diffs */}
                               <div className="space-y-1.5 pt-1">
                                 {rev.changes.map((chg, cIdx) => (
@@ -630,8 +625,8 @@ export function ActivityAndTrashPage() {
                                     className="rounded-lg px-2.5 py-1.5 bg-slate-100/90 dark:bg-slate-900/90 border border-slate-200/70 dark:border-white/[0.06] text-xs space-y-0.5"
                                   >
                                     <div className="flex flex-wrap items-center justify-between gap-2">
-                                      <span className="font-mono tabular-nums font-semibold text-slate-700 dark:text-slate-300">
-                                        {chg.field}
+                                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                                        {chg.field.replace(/_/g, ' ')}
                                       </span>
                                       <div className="inline-flex items-center gap-1.5 font-mono tabular-nums text-[11px]">
                                         <span className="px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-700 dark:text-rose-300">
@@ -643,12 +638,25 @@ export function ActivityAndTrashPage() {
                                         </span>
                                       </div>
                                     </div>
-                                    <p className="text-[11px] text-slate-600 dark:text-slate-400 font-mono tabular-nums">
+                                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
                                       {chg.label}
                                     </p>
                                   </div>
                                 ))}
                               </div>
+
+                              {/* Collapsible Technical Audit Details */}
+                              <details className="ws-disclosure text-[11px] text-slate-400">
+                                <summary className="inline-flex items-center gap-1 hover:text-slate-600 dark:hover:text-slate-200">
+                                  <span>Technical / Audit Details</span>
+                                  <CaretDown className="w-3 h-3" weight="bold" />
+                                </summary>
+                                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
+                                  <span>id: {rev.id}</span>
+                                  <span>base: {rev.baseRevisionId ?? 'Initial'}</span>
+                                  <span>HLC: {rev.hlc}</span>
+                                </div>
+                              </details>
 
                               {/* Snapshot Summary & Restore Button */}
                               <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
@@ -810,13 +818,14 @@ export function ActivityAndTrashPage() {
                 </div>
               )}
 
-              {/* Quick Soft-Delete Sandbox Utility for Active Group */}
+              {/* Quick Soft-Delete Utility (Collapsed by Default) */}
               {activeGroupNonDeletedExpenses.length > 0 && (
-                <div className="pt-3 border-t border-slate-200/70 dark:border-white/[0.06] space-y-2">
-                  <div className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                    Test Soft-Delete from Active Group ({activeGroup.name})
-                  </div>
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <details className="ws-disclosure pt-3 border-t border-slate-200/70 dark:border-white/[0.06]">
+                  <summary className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white">
+                    <span>Move an Active Bill from {activeGroup.name} to Trash</span>
+                    <CaretDown className="w-3.5 h-3.5" weight="bold" />
+                  </summary>
+                  <div className="mt-2.5 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                     <select
                       aria-label="Select active expense to move to trash"
                       value={selectedExpenseIdForDeleteDemo || activeGroupNonDeletedExpenses[0]?.id || ''}
@@ -845,7 +854,7 @@ export function ActivityAndTrashPage() {
                       <span>Move to Trash</span>
                     </button>
                   </div>
-                </div>
+                </details>
               )}
             </div>
           </DoubleBezelCard>

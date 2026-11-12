@@ -2,13 +2,16 @@ import React, { useMemo } from 'react';
 import {
   ArrowRightIcon as ArrowRight,
   CalculatorIcon as Calculator,
+  CaretDownIcon as CaretDown,
   CheckCircleIcon as CheckCircle,
   GitDiffIcon as GitDiff,
   ReceiptIcon as Receipt,
   ScalesIcon as Scales,
+  SparkleIcon as Sparkle,
   XIcon as X,
 } from '@phosphor-icons/react';
 import { useLedger } from '../../state/LedgerContext';
+import { formatMinorToMajor } from '../../domain/money/currencies';
 import {
   computeGroupNetBalances,
   computeRawPairwiseTransfers,
@@ -91,7 +94,7 @@ export function ExplainBalanceModal({
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge tone="emerald">
                   <Calculator className="w-3.5 h-3.5" weight="duotone" />
-                  <span>Full Arithmetic Audit Trail</span>
+                  <span>Step-by-Step Balance Breakdown</span>
                 </StatusBadge>
                 <CurrencyPrecisionPill currencyCode={explanation.currency} />
               </div>
@@ -110,21 +113,93 @@ export function ExplainBalanceModal({
               type="button"
               data-testid="close-explain-modal-btn"
               onClick={onClose}
-              className="rounded-xl p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
               aria-label="Close explain balance modal"
             >
               <X className="w-5 h-5" weight="bold" />
             </button>
           </div>
 
+          {/* Plain-English Verdict Summary */}
+          <div
+            data-testid="explain-plain-english-verdict"
+            className={`rounded-2xl border p-4 flex items-start gap-3 ${
+              explanation.netBalanceMinor > 0
+                ? 'border-emerald-500/35 bg-emerald-500/[0.08]'
+                : explanation.netBalanceMinor < 0
+                ? 'border-rose-500/35 bg-rose-500/[0.08]'
+                : 'border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900/70'
+            }`}
+          >
+            <Sparkle
+              className={`w-5 h-5 shrink-0 mt-0.5 ${
+                explanation.netBalanceMinor > 0
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : explanation.netBalanceMinor < 0
+                  ? 'text-rose-600 dark:text-rose-400'
+                  : 'text-slate-500'
+              }`}
+              weight="fill"
+            />
+            <div className="space-y-1 text-xs sm:text-sm text-slate-700 dark:text-slate-200 leading-relaxed">
+              {explanation.netBalanceMinor > 0 ? (
+                <p>
+                  <strong className="text-slate-900 dark:text-white">
+                    {explanation.memberName} gets back{' '}
+                    {formatMinorToMajor(explanation.netBalanceMinor, explanation.currency)}
+                  </strong>{' '}
+                  because they paid{' '}
+                  <strong className="font-mono">
+                    {formatMinorToMajor(explanation.totalPaidMinor, explanation.currency)}
+                  </strong>{' '}
+                  toward group bills while their personal share was{' '}
+                  <strong className="font-mono">
+                    {formatMinorToMajor(explanation.totalShareMinor, explanation.currency)}
+                  </strong>
+                  {explanation.settlementsSentMinor > 0 || explanation.settlementsReceivedMinor > 0
+                    ? ' (adjusted for settlements recorded below).'
+                    : '.'}
+                </p>
+              ) : explanation.netBalanceMinor < 0 ? (
+                <p>
+                  <strong className="text-slate-900 dark:text-white">
+                    {explanation.memberName} owes{' '}
+                    {formatMinorToMajor(
+                      Math.abs(explanation.netBalanceMinor),
+                      explanation.currency
+                    )}
+                  </strong>{' '}
+                  because their personal share of group bills was{' '}
+                  <strong className="font-mono">
+                    {formatMinorToMajor(explanation.totalShareMinor, explanation.currency)}
+                  </strong>{' '}
+                  while they paid{' '}
+                  <strong className="font-mono">
+                    {formatMinorToMajor(explanation.totalPaidMinor, explanation.currency)}
+                  </strong>
+                  {explanation.settlementsSentMinor > 0 || explanation.settlementsReceivedMinor > 0
+                    ? ' (adjusted for settlements recorded below).'
+                    : '.'}
+                </p>
+              ) : (
+                <p>
+                  <strong className="text-slate-900 dark:text-white">
+                    {explanation.memberName} is completely settled up (0.00)!
+                  </strong>{' '}
+                  Everything they paid and owed in this group balances out to zero.
+                </p>
+              )}
+            </div>
+          </div>
+
           {/* Exact Arithmetic Equation Banner */}
-          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.06] p-4 space-y-3">
-            <div className="text-xs font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+          <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-slate-900/60 p-4 space-y-3">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
               Exact Ledger Identity: Total Paid - Total Share + Settlements Sent - Settlements Received = Net Balance
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
               <div className="rounded-xl bg-white dark:bg-slate-900/90 p-2.5 border border-slate-200/70 dark:border-white/10">
-                <div className="text-slate-500 dark:text-slate-400">Total Paid</div>
+                <div className="text-slate-500 dark:text-slate-400">Paid for Bills</div>
                 <div className="mt-0.5 text-sm font-bold font-mono tabular-nums">
                   <CurrencyAmount
                     minorAmount={explanation.totalPaidMinor}
@@ -133,7 +208,7 @@ export function ExplainBalanceModal({
                 </div>
               </div>
               <div className="rounded-xl bg-white dark:bg-slate-900/90 p-2.5 border border-slate-200/70 dark:border-white/10">
-                <div className="text-slate-500 dark:text-slate-400">- Total Share</div>
+                <div className="text-slate-500 dark:text-slate-400">- Own Share</div>
                 <div className="mt-0.5 text-sm font-bold font-mono tabular-nums">
                   <CurrencyAmount
                     minorAmount={explanation.totalShareMinor}
@@ -142,7 +217,7 @@ export function ExplainBalanceModal({
                 </div>
               </div>
               <div className="rounded-xl bg-white dark:bg-slate-900/90 p-2.5 border border-slate-200/70 dark:border-white/10">
-                <div className="text-slate-500 dark:text-slate-400">+ Settlements Sent</div>
+                <div className="text-slate-500 dark:text-slate-400">+ Paid Back</div>
                 <div className="mt-0.5 text-sm font-bold font-mono tabular-nums">
                   <CurrencyAmount
                     minorAmount={explanation.settlementsSentMinor}
@@ -151,7 +226,7 @@ export function ExplainBalanceModal({
                 </div>
               </div>
               <div className="rounded-xl bg-white dark:bg-slate-900/90 p-2.5 border border-slate-200/70 dark:border-white/10">
-                <div className="text-slate-500 dark:text-slate-400">- Settlements Recv</div>
+                <div className="text-slate-500 dark:text-slate-400">- Received Back</div>
                 <div className="mt-0.5 text-sm font-bold font-mono tabular-nums">
                   <CurrencyAmount
                     minorAmount={explanation.settlementsReceivedMinor}
@@ -160,7 +235,7 @@ export function ExplainBalanceModal({
                 </div>
               </div>
               <div className="col-span-2 sm:col-span-1 rounded-xl bg-white dark:bg-slate-900/90 p-2.5 border border-emerald-500/40">
-                <div className="text-slate-500 dark:text-slate-400">= Net Balance</div>
+                <div className="text-slate-500 dark:text-slate-400">= Net Standing</div>
                 <div className="mt-0.5 text-sm font-bold font-mono tabular-nums">
                   <CurrencyAmount
                     minorAmount={explanation.netBalanceMinor}
@@ -171,9 +246,19 @@ export function ExplainBalanceModal({
                 </div>
               </div>
             </div>
-            <div className="font-mono tabular-nums text-xs text-slate-700 dark:text-slate-300 bg-white/80 dark:bg-slate-900/70 rounded-xl px-3 py-2 border border-slate-200/60 dark:border-white/5">
-              {explanation.equationText}
-            </div>
+
+            <details
+              data-testid="explain-technical-details"
+              className="ws-disclosure rounded-xl bg-white/80 dark:bg-slate-900/70 border border-slate-200/60 dark:border-white/5 px-3 py-2"
+            >
+              <summary className="flex items-center justify-between text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                <span>Technical / Audit Equation</span>
+                <CaretDown className="w-3.5 h-3.5" weight="bold" />
+              </summary>
+              <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-white/10 font-mono tabular-nums text-xs text-slate-700 dark:text-slate-300">
+                {explanation.equationText}
+              </div>
+            </details>
           </div>
 
           {/* Itemized Contributing Bills & Settlements */}
@@ -236,15 +321,15 @@ export function ExplainBalanceModal({
             )}
           </div>
 
-          {/* Simplified Mode vs Raw Pairwise Mode Repayment Routing Comparison */}
+          {/* Simplified Mode vs Direct Person-to-Person Mode Comparison */}
           <div className="space-y-2.5">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
               <GitDiff className="w-4 h-4 text-[#059669]" weight="duotone" />
-              <span>Repayment Routing: Simplified Mode vs Raw Pairwise Mode</span>
+              <span>How to Settle: Smart Minimum Payments vs Direct Person-to-Person</span>
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Simplified Minimum Transfers */}
+              {/* Smart Minimum Payments */}
               <div
                 className={`rounded-2xl border p-3.5 space-y-2 ${
                   activeGroup.simplifyDebts
@@ -254,14 +339,14 @@ export function ExplainBalanceModal({
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                    Simplified Mode (Bitmask-DP)
+                    Smart Minimum Payments
                   </span>
                   {activeGroup.simplifyDebts && (
                     <StatusBadge tone="emerald">Active in Group</StatusBadge>
                   )}
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Eliminates circular debt chains (A owes B owes C) to settle with the minimum number of transfers.
+                  Combines circular debts (A owes B, B owes C) so everyone settles with the fewest total payments.
                 </p>
                 {routingComparison.simplified.length === 0 ? (
                   <div className="text-xs font-mono text-emerald-600 dark:text-emerald-400">
@@ -290,7 +375,7 @@ export function ExplainBalanceModal({
                 )}
               </div>
 
-              {/* Raw Pairwise Mode */}
+              {/* Direct Person-to-Person Mode */}
               <div
                 className={`rounded-2xl border p-3.5 space-y-2 ${
                   !activeGroup.simplifyDebts
@@ -301,14 +386,14 @@ export function ExplainBalanceModal({
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1">
                     <Scales className="w-3.5 h-3.5" />
-                    <span>Raw Pairwise Mode</span>
+                    <span>Direct Person-to-Person</span>
                   </span>
                   {!activeGroup.simplifyDebts && (
                     <StatusBadge tone="emerald">Active in Group</StatusBadge>
                   )}
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Preserves direct bilateral person-to-person balances without rerouting across third parties.
+                  Shows exact 1-on-1 debts between pairs of friends without combining across third parties.
                 </p>
                 {routingComparison.rawPairwise.length === 0 ? (
                   <div className="text-xs font-mono text-emerald-600 dark:text-emerald-400">

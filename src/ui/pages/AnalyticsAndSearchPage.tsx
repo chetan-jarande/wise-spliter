@@ -21,6 +21,7 @@ import {
   CurrencyAmount,
   CurrencyPrecisionPill,
   DoubleBezelCard,
+  PersonalExpenseImpactBadge,
   StatusBadge,
 } from '../primitives/DesignPrimitives';
 import { formatMinorToMajor } from '../../domain/money/currencies';
@@ -382,19 +383,19 @@ export function AnalyticsAndSearchPage() {
       {/* Top Header & Active Group Selector */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1">
+          <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1">
             <ChartDonut className="w-4 h-4" weight="duotone" />
-            <span>Spending Telemetry & Cross-Ledger Search</span>
+            <span>Spending Insights &amp; Instant Bill Finder</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Visual Analytics & Global Instant Search
+            Spending Insights &amp; Global Search
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-            Integer minor-unit spending distributions for{' '}
+            See where money went in{' '}
             <span className="font-semibold text-slate-900 dark:text-slate-200">
               {activeGroup.name}
             </span>{' '}
-            plus multi-facet search across all {activeGroups.length} active groups.
+            and search across all {activeGroups.length} active groups and travel currencies.
           </p>
         </div>
 
@@ -505,7 +506,7 @@ export function AnalyticsAndSearchPage() {
             </div>
             <div className="mt-2 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
               <span>{kpiStats.settlementCount} recorded transfers</span>
-              <StatusBadge tone="emerald">Audited HLC</StatusBadge>
+              <StatusBadge tone="emerald">Verified</StatusBadge>
             </div>
           </div>
         </DoubleBezelCard>
@@ -824,7 +825,7 @@ export function AnalyticsAndSearchPage() {
         </div>
       </DoubleBezelCard>
 
-      {/* 3. Instant Global Search & Multi-Facet Filter Engine */}
+      {/* 3. Instant Global Search & Smart Filters */}
       <DoubleBezelCard
         testId="global-search-panel"
         innerClassName="space-y-5"
@@ -837,11 +838,11 @@ export function AnalyticsAndSearchPage() {
                 weight="bold"
               />
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                Instant Global Search & Multi-Facet Filter Engine
+                Find Any Bill Across All Groups
               </h2>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Query across all groups and expenses by title, notes, tag (#scuba, #villa, #shinkansen), category, split mode, currency, or conflict state.
+              Search across all groups and direct splits by bill name, notes, #tag (#scuba, #villa, #shinkansen), category, split type, or currency.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -924,11 +925,11 @@ export function AnalyticsAndSearchPage() {
             })}
           </div>
 
-          {/* Multi-Facet Selectors Row */}
+          {/* Multi-Filter Selectors Row */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
             <div>
-              <label className="block text-[11px] font-mono uppercase text-slate-500 dark:text-slate-400 mb-1">
-                Category Facet
+              <label className="block text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                Category
               </label>
               <select
                 aria-label="Filter by category"
@@ -939,15 +940,15 @@ export function AnalyticsAndSearchPage() {
                 <option value="all">All Categories</option>
                 {dataset.categoriesCatalog.map((c) => (
                   <option key={c.key} value={c.key}>
-                    {c.label} ({c.key})
+                    {c.label}
                   </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block text-[11px] font-mono uppercase text-slate-500 dark:text-slate-400 mb-1">
-                Split Mode Facet
+              <label className="block text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                Split Type
               </label>
               <select
                 aria-label="Filter by split mode"
@@ -955,18 +956,18 @@ export function AnalyticsAndSearchPage() {
                 onChange={(e) => setSelectedSplitModeFilter(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-800 dark:text-slate-200"
               >
-                <option value="all">All Split Modes</option>
-                <option value="equal">Equal Split (equal)</option>
-                <option value="shares">Weighted Shares (shares)</option>
-                <option value="percentage">Percentage (percentage)</option>
-                <option value="adjustment">+/- Adjustment (adjustment)</option>
-                <option value="exact">Exact Amounts (exact)</option>
+                <option value="all">All Split Types</option>
+                <option value="equal">Equal Split</option>
+                <option value="shares">Weighted Shares</option>
+                <option value="percentage">Percentage (%)</option>
+                <option value="adjustment">+/- Adjustment</option>
+                <option value="exact">Exact Amounts</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-[11px] font-mono uppercase text-slate-500 dark:text-slate-400 mb-1">
-                Currency Facet
+              <label className="block text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                Currency
               </label>
               <select
                 aria-label="Filter by currency"
@@ -975,17 +976,17 @@ export function AnalyticsAndSearchPage() {
                 className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-800 dark:text-slate-200"
               >
                 <option value="all">All Currencies (INR, EUR, JPY, USD, KWD)</option>
-                <option value="INR">INR - Indian Rupee (2-dec)</option>
-                <option value="EUR">EUR - Euro (2-dec)</option>
-                <option value="JPY">JPY - Japanese Yen (0-dec)</option>
-                <option value="USD">USD - US Dollar (2-dec)</option>
-                <option value="KWD">KWD - Kuwaiti Dinar (3-dec)</option>
+                <option value="INR">INR - Indian Rupee (₹)</option>
+                <option value="EUR">EUR - Euro (€)</option>
+                <option value="JPY">JPY - Japanese Yen (¥)</option>
+                <option value="USD">USD - US Dollar ($)</option>
+                <option value="KWD">KWD - Kuwaiti Dinar (KD)</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-[11px] font-mono uppercase text-slate-500 dark:text-slate-400 mb-1">
-                Audit / Conflict Status
+              <label className="block text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                Special Filter
               </label>
               <select
                 aria-label="Filter by conflict or FX status"
@@ -997,9 +998,9 @@ export function AnalyticsAndSearchPage() {
                 }
                 className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-800 dark:text-slate-200"
               >
-                <option value="all">All Ledger States</option>
-                <option value="conflict">Unresolved Offline Conflicts Only</option>
-                <option value="fx">Foreign Currency Converted Bills Only</option>
+                <option value="all">All Bills</option>
+                <option value="conflict">Needs Offline Review</option>
+                <option value="fx">Foreign Currency Bills Only</option>
               </select>
             </div>
           </div>
@@ -1011,16 +1012,28 @@ export function AnalyticsAndSearchPage() {
             <div className="text-center py-10 rounded-2xl border border-dashed border-slate-300 dark:border-white/10">
               <Funnel className="w-8 h-8 text-slate-400 mx-auto mb-2" />
               <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                No expenses match your current search facets
+                No bills match your search filters
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Try clearing the search query or resetting category/currency filters.
+                Try clearing the search query or resetting the dropdown filters above.
               </p>
             </div>
           ) : (
             globalFilteredExpenses.map((exp) => {
               const grp = dataset.groups.find((g) => g.id === exp.groupId);
               const isForeignFx = exp.originalCurrency !== exp.groupCurrency;
+              const myMemberIdForExp = grp
+                ? grp.members.find(
+                    (m) =>
+                      m.userId === dataset.currentUser.id ||
+                      m.invitedEmail?.toLowerCase() === dataset.currentUser.email.toLowerCase()
+                  )?.id ?? grp.members[0]?.id
+                : exp.adHocParticipants?.find(
+                    (p) =>
+                      p.invitedEmail?.toLowerCase() === dataset.currentUser.email.toLowerCase() ||
+                      p.displayName.toLowerCase() === dataset.currentUser.fullName.toLowerCase()
+                  )?.id ?? exp.adHocParticipants?.[0]?.id;
+
               return (
                 <div
                   key={exp.id}
@@ -1030,7 +1043,7 @@ export function AnalyticsAndSearchPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusBadge tone="emerald">
                         <Receipt className="w-3.5 h-3.5" />
-                        <span>{grp?.name ?? 'Direct Non-Group Split'}</span>
+                        <span>{grp?.name ?? 'Direct 1-on-1 Split'}</span>
                       </StatusBadge>
                       <StatusBadge tone="slate">{exp.category}</StatusBadge>
                       <StatusBadge tone="blue">
@@ -1040,7 +1053,7 @@ export function AnalyticsAndSearchPage() {
                       {exp.hasUnresolvedConflict && (
                         <StatusBadge tone="amber">
                           <WarningCircle className="w-3.5 h-3.5" weight="fill" />
-                          <span>Offline Edit Conflict</span>
+                          <span>Needs Offline Review</span>
                         </StatusBadge>
                       )}
                     </div>
@@ -1080,12 +1093,18 @@ export function AnalyticsAndSearchPage() {
                     </div>
                   </div>
 
-                  <div className="flex sm:flex-row lg:flex-col items-start sm:items-center lg:items-end justify-between gap-3 shrink-0 border-t lg:border-t-0 pt-3 lg:pt-0 border-slate-200/60 dark:border-white/[0.06]">
-                    <div className="text-left lg:text-right">
+                  <div className="flex sm:flex-row lg:flex-col items-start sm:items-center lg:items-end justify-between gap-2.5 shrink-0 border-t lg:border-t-0 pt-3 lg:pt-0 border-slate-200/60 dark:border-white/[0.06]">
+                    <div className="text-left lg:text-right space-y-1">
                       <div className="text-lg font-bold text-slate-900 dark:text-white">
                         <CurrencyAmount
                           minorAmount={exp.amountMinor}
                           currencyCode={exp.groupCurrency}
+                        />
+                      </div>
+                      <div>
+                        <PersonalExpenseImpactBadge
+                          expense={exp}
+                          myMemberId={myMemberIdForExp}
                         />
                       </div>
                       {isForeignFx && (
@@ -1110,7 +1129,7 @@ export function AnalyticsAndSearchPage() {
                       }
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-colors cursor-pointer"
                     >
-                      <span>{exp.groupId ? 'Inspect in Group' : 'Inspect on Home'}</span>
+                      <span>{exp.groupId ? 'Open in Group' : 'Open on Home'}</span>
                       <ArrowUpRight className="w-4 h-4" weight="bold" />
                     </button>
                   </div>

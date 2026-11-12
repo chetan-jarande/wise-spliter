@@ -291,15 +291,15 @@ export function PortabilityAndSyncPage() {
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1">
+          <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1">
             <Database className="w-4 h-4" weight="duotone" />
-            <span>Zero-Lock-In Data Portability & Offline-First Sync</span>
+            <span>100% Yours - Zero Lock-In &amp; Works Offline</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Cloud Sync Center & Cryptographic Portability
+            Cloud Sync, Exports &amp; Switch from Splitwise
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-            Supabase <span className="font-mono">wise_spliter</span> schema replication, 1-click Splitwise importer, CSV/PDF statement exporter, and PBKDF2 + AES-256-GCM backups.
+            Your bills save on this device first (even on flights without Wi-Fi), sync automatically when online, and export cleanly to Excel, PDF, CSV, or encrypted backups anytime.
           </p>
         </div>
 
@@ -350,19 +350,19 @@ export function PortabilityAndSyncPage() {
                       />
                     )}
                     <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                      Supabase & Google OAuth Sync Center
+                      Offline Storage &amp; Cloud Sync
                     </h2>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Isolated Postgres schema with Hybrid Logical Clock (HLC) conflict detection and Local IndexedDB outbox queue.
+                    Every bill saves immediately on your device and syncs automatically to your private cloud account when online.
                   </p>
                 </div>
                 <StatusBadge tone={isOnline ? 'emerald' : 'amber'}>
-                  {isOnline ? 'Online & Synced' : 'Offline IndexedDB Mode'}
+                  {isOnline ? 'Cloud Synced' : 'Saved Offline'}
                 </StatusBadge>
               </div>
 
-              {/* Authenticated Google OAuth Identity Card */}
+              {/* Authenticated Identity Card */}
               <div className="p-4 rounded-2xl bg-slate-50/90 dark:bg-slate-900/70 border border-slate-200/70 dark:border-white/[0.06] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <div className="w-11 h-11 rounded-2xl bg-emerald-600 text-white font-bold flex items-center justify-center text-sm shadow-sm">
@@ -374,7 +374,7 @@ export function PortabilityAndSyncPage() {
                         {dataset.currentUser.fullName}
                       </span>
                       <StatusBadge tone="emerald">
-                        Google OAuth Verified
+                        Signed In
                       </StatusBadge>
                     </div>
                     <div className="text-xs font-mono text-slate-600 dark:text-slate-400">
@@ -387,7 +387,7 @@ export function PortabilityAndSyncPage() {
                 </div>
                 <div className="text-left sm:text-right font-mono text-xs">
                   <div className="text-slate-500 dark:text-slate-400">
-                    Target Schema
+                    Cloud Vault
                   </div>
                   <div className="font-bold text-emerald-600 dark:text-emerald-400">
                     {dataset.currentUser.supabaseSchema}
@@ -395,44 +395,44 @@ export function PortabilityAndSyncPage() {
                 </div>
               </div>
 
-              {/* Telemetry Grid */}
+              {/* Sync Confidence Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <div className="p-3 rounded-xl border border-slate-200/70 dark:border-white/[0.06] bg-white dark:bg-slate-900/40">
-                  <div className="text-[11px] font-mono uppercase text-slate-500 dark:text-slate-400">
-                    Postgres Schema
+                  <div className="text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400">
+                    On-Device Copy
                   </div>
-                  <div className="text-sm font-bold font-mono text-slate-900 dark:text-white mt-1">
-                    wise_spliter.*
+                  <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
+                    100% Offline Ready
                   </div>
-                  <div className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">
-                    RLS Enforced
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    {dataset.expenses.length} bills saved locally
                   </div>
                 </div>
 
                 <div className="p-3 rounded-xl border border-slate-200/70 dark:border-white/[0.06] bg-white dark:bg-slate-900/40">
-                  <div className="text-[11px] font-mono uppercase text-slate-500 dark:text-slate-400">
-                    Local IndexedDB
+                  <div className="text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400">
+                    Cloud Protection
                   </div>
                   <div className="text-sm font-bold font-mono text-slate-900 dark:text-white mt-1">
-                    Active Mirror
+                    wise_spliter
                   </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    {dataset.expenses.length} bills cached
+                  <div className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">
+                    Private per-group access
                   </div>
                 </div>
 
                 <div className="p-3 rounded-xl border border-slate-200/70 dark:border-white/[0.06] bg-white dark:bg-slate-900/40 col-span-2 sm:col-span-1">
-                  <div className="text-[11px] font-mono uppercase text-slate-500 dark:text-slate-400">
-                    Pending Outbox
+                  <div className="text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400">
+                    Offline Queue
                   </div>
                   <div className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-white mt-0.5">
                     {pendingOutboxCount}{' '}
                     <span className="text-xs font-normal text-slate-500">
-                      mutations
+                      waiting
                     </span>
                   </div>
                   <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">
-                    Last: {dataset.currentUser.lastSyncedAt.slice(0, 19).replace('T', ' ')}
+                    Last sync: {dataset.currentUser.lastSyncedAt.slice(0, 19).replace('T', ' ')}
                   </div>
                 </div>
               </div>
@@ -453,12 +453,12 @@ export function PortabilityAndSyncPage() {
                 {isOnline ? (
                   <>
                     <CloudSlash className="w-4 h-4" weight="bold" />
-                    <span>Simulate Offline Subway Mode</span>
+                    <span>Test Airplane / Offline Mode</span>
                   </>
                 ) : (
                   <>
                     <CloudCheck className="w-4 h-4" weight="bold" />
-                    <span>Reconnect Online Mode</span>
+                    <span>Reconnect Online</span>
                   </>
                 )}
               </button>
@@ -470,7 +470,7 @@ export function PortabilityAndSyncPage() {
                 className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-colors cursor-pointer inline-flex items-center gap-2"
               >
                 <CloudArrowUp className="w-4 h-4" weight="bold" />
-                <span>Sync Now with wise_spliter</span>
+                <span>Sync to Cloud Now</span>
               </button>
 
               <button
@@ -480,7 +480,7 @@ export function PortabilityAndSyncPage() {
                 className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-300 ring-1 ring-sky-500/30 hover:bg-sky-500/25 transition-colors cursor-pointer inline-flex items-center gap-2"
               >
                 <GoogleLogo className="w-4 h-4" weight="bold" />
-                <span>Verify Google OAuth Session</span>
+                <span>Check Google Account Sync</span>
               </button>
             </div>
           </DoubleBezelCard>
@@ -710,19 +710,19 @@ export function PortabilityAndSyncPage() {
                       weight="duotone"
                     />
                     <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                      PBKDF2 + AES-256-GCM Encrypted Backup
+                      Password-Protected Backup File (.wisesplit)
                     </h2>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Web Crypto API client-side encryption (100,000 SHA-256 iterations, 96-bit IV, authenticated ciphertext).
+                    Lock a private backup of all your groups, bills, and settlements with your own passphrase (AES-256-GCM encrypted in your browser).
                   </p>
                 </div>
-                <StatusBadge tone="emerald">WebCrypto Subtle</StatusBadge>
+                <StatusBadge tone="emerald">Encrypted Vault</StatusBadge>
               </div>
 
               <div>
-                <label className="block text-[11px] font-mono uppercase text-slate-500 dark:text-slate-400 mb-1">
-                  Vault Passphrase (PBKDF2-SHA256 Key Derivation)
+                <label className="block text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                  Backup Passphrase
                 </label>
                 <div className="relative">
                   <Key className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />

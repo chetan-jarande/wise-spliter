@@ -450,18 +450,41 @@ export function FriendsAndSettlePage() {
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge tone="emerald">
                 <ShieldCheck size={14} weight="duotone" />
-                Pairwise Group Isolation Active
+                Smart Cross-Group Netting
               </StatusBadge>
               <StatusBadge tone="blue">
                 <Lightning size={14} weight="duotone" />
-                NPCI UPI Deep-Link + QR Ready
+                Instant UPI QR &amp; WhatsApp Share
               </StatusBadge>
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-              Friends Cross-Group Net Balances & Instant Settle Studio
+            <h1
+              data-testid="friends-plain-english-summary"
+              className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white"
+            >
+              {crossGroupTotals.netOverallInrMinor > 0 ? (
+                <>
+                  Friends owe you{' '}
+                  <span className="text-emerald-600 dark:text-emerald-400 font-mono tabular-nums">
+                    +{formatMinorToMajor(crossGroupTotals.netOverallInrMinor, 'INR')}
+                  </span>{' '}
+                  overall
+                </>
+              ) : crossGroupTotals.netOverallInrMinor < 0 ? (
+                <>
+                  You owe friends{' '}
+                  <span className="text-rose-600 dark:text-rose-400 font-mono tabular-nums">
+                    {formatMinorToMajor(Math.abs(crossGroupTotals.netOverallInrMinor), 'INR')}
+                  </span>{' '}
+                  overall
+                </>
+              ) : (
+                <span className="text-emerald-600 dark:text-emerald-400">
+                  You and your friends are all settled up!
+                </span>
+              )}
             </h1>
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-              Offsetting balances with the same friend across shared groups net out transparently in INR without ever mixing strangers from different groups. Settle across all shared groups in 1 atomic batch or scan an NPCI UPI QR code.
+              Shared group balances with the same friend combine automatically (without ever mixing strangers from different groups). Settle all shared groups in 1 tap, scan a UPI QR code, or send a clean WhatsApp summary.
             </p>
           </div>
 
@@ -593,12 +616,12 @@ export function FriendsAndSettlePage() {
                             {friend.isClaimedAccount ? (
                               <StatusBadge tone="emerald">
                                 <CheckCircle size={12} weight="fill" />
-                                Google OAuth Verified
+                                Joined
                               </StatusBadge>
                             ) : (
                               <StatusBadge tone="amber">
                                 <Info size={12} weight="bold" />
-                                Unclaimed Invite
+                                Invite Pending
                               </StatusBadge>
                             )}
                           </div>
@@ -623,7 +646,7 @@ export function FriendsAndSettlePage() {
                                 className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 hover:bg-amber-500/25 text-amber-800 dark:text-amber-300 px-2 py-0.5 text-[11px] font-semibold transition-colors cursor-pointer"
                               >
                                 <LinkSimple size={12} weight="bold" />
-                                Simulate Google Sign-In Claim
+                                Link Account
                               </button>
                             )}
                           </div>
@@ -1232,7 +1255,7 @@ export function FriendsAndSettlePage() {
               </button>
             </form>
 
-            {/* Live NPCI upi://pay Deep-Link & QR Code Generator */}
+            {/* Live UPI Deep-Link & QR Code Generator */}
             <div
               data-testid="upi-deep-link-box"
               className="rounded-2xl bg-slate-50/90 dark:bg-slate-900/70 border border-slate-200/80 dark:border-white/10 p-4 space-y-4"
@@ -1245,10 +1268,10 @@ export function FriendsAndSettlePage() {
                     className="text-emerald-600 dark:text-emerald-400"
                   />
                   <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
-                    NPCI UPI Deep-Link & Scannable QR
+                    UPI Payment Link &amp; Scannable QR
                   </span>
                 </div>
-                <StatusBadge tone="emerald">upi://pay</StatusBadge>
+                <StatusBadge tone="emerald">Instant Pay</StatusBadge>
               </div>
 
               <div className="flex flex-col sm:flex-row items-center gap-4">
@@ -1267,7 +1290,7 @@ export function FriendsAndSettlePage() {
                       htmlFor="payee-upi-id-input"
                       className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1"
                     >
-                      Payee VPA / UPI ID
+                      Recipient UPI ID
                     </label>
                     <input
                       id="payee-upi-id-input"
@@ -1281,7 +1304,7 @@ export function FriendsAndSettlePage() {
 
                   <div>
                     <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                      Generated NPCI URI
+                      Payment Deep-Link
                     </div>
                     <div
                       data-testid="upi-uri-text"

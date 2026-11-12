@@ -33,6 +33,7 @@ import {
   CurrencyAmount,
   CurrencyPrecisionPill,
   DoubleBezelCard,
+  PersonalExpenseImpactBadge,
   StatusBadge,
 } from '../primitives/DesignPrimitives';
 import {
@@ -435,12 +436,38 @@ export function GroupsLedgerPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            {/* Add Expense Primary CTA (Hick's Law: Dominant Action First) */}
+            <button
+              type="button"
+              data-testid="add-expense-btn"
+              onClick={() => {
+                setEditingExpense(null);
+                setIsExpenseModalOpen(true);
+              }}
+              className="min-h-[44px] inline-flex items-center gap-2 rounded-xl bg-[#059669] hover:bg-emerald-600 text-white px-4 py-2.5 text-xs sm:text-sm font-bold shadow-md shadow-emerald-600/20 transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4" weight="bold" />
+              <span>+ Add Expense</span>
+            </button>
+
+            {/* Add Member Trigger */}
+            <button
+              type="button"
+              data-testid="add-member-btn"
+              onClick={() => setShowAddMember((prev) => !prev)}
+              className="min-h-[40px] inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/15 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
+            >
+              <UserPlus className="w-4 h-4 text-[#059669]" weight="bold" />
+              <span>Add Member</span>
+            </button>
+
             {/* Smart Debt Simplification Toggle */}
             <button
               type="button"
               data-testid="toggle-simplify-debts-btn"
               onClick={() => toggleGroupSimplifyDebts(activeGroup.id)}
-              className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-all border cursor-pointer ${
+              title="Minimize total payments across group members or keep 1-on-1 pairwise balances"
+              className={`min-h-[40px] inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-colors border cursor-pointer ${
                 activeGroup.simplifyDebts
                   ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
                   : 'bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/30'
@@ -449,8 +476,8 @@ export function GroupsLedgerPage() {
               <Lightning className="w-4 h-4" weight="fill" />
               <span>
                 {activeGroup.simplifyDebts
-                  ? 'Simplify Debts: ON (Min Transfers)'
-                  : 'Simplify Debts: OFF (Raw Pairwise)'}
+                  ? 'Simplify Debts: ON'
+                  : 'Simplify Debts: OFF'}
               </span>
             </button>
 
@@ -459,35 +486,10 @@ export function GroupsLedgerPage() {
               type="button"
               data-testid="change-group-currency-btn"
               onClick={handleOpenCurrencyChanger}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/15 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
+              className="min-h-[40px] inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/15 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
             >
               <ArrowsLeftRight className="w-4 h-4 text-[#059669]" weight="bold" />
-              <span>Change Base Currency</span>
-            </button>
-
-            {/* Add Member Trigger */}
-            <button
-              type="button"
-              data-testid="add-member-btn"
-              onClick={() => setShowAddMember((prev) => !prev)}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/15 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
-            >
-              <UserPlus className="w-4 h-4 text-[#059669]" weight="bold" />
-              <span>Add Member</span>
-            </button>
-
-            {/* Add Expense Primary CTA */}
-            <button
-              type="button"
-              data-testid="add-expense-btn"
-              onClick={() => {
-                setEditingExpense(null);
-                setIsExpenseModalOpen(true);
-              }}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-[#059669] hover:bg-emerald-600 text-white px-4 py-2 text-xs font-bold shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
-            >
-              <Plus className="w-4 h-4" weight="bold" />
-              <span>Add Expense</span>
+              <span>Currency ({activeGroup.baseCurrency})</span>
             </button>
           </div>
         </div>
@@ -515,6 +517,7 @@ export function GroupsLedgerPage() {
                   New Base Currency
                 </label>
                 <select
+                  data-testid="change-currency-target-select"
                   value={targetCurrency}
                   onChange={(e) => {
                     const code = e.target.value;
@@ -679,15 +682,32 @@ export function GroupsLedgerPage() {
 
           <div className="rounded-2xl border border-slate-200/80 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/60 px-3.5 py-2.5">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Your Net Position
+              Your Standing
             </div>
-            <div className="mt-1 text-sm sm:text-base font-extrabold font-mono tabular-nums">
-              <CurrencyAmount
-                minorAmount={myGroupNetPositionMinor}
-                currencyCode={activeGroup.baseCurrency}
-                colorize
-                showPlusSign
-              />
+            <div className="mt-1 flex items-baseline justify-between gap-2">
+              <div className="text-sm sm:text-base font-extrabold font-mono tabular-nums">
+                <CurrencyAmount
+                  minorAmount={myGroupNetPositionMinor}
+                  currencyCode={activeGroup.baseCurrency}
+                  colorize
+                  showPlusSign
+                />
+              </div>
+              <span
+                className={`text-[11px] font-semibold ${
+                  myGroupNetPositionMinor > 0
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : myGroupNetPositionMinor < 0
+                    ? 'text-rose-600 dark:text-rose-400'
+                    : 'text-slate-400'
+                }`}
+              >
+                {myGroupNetPositionMinor > 0
+                  ? 'you are owed'
+                  : myGroupNetPositionMinor < 0
+                  ? 'you owe'
+                  : 'settled up'}
+              </span>
             </div>
           </div>
 
@@ -701,7 +721,7 @@ export function GroupsLedgerPage() {
                 onClick={() => setActivePage('analytics')}
                 className="inline-flex items-center gap-1 text-[11px] font-bold text-[#059669] hover:underline cursor-pointer shrink-0"
               >
-                <span>View Full Group Charts</span>
+                <span>See Charts</span>
                 <ArrowRight className="w-3 h-3" weight="bold" />
               </button>
             </div>
@@ -743,15 +763,26 @@ export function GroupsLedgerPage() {
             )}
             <span>
               {conflictedExpenses.length > 0
-                ? 'Step 1: Resolve the concurrent offline edit conflict below to lock group balances.'
+                ? 'Needs your review: Two offline edits were made on a bill below - pick which version to keep.'
                 : suggestedTransfers.length > 0
-                ? "Group ready: Add new expenses, click 'Explain' on any member to verify math, or record a settlement."
-                : "All members are settled to 0.00! Click '+ Add Expense' to log the next shared bill."}
+                ? "Balances active: Tap 'Explain Balance' on any person to see the math, or settle up in one tap."
+                : "All settled up at 0.00! Tap '+ Add Expense' whenever your next shared bill comes up."}
             </span>
           </div>
-          <span className="font-mono text-[11px] opacity-80">
-            {activeGroup.name} ({activeGroup.baseCurrency})
-          </span>
+          {suggestedTransfers.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setActivePage('friends')}
+              className="inline-flex items-center gap-1 rounded-lg bg-sky-600 hover:bg-sky-500 text-white px-2.5 py-1 text-[11px] font-bold transition-colors cursor-pointer"
+            >
+              <span>Open UPI / WhatsApp Settle</span>
+              <ArrowRight className="w-3 h-3" weight="bold" />
+            </button>
+          ) : (
+            <span className="font-mono text-[11px] opacity-80">
+              {activeGroup.name} ({activeGroup.baseCurrency})
+            </span>
+          )}
         </div>
       </DoubleBezelCard>
 
@@ -769,17 +800,14 @@ export function GroupsLedgerPage() {
             <div className="rounded-[calc(1.5rem-0.375rem)] bg-white dark:bg-[#111827] border border-amber-500/30 p-5 space-y-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <StatusBadge tone="amber">
                       <Warning className="w-3.5 h-3.5" weight="fill" />
-                      <span>Concurrent Offline Edit Conflict Detected</span>
+                      <span>Review Offline Edit on &quot;{exp.title}&quot;</span>
                     </StatusBadge>
-                    <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
-                      Base Revision Mismatch on &quot;{exp.title}&quot;
-                    </span>
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-300">
-                    Two group members edited this expense concurrently while offline. Both snapshots are preserved in immutable revision history - choose which version should govern the active ledger.
+                    Two group members edited this bill while offline. Nothing was lost - both versions are saved in edit history. Choose which version should count toward group balances:
                   </p>
                 </div>
               </div>
@@ -790,10 +818,10 @@ export function GroupsLedgerPage() {
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
                       <StatusBadge tone="emerald">
-                        Active Version ({activeRev?.actorDisplayName ?? 'Latest HLC'})
+                        Current Version ({activeRev?.actorDisplayName ?? 'Latest'})
                       </StatusBadge>
                       <span className="font-mono text-[11px] text-slate-500">
-                        Rev #{activeRev?.revisionNumber ?? exp.revisionNumber}
+                        v{activeRev?.revisionNumber ?? exp.revisionNumber}
                       </span>
                     </div>
                     <div className="text-sm font-bold text-slate-900 dark:text-slate-100">
@@ -805,7 +833,7 @@ export function GroupsLedgerPage() {
                         currencyCode={exp.groupCurrency}
                       />{' '}
                       <span className="text-xs font-normal text-slate-500">
-                        ({(activeRev?.snapshot.splitMode ?? exp.splitMode).toUpperCase()} Split)
+                        ({(activeRev?.snapshot.splitMode ?? exp.splitMode).toUpperCase()} split)
                       </span>
                     </div>
                     <p className="text-xs text-slate-600 dark:text-slate-400">
@@ -817,7 +845,7 @@ export function GroupsLedgerPage() {
                     type="button"
                     data-testid="keep-active-revision-btn"
                     onClick={() => resolveExpenseConflict(exp.id, exp.currentRevisionId)}
-                    className="mt-3 w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#059669] hover:bg-emerald-600 text-white px-3.5 py-2 text-xs font-bold transition-colors cursor-pointer"
+                    className="mt-3 min-h-[40px] w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#059669] hover:bg-emerald-600 text-white px-3.5 py-2 text-xs font-bold transition-colors cursor-pointer"
                   >
                     <CheckCircle className="w-4 h-4" weight="bold" />
                     <span>
@@ -837,10 +865,10 @@ export function GroupsLedgerPage() {
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between gap-2">
                         <StatusBadge tone="amber">
-                          Conflicting Branch ({conflictRev.actorDisplayName})
+                          Other Offline Edit ({conflictRev.actorDisplayName})
                         </StatusBadge>
                         <span className="font-mono text-[11px] text-slate-500">
-                          Rev #{conflictRev.revisionNumber}
+                          v{conflictRev.revisionNumber}
                         </span>
                       </div>
                       <div className="text-sm font-bold text-slate-900 dark:text-slate-100">
@@ -852,7 +880,7 @@ export function GroupsLedgerPage() {
                           currencyCode={exp.groupCurrency}
                         />{' '}
                         <span className="text-xs font-normal text-slate-500">
-                          ({conflictRev.snapshot.splitMode.toUpperCase()} Split)
+                          ({conflictRev.snapshot.splitMode.toUpperCase()} split)
                         </span>
                       </div>
                       <p className="text-xs text-slate-600 dark:text-slate-400">
@@ -864,11 +892,11 @@ export function GroupsLedgerPage() {
                       type="button"
                       data-testid="keep-conflict-revision-btn"
                       onClick={() => resolveExpenseConflict(exp.id, conflictRev.id)}
-                      className="mt-3 w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-2 text-xs font-bold transition-colors cursor-pointer"
+                      className="mt-3 min-h-[40px] w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-2 text-xs font-bold transition-colors cursor-pointer"
                     >
                       <GitDiff className="w-4 h-4" weight="bold" />
                       <span>
-                        Switch to {conflictRev.actorDisplayName}&apos;s Version (
+                        Use {conflictRev.actorDisplayName}&apos;s Version (
                         {formatMinorToMajor(conflictRev.snapshot.amountMinor, exp.groupCurrency)})
                       </span>
                     </button>
@@ -926,15 +954,15 @@ export function GroupsLedgerPage() {
                             {isClaimed ? (
                               <StatusBadge tone="emerald">
                                 <ShieldCheck className="w-3 h-3" weight="fill" />
-                                <span>Google OAuth Verified</span>
+                                <span>Joined</span>
                               </StatusBadge>
                             ) : (
-                              <StatusBadge tone="amber">Unclaimed Placeholder</StatusBadge>
+                              <StatusBadge tone="amber">Invite Pending</StatusBadge>
                             )}
                           </div>
                           <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                            {member.invitedEmail ?? 'No email linked'}
-                            {member.upiId ? ` | UPI: ${member.upiId}` : ''}
+                            {member.invitedEmail ?? 'Added by name'}
+                            {member.upiId ? ` • UPI: ${member.upiId}` : ''}
                           </div>
                         </div>
                       </div>
@@ -948,11 +976,19 @@ export function GroupsLedgerPage() {
                             showPlusSign
                           />
                         </div>
-                        <div className="text-[10px] text-slate-400">
+                        <div
+                          className={`text-[10px] font-semibold ${
+                            netMinor > 0
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : netMinor < 0
+                              ? 'text-rose-600 dark:text-rose-400'
+                              : 'text-slate-400'
+                          }`}
+                        >
                           {netMinor > 0
                             ? 'gets back'
                             : netMinor < 0
-                            ? 'owes group'
+                            ? 'owes'
                             : 'settled up'}
                         </div>
                       </div>
@@ -974,10 +1010,11 @@ export function GroupsLedgerPage() {
                           type="button"
                           data-testid={`claim-member-${member.id}`}
                           onClick={() => claimMemberAccount(activeGroup.id, member.id)}
+                          title="Link this placeholder profile to a Google account"
                           className="inline-flex items-center gap-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/30 px-2.5 py-1 text-[11px] font-semibold transition-colors cursor-pointer"
                         >
                           <GoogleLogo className="w-3.5 h-3.5" weight="bold" />
-                          <span>Simulate Google Sign-In Link</span>
+                          <span>Link Google Account</span>
                         </button>
                       )}
                     </div>
@@ -993,23 +1030,26 @@ export function GroupsLedgerPage() {
               <div className="flex items-center gap-2">
                 <HandCoins className="w-5 h-5 text-[#059669]" weight="duotone" />
                 <h2 className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                  Suggested Repayments ({suggestedTransfers.length})
+                  Who Pays Whom ({suggestedTransfers.length})
                 </h2>
               </div>
               <StatusBadge tone={activeGroup.simplifyDebts ? 'emerald' : 'amber'}>
-                {activeGroup.simplifyDebts ? 'Bitmask-DP Simplified' : 'Raw Pairwise'}
+                {activeGroup.simplifyDebts ? 'Smart Min-Payments' : 'Direct Pairwise'}
               </StatusBadge>
             </div>
 
             {suggestedTransfers.length === 0 ? (
-              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-center space-y-1">
+              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-center space-y-2">
                 <CheckCircle
-                  className="w-6 h-6 text-emerald-600 dark:text-emerald-400 mx-auto"
+                  className="w-7 h-7 text-emerald-600 dark:text-emerald-400 mx-auto"
                   weight="fill"
                 />
-                <div className="text-xs font-bold text-emerald-800 dark:text-emerald-200">
-                  All Group Members Are 100% Settled Up!
+                <div className="text-xs sm:text-sm font-bold text-emerald-800 dark:text-emerald-200">
+                  Everyone in {activeGroup.name} is settled up!
                 </div>
+                <p className="text-[11px] text-emerald-700/80 dark:text-emerald-300/80">
+                  No open debts right now. Ready whenever your next shared bill comes in.
+                </p>
               </div>
             ) : (
               <div className="space-y-2.5">
@@ -1118,14 +1158,44 @@ export function GroupsLedgerPage() {
 
           {/* Expense Feed Cards */}
           {filteredExpenses.length === 0 ? (
-            <DoubleBezelCard innerClassName="text-center py-10 space-y-2">
-              <Receipt className="w-8 h-8 text-slate-400 mx-auto" weight="duotone" />
-              <div className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                No matching expenses in this view
+            <DoubleBezelCard
+              testId="empty-group-onboarding-card"
+              innerClassName="text-center py-10 space-y-3"
+            >
+              <Receipt className="w-8 h-8 text-emerald-600 dark:text-emerald-400 mx-auto" weight="duotone" />
+              <div className="text-sm sm:text-base font-bold text-slate-800 dark:text-slate-200">
+                {groupExpenses.length === 0
+                  ? `${activeGroup.name} is ready for its first bill!`
+                  : 'No bills match your search filter'}
               </div>
-              <p className="text-xs text-slate-500">
-                Click &quot;Add Expense&quot; above to log a new shared bill.
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                {groupExpenses.length === 0
+                  ? 'Add friends by name (even if they have not signed in yet) and log your first shared expense in seconds.'
+                  : 'Try clearing your search text or selecting All Categories above.'}
               </p>
+              {groupExpenses.length === 0 && (
+                <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddMember(true)}
+                    className="min-h-[40px] inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/15 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-emerald-500/40 transition-colors cursor-pointer"
+                  >
+                    <UserPlus className="w-4 h-4 text-[#059669]" weight="bold" />
+                    <span>+ Add Friends</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingExpense(null);
+                      setIsExpenseModalOpen(true);
+                    }}
+                    className="min-h-[40px] inline-flex items-center gap-1.5 rounded-xl bg-[#059669] hover:bg-emerald-600 text-white px-4 py-2 text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" weight="bold" />
+                    <span>+ Add First Bill</span>
+                  </button>
+                </div>
+              )}
             </DoubleBezelCard>
           ) : (
             <div className="space-y-4">
@@ -1145,7 +1215,7 @@ export function GroupsLedgerPage() {
 
                 return (
                   <DoubleBezelCard key={exp.id} innerClassName="space-y-3.5">
-                    {/* Top Row: Badges & Amount */}
+                    {/* Top Row: Badges, Title & Splitwise Personal Impact */}
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-1.5">
@@ -1164,23 +1234,29 @@ export function GroupsLedgerPage() {
                             </StatusBadge>
                           )}
                           {exp.hasUnresolvedConflict && (
-                            <StatusBadge tone="rose">Conflict Flagged</StatusBadge>
+                            <StatusBadge tone="rose">Needs Review</StatusBadge>
                           )}
                         </div>
 
                         <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
                           {exp.title}
                         </h3>
-                        <div className="text-xs font-mono text-slate-500 dark:text-slate-400">
-                          {exp.expenseDate} | Paid by {payerSummary}
+                        <div className="text-xs text-slate-500 dark:text-slate-400">
+                          <span className="font-mono">{exp.expenseDate}</span> • Paid by {payerSummary}
                         </div>
                       </div>
 
-                      <div className="text-right">
+                      <div className="text-right space-y-1">
                         <div className="text-lg font-extrabold font-mono tabular-nums text-slate-900 dark:text-slate-100">
                           <CurrencyAmount
                             minorAmount={exp.amountMinor}
                             currencyCode={exp.groupCurrency}
+                          />
+                        </div>
+                        <div>
+                          <PersonalExpenseImpactBadge
+                            expense={exp}
+                            myMemberId={currentUserMember?.id}
                           />
                         </div>
                         {exp.originalCurrency !== exp.groupCurrency && (

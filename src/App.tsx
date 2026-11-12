@@ -8,6 +8,7 @@ import {
   DatabaseIcon as Database,
   HouseIcon as House,
   MoonIcon as Moon,
+  PlusIcon as Plus,
   QuestionIcon as Question,
   ReceiptIcon as Receipt,
   ShieldCheckIcon as ShieldCheck,
@@ -93,6 +94,7 @@ export function App() {
     toastMessage,
     clearToast,
     expenseModalState,
+    openAddExpenseModal,
     closeAddExpenseModal,
     isHelpModalOpen,
     setHelpModalOpen,
@@ -104,8 +106,11 @@ export function App() {
     (e) => !e.deletedAt && e.hasUnresolvedConflict
   ).length;
 
+  const isAnyModalOpen =
+    expenseModalState.isOpen || isHelpModalOpen || isAuthModalOpen;
+
   return (
-    <div className="min-h-[100dvh] bg-[#F8FAFC] dark:bg-[#090D16] text-slate-900 dark:text-slate-100 pb-24 lg:pb-16 transition-colors duration-300">
+    <div className="min-h-[100dvh] bg-[#F8FAFC] dark:bg-[#090D16] text-slate-900 dark:text-slate-100 pb-28 lg:pb-16 transition-colors duration-300">
       {/* Subtle fixed ambient background glow */}
       <div
         aria-hidden="true"
@@ -117,12 +122,17 @@ export function App() {
 
       {/* Floating Island Top Navigation Bar (<= 80px height) */}
       <header className="sticky top-0 z-30 px-3 pt-3 sm:px-6">
-        <div className="mx-auto max-w-[1400px] h-16 rounded-full px-4 sm:px-6 bg-white/85 dark:bg-[#111827]/85 backdrop-blur-xl ring-1 ring-slate-900/[0.08] dark:ring-white/[0.1] shadow-[0_8px_30px_rgb(0,0,0,0.06)] flex items-center justify-between gap-3">
+        <div className="mx-auto max-w-[1400px] h-16 rounded-full px-3.5 sm:px-6 bg-white/85 dark:bg-[#111827]/85 backdrop-blur-xl ring-1 ring-slate-900/[0.08] dark:ring-white/[0.1] shadow-[0_8px_30px_rgb(0,0,0,0.06)] flex items-center justify-between gap-2 sm:gap-3">
           {/* Brand Identity */}
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="h-9 w-9 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-sm shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={() => setActivePage('home')}
+              aria-label="Go to Wise-Spliter Home"
+              className="h-9 w-9 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-sm shrink-0 cursor-pointer hover:bg-emerald-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+            >
               <UsersThree size={20} weight="bold" aria-hidden="true" />
-            </div>
+            </button>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-bold tracking-tight text-base sm:text-lg text-slate-900 dark:text-white truncate">
@@ -133,9 +143,13 @@ export function App() {
                   100% Free
                 </span>
               </div>
-              <p className="hidden sm:block text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                Active Group: <span className="font-semibold text-slate-700 dark:text-slate-200">{activeGroup.name}</span> ({activeGroup.baseCurrency})
-              </p>
+              <button
+                type="button"
+                onClick={() => setActivePage('groups')}
+                className="hidden sm:block text-[11px] text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 truncate cursor-pointer text-left transition-colors"
+              >
+                Group: <span className="font-semibold text-slate-700 dark:text-slate-200">{activeGroup.name}</span> ({activeGroup.baseCurrency})
+              </button>
             </div>
           </div>
 
@@ -153,7 +167,7 @@ export function App() {
                   type="button"
                   data-testid={item.testId}
                   onClick={() => setActivePage(item.id)}
-                  className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-transform duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+                  className={`relative inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                     isActive
                       ? 'bg-emerald-600 text-white shadow-sm'
                       : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
@@ -171,33 +185,33 @@ export function App() {
             })}
           </nav>
 
-          {/* Right Status Controls: Offline Toggle, Google Account & Theme Toggle */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Right Status Controls: Sync Confidence, Account, Backup (mobile), Help & Theme */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               type="button"
               data-testid="header-offline-toggle"
               onClick={toggleOfflineMode}
               title={
                 isOnline
-                  ? 'Connected to Supabase wise_spliter schema - click to simulate Offline Flight Mode'
-                  : 'Offline Mode active (saving to local IndexedDB) - click to reconnect'
+                  ? 'All bills backed up to cloud - click to test Airplane / Offline Mode'
+                  : 'Working 100% offline on this device - click to reconnect and sync'
               }
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-transform duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+              className={`min-h-[36px] inline-flex items-center gap-1.5 rounded-full px-2.5 sm:px-3 py-1.5 text-xs font-semibold transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                 isOnline
-                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/30'
-                  : 'bg-amber-500/15 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/40'
+                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/30 hover:bg-emerald-500/15'
+                  : 'bg-amber-500/15 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/40 hover:bg-amber-500/25'
               }`}
             >
               {isOnline ? (
                 <>
                   <CloudArrowUp size={15} weight="bold" aria-hidden="true" />
-                  <span className="hidden md:inline">Synced (wise_spliter)</span>
+                  <span className="hidden md:inline">Cloud Synced</span>
                   <span className="md:hidden">Online</span>
                 </>
               ) : (
                 <>
                   <CloudSlash size={15} weight="bold" aria-hidden="true" />
-                  <span>Offline ({pendingOutboxCount} queued)</span>
+                  <span>Offline ({pendingOutboxCount})</span>
                 </>
               )}
             </button>
@@ -206,15 +220,30 @@ export function App() {
               type="button"
               data-testid="header-user-pill"
               onClick={() => setAuthModalOpen(true)}
+              aria-label={`Account: ${dataset.currentUser.fullName} - Sign in or switch account`}
               title="Sign in or switch active account"
-              className="hidden sm:flex items-center gap-2 rounded-full bg-slate-100 dark:bg-slate-800/80 pl-1.5 pr-3 py-1 text-xs ring-1 ring-slate-200 dark:ring-white/10 hover:bg-slate-200/70 dark:hover:bg-slate-700 transition-transform duration-200 active:scale-[0.98] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              className="min-h-[36px] flex items-center gap-2 rounded-full bg-slate-100 dark:bg-slate-800/80 p-1 sm:pl-1.5 sm:pr-3 text-xs ring-1 ring-slate-200 dark:ring-white/10 hover:bg-slate-200/70 dark:hover:bg-slate-700 transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
-              <span className="h-6 w-6 rounded-full bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 font-mono font-bold text-[11px] flex items-center justify-center">
+              <span className="h-7 w-7 sm:h-6 sm:w-6 rounded-full bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 font-mono font-bold text-[11px] flex items-center justify-center">
                 {dataset.currentUser.avatarInitials}
               </span>
-              <span className="font-medium text-slate-700 dark:text-slate-200 max-w-[110px] truncate">
+              <span className="hidden sm:inline font-medium text-slate-700 dark:text-slate-200 max-w-[110px] truncate">
                 {dataset.currentUser.fullName}
               </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActivePage('portability')}
+              aria-label="Open Backup, Sync and Export"
+              title="Backup, Sync & Splitwise Import"
+              className={`lg:hidden h-9 w-9 rounded-full flex items-center justify-center ring-1 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+                activePage === 'portability'
+                  ? 'bg-emerald-600 text-white ring-emerald-600'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 ring-slate-200 dark:ring-white/10 hover:bg-slate-200/70 dark:hover:bg-slate-700'
+              }`}
+            >
+              <Database size={16} weight="bold" aria-hidden="true" />
             </button>
 
             <button
@@ -222,7 +251,7 @@ export function App() {
               data-testid="header-help-btn"
               onClick={() => setHelpModalOpen(true)}
               aria-label="Open interactive Help and Step-by-Step Guide"
-              className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 ring-1 ring-slate-200 dark:ring-white/10 hover:bg-slate-200/70 dark:hover:bg-slate-700 transition-transform duration-200 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              className="min-h-[36px] min-w-[36px] inline-flex items-center justify-center gap-1.5 rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 ring-1 ring-slate-200 dark:ring-white/10 hover:bg-slate-200/70 dark:hover:bg-slate-700 transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               <Question size={16} weight="bold" aria-hidden="true" />
               <span className="hidden sm:inline">Help</span>
@@ -233,7 +262,7 @@ export function App() {
               data-testid="theme-toggle-btn"
               onClick={toggleTheme}
               aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-              className="h-9 w-9 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center justify-center ring-1 ring-slate-200 dark:ring-white/10 hover:bg-slate-200/70 dark:hover:bg-slate-700 transition-transform duration-200 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              className="h-9 w-9 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center justify-center ring-1 ring-slate-200 dark:ring-white/10 hover:bg-slate-200/70 dark:hover:bg-slate-700 transition-colors duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               {theme === 'dark' ? (
                 <Sun size={18} weight="bold" aria-hidden="true" />
@@ -246,7 +275,7 @@ export function App() {
       </header>
 
       {/* Polite Toast Notification Banner */}
-      <div aria-live="polite" className="fixed bottom-20 lg:bottom-6 right-4 z-40 max-w-md">
+      <div aria-live="polite" className="fixed bottom-32 lg:bottom-6 right-4 z-40 max-w-md">
         {toastMessage && (
           <div
             data-testid="toast-banner"
@@ -257,7 +286,7 @@ export function App() {
               type="button"
               onClick={clearToast}
               aria-label="Dismiss notification"
-              className="rounded-full p-1 hover:bg-white/10"
+              className="rounded-full p-1 hover:bg-white/10 cursor-pointer"
             >
               <X size={14} weight="bold" aria-hidden="true" />
             </button>
@@ -266,7 +295,7 @@ export function App() {
       </div>
 
       {/* Main Content Workspace */}
-      <main id="main-workspace" className="relative mx-auto max-w-[1400px] px-4 sm:px-6 pt-6 space-y-5">
+      <main id="main-workspace" className="relative mx-auto max-w-[1400px] px-4 sm:px-6 pt-5 space-y-5">
         <ContextualPageGuideBanner
           pageKey={activePage}
           onOpenFullHelp={() => setHelpModalOpen(true)}
@@ -278,6 +307,23 @@ export function App() {
         {activePage === 'analytics' && <AnalyticsAndSearchPage />}
         {activePage === 'portability' && <PortabilityAndSyncPage />}
       </main>
+
+      {/* Mobile Thumb-Zone Sticky Quick-Split Action Button */}
+      {!isAnyModalOpen && (activePage === 'home' || activePage === 'groups') && (
+        <div className="lg:hidden fixed bottom-[4.75rem] right-4 z-30">
+          <button
+            type="button"
+            data-testid="mobile-fab-split-btn"
+            onClick={() =>
+              openAddExpenseModal(activePage === 'groups' ? activeGroup.id : null, null)
+            }
+            className="min-h-[48px] inline-flex items-center gap-2 rounded-full bg-[#059669] hover:bg-emerald-600 text-white px-4 py-3 text-xs font-bold shadow-lg shadow-emerald-900/30 ring-1 ring-white/20 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+          >
+            <Plus size={18} weight="bold" aria-hidden="true" />
+            <span>{activePage === 'groups' ? '+ Add Group Bill' : '+ Split a Bill'}</span>
+          </button>
+        </div>
+      )}
 
       {/* Global Modular Expense Editor Modal (invokable from Home or Group) */}
       <ExpenseEditorModal
@@ -306,7 +352,7 @@ export function App() {
       {/* Mobile Bottom Navigation Bar (<= 5 items, >= 44x44px hit targets) */}
       <nav
         aria-label="Mobile Navigation"
-        className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-xl border-t border-slate-200 dark:border-white/10 px-2 py-1.5"
+        className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-xl border-t border-slate-200 dark:border-white/10 px-2 pt-1.5 pb-safe-nav"
       >
         <div className="mx-auto max-w-md grid grid-cols-5 gap-1">
           {MOBILE_NAV_ITEMS.map((item) => {
@@ -318,9 +364,9 @@ export function App() {
                 type="button"
                 data-testid={`mobile-${item.testId}`}
                 onClick={() => setActivePage(item.id)}
-                className={`min-h-[44px] flex flex-col items-center justify-center rounded-xl py-1 text-[11px] font-semibold transition-colors ${
+                className={`min-h-[48px] flex flex-col items-center justify-center rounded-xl py-1 text-[11px] font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                   isActive
-                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
                     : 'text-slate-600 dark:text-slate-400'
                 }`}
               >

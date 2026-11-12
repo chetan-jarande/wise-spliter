@@ -1,5 +1,6 @@
 import React from 'react';
 import { formatMinorToMajor, getCurrency } from '../../domain/money/currencies';
+import { ExpenseItem } from '../../types/ledger';
 
 export function DoubleBezelCard({
   children,
@@ -85,7 +86,13 @@ export function StatusBadge({
   );
 }
 
-export function CurrencyPrecisionPill({ currencyCode }: { currencyCode: string }) {
+export function CurrencyPrecisionPill({
+  currencyCode,
+  showTechnical = false,
+}: {
+  currencyCode: string;
+  showTechnical?: boolean;
+}) {
   const meta = getCurrency(currencyCode);
   const unitName =
     meta.decimals === 0
@@ -93,11 +100,98 @@ export function CurrencyPrecisionPill({ currencyCode }: { currencyCode: string }
       : meta.decimals === 3
       ? '3-dec (1000 fils)'
       : '2-dec (100 paise/cents)';
+
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800/90 px-2.5 py-0.5 text-[11px] font-mono font-medium text-slate-700 dark:text-slate-300 ring-1 ring-slate-300/60 dark:ring-white/10">
+    <span
+      title={`${meta.name} (${meta.code}) - Exact ${unitName}`}
+      className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800/90 px-2.5 py-0.5 text-[11px] font-mono font-medium text-slate-700 dark:text-slate-300 ring-1 ring-slate-300/60 dark:ring-white/10"
+    >
+      <span className="font-bold text-emerald-700 dark:text-emerald-400">{meta.symbol}</span>
       <span>{meta.code}</span>
-      <span className="text-slate-400 dark:text-slate-500">/</span>
-      <span>{unitName}</span>
+      {showTechnical && (
+        <>
+          <span className="text-slate-400 dark:text-slate-500">/</span>
+          <span>{unitName}</span>
+        </>
+      )}
+    </span>
+  );
+}
+
+export function PersonalExpenseImpactBadge({
+  expense,
+  myMemberId,
+  className = '',
+}: {
+  expense: ExpenseItem;
+  myMemberId: string | null | undefined;
+  className?: string;
+}) {
+  if (!myMemberId) {
+    return (
+      <span
+        data-testid="expense-personal-impact-pill"
+        className={`inline-flex items-center gap-1 rounded-full bg-slate-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 dark:text-slate-400 ring-1 ring-slate-500/20 ${className}`}
+      >
+        not involved
+      </span>
+    );
+  }
+
+  const myPaidMinor = expense.payers
+    .filter((p) => p.memberId === myMemberId)
+    .reduce((sum, p) => sum + p.paidMinor, 0);
+  const mySplit = expense.splits.find((s) => s.memberId === myMemberId && s.included);
+  const myOwedMinor = mySplit ? mySplit.owedMinor : 0;
+  const isInvolved = myPaidMinor > 0 || Boolean(mySplit);
+
+  if (!isInvolved) {
+    return (
+      <span
+        data-testid="expense-personal-impact-pill"
+        className={`inline-flex items-center gap-1 rounded-full bg-slate-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 dark:text-slate-400 ring-1 ring-slate-500/20 ${className}`}
+      >
+        not involved
+      </span>
+    );
+  }
+
+  const netDeltaMinor = myPaidMinor - myOwedMinor;
+
+  if (netDeltaMinor > 0) {
+    return (
+      <span
+        data-testid="expense-personal-impact-pill"
+        className={`inline-flex items-center gap-1 rounded-full bg-emerald-500/12 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/25 ${className}`}
+      >
+        <span>you lent</span>
+        <span className="font-mono tabular-nums font-bold">
+          {formatMinorToMajor(netDeltaMinor, expense.groupCurrency)}
+        </span>
+      </span>
+    );
+  }
+
+  if (netDeltaMinor < 0) {
+    return (
+      <span
+        data-testid="expense-personal-impact-pill"
+        className={`inline-flex items-center gap-1 rounded-full bg-rose-500/12 px-2.5 py-0.5 text-[11px] font-semibold text-rose-700 dark:text-rose-300 ring-1 ring-rose-500/25 ${className}`}
+      >
+        <span>you borrowed</span>
+        <span className="font-mono tabular-nums font-bold">
+          {formatMinorToMajor(Math.abs(netDeltaMinor), expense.groupCurrency)}
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <span
+      data-testid="expense-personal-impact-pill"
+      className={`inline-flex items-center gap-1 rounded-full bg-slate-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300 ring-1 ring-slate-500/20 ${className}`}
+    >
+      settled on bill
     </span>
   );
 }

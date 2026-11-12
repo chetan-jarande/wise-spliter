@@ -12,7 +12,7 @@ import {
   XIcon as X,
 } from '@phosphor-icons/react';
 import { HelpGuideSection } from '../../types/ledger';
-import { useLedger } from '../../state/LedgerContext';
+import { ActivePageTab, useLedger } from '../../state/LedgerContext';
 import { DoubleBezelCard, StatusBadge } from '../primitives/DesignPrimitives';
 
 export type GuidePageKey =
@@ -26,67 +26,67 @@ export type GuidePageKey =
 const FALLBACK_HELP_GUIDES: HelpGuideSection[] = [
   {
     pageKey: 'home',
-    pageTitle: 'Minimalist Home & Quick Split Hub',
+    pageTitle: 'Home & Quick Split',
     shortTip:
-      'Your Home screen keeps cognitive load low: see your overall net position, quick-add any expense (with or without a group), or jump into your 3 most recently active groups.',
+      'See whether friends owe you or you owe them at a glance, split a bill in seconds, or open your 3 most recent groups.',
     whereToFindWhat: [
-      'Top Bar: Net Position across all groups and direct friend splits.',
-      'Quick Add Expense: Log a standalone 1-on-1/ad-hoc split (No Group) or assign to any group.',
-      'Recent Groups (Max 3): Your 3 most recently accessed or updated groups. Click any group to open its progressive workspace.',
-      'Direct Non-Group Splits: Bills split directly between participants without creating a group.',
+      'Overall Standing: Plain-English summary of whether you are owed, owe, or are settled up.',
+      '+ Split a Bill: Split a casual 1-on-1 meal (no group needed) or add a bill to any group.',
+      'Recent Groups (Top 3): Jump straight into your 3 most recently active shared groups.',
+      'Direct Splits: 1-on-1 or casual bills split with friends outside any group.',
     ],
     steps: [
       {
         stepNumber: 1,
-        title: 'Quick-Add a Standalone or Group Bill',
+        title: 'Split a Group or 1-on-1 Bill',
         description:
-          "Click '+ Quick Add Expense' on Home. Leave Group as 'No Group (Direct Split)' to split between specific people, or pick a group.",
+          "Tap '+ Split a Bill' on Home. Leave scope as 'No Group' for a quick 1-on-1 split, or choose a group.",
         targetTab: 'home',
-        actionLabel: 'Open Quick Add',
+        actionLabel: 'Start a Split',
       },
       {
         stepNumber: 2,
-        title: 'Open a Group for Progressive Insights & Actions',
+        title: 'Open Any Group Ledger',
         description:
-          "Click any of your Top 3 Recent Groups (or 'View All Groups') to unlock group-specific insights, balance explanations, and group settings.",
+          'Tap any recent group card to see every bill, check your personal share, or add friends by name.',
         targetTab: 'groups',
         actionLabel: 'Explore Groups',
       },
       {
         stepNumber: 3,
-        title: 'Settle Up via UPI QR or WhatsApp Card',
+        title: 'Settle via UPI QR or WhatsApp',
         description:
-          "Open 'Friends & Settle' to clear balances across multiple groups in one atomic batch or generate a UPI QR code.",
+          'Open Friends & Settle to pay back across all shared groups at once or share a WhatsApp summary.',
         targetTab: 'friends',
-        actionLabel: 'Go to Settle Hub',
+        actionLabel: 'Go to Settle Up',
       },
     ],
   },
   {
     pageKey: 'groups',
-    pageTitle: 'Progressive Group Workspace & 5-Mode Ledger',
+    pageTitle: 'Group Ledger & Shared Bills',
     shortTip:
-      'Once a group is opened, minimal group-scoped insights appear automatically at the top alongside all group operations (Add Expense with group pre-selected, Explain Balance, Currency Switcher, and Simplify Toggle).',
+      'Every bill row shows the total plus what you personally lent or borrowed - tap Explain Balance anytime to see the exact math.',
     whereToFindWhat: [
-      'Minimal Group Insights Strip: Total group spend, your personal share, and your net group balance.',
-      'Conflict Banner (when applicable): 1-click resolution for concurrent offline edits.',
-      "Left Column: Group members, Google OAuth link status, 'Explain Balance' math modal, and suggested repayments.",
-      'Right Column: Filterable expense ledger with rotating remainder badges and foreign FX audit notes.',
+      'Group Summary Bar: Total group spend, your personal share, and whether you get money back or owe.',
+      "Left Column: Group members, 'Explain Balance' breakdown, and suggested minimum repayments.",
+      'Right Column: Shared bills with clear emerald (you lent) and rose (you borrowed) badges.',
+      'Group Controls: Toggle smart debt simplification, add friends, or switch currency.',
     ],
     steps: [
       {
         stepNumber: 1,
-        title: 'Add Expense (Group Pre-Selected)',
+        title: 'Add a Bill to This Group',
         description:
-          "Click 'Add Expense' inside the group header - this group is pre-selected automatically with all 5 split modes.",
+          "Tap '+ Add Expense' - this group is pre-selected automatically with Equal, Exact, %, Shares, and +/- modes.",
         targetTab: 'groups',
         actionLabel: 'Add Group Bill',
       },
       {
         stepNumber: 2,
-        title: 'Inspect Mathematical Lineage',
+        title: 'Verify Any Balance in 1 Tap',
         description:
-          "Click 'Explain' next to any member to view the exact equation (Paid - Share + Sent - Received = Net).",
+          "Tap 'Explain Balance' on any member to see every bill and payment behind their number.",
         targetTab: 'groups',
         actionLabel: 'Inspect Balances',
       },
@@ -94,28 +94,28 @@ const FALLBACK_HELP_GUIDES: HelpGuideSection[] = [
   },
   {
     pageKey: 'activity',
-    pageTitle: 'Transparent Activity Feed, Revisions & Trash Vault',
+    pageTitle: 'Activity Timeline, Edit History & Trash',
     shortTip:
-      'Every create, edit, currency change, settlement, and conflict in a group is logged here with HLC timestamps and 1-click restore.',
+      'Full peace of mind: see every bill added, edited, or deleted, and restore any earlier version or trashed bill in one tap.',
     whereToFindWhat: [
-      'Activity Timeline: Filter by any action type (Expense Edited, Conflict Flagged, Settlement Recorded, etc.).',
-      'Revision Inspector: View field-by-field before -> after diffs and restore any historical revision.',
-      'Trash Recovery Vault: Restore soft-deleted bills in one click.',
+      'Activity Timeline: Plain-English feed of bills added, edits made, and payments recorded.',
+      'Edit History Inspector: Side-by-side before -> after changes on edited bills with 1-tap restore.',
+      'Trash Recovery Vault: Accidentally deleted a bill? Restore it cleanly in one click.',
     ],
     steps: [
       {
         stepNumber: 1,
-        title: 'Inspect Field-Level Edit Diffs',
+        title: 'Review What Changed on Edited Bills',
         description:
-          'Filter by Expense Updated or Conflict Flagged to inspect before and after snapshots with HLC timestamps.',
+          'Check the Edit History panel to see who changed an amount or split and restore an older version if needed.',
         targetTab: 'activity',
-        actionLabel: 'View Activity Feed',
+        actionLabel: 'View Edit History',
       },
       {
         stepNumber: 2,
-        title: 'Restore Soft-Deleted Bills from Trash',
+        title: 'Recover Deleted Bills from Trash',
         description:
-          'Open the Trash Recovery drawer to restore any deleted expense back into the active group ledger in 1 click.',
+          'Use the Trash Recovery panel to bring back any deleted bill with all shares intact.',
         targetTab: 'activity',
         actionLabel: 'Open Trash Vault',
       },
@@ -123,71 +123,71 @@ const FALLBACK_HELP_GUIDES: HelpGuideSection[] = [
   },
   {
     pageKey: 'friends',
-    pageTitle: 'Cross-Group Friends Net Ledger & UPI/WhatsApp Studio',
+    pageTitle: 'Friends Balances & UPI / WhatsApp Settle Up',
     shortTip:
-      'See your combined net balance with each friend across all shared groups and direct non-group splits, without mixing strangers across groups.',
+      'See your combined net balance with each friend across all shared groups, settle everything in 1 tap, or scan a UPI QR code.',
     whereToFindWhat: [
-      "Friends Net List: Per-group breakdown + 'Settle All Across Groups' atomic batch button.",
-      'UPI QR & Deep-Link Studio: Pre-filled upi://pay links and scannable QR code.',
-      'WhatsApp Summary Generator: Copy-ready markdown and visual summary card.',
+      "Friends List: Combined net standing with each friend + '1-Tap Settle All' across shared groups.",
+      'UPI QR & Payment Studio: Ready-to-scan QR code and 1-tap GPay / PhonePe / Paytm links.',
+      'WhatsApp Summary Card: Copy a clean group summary message to paste into your group chat.',
     ],
     steps: [
       {
         stepNumber: 1,
-        title: 'Settle All Shared Groups + Direct Splits Atomically',
+        title: 'Settle All Shared Groups in 1 Tap',
         description:
-          "Pick a friend and click 'Settle All Across Groups' to record linked settlements across every shared group in one batch.",
+          "Tap '1-Tap Settle All' next to a friend to clear your balance across every group you share.",
         targetTab: 'friends',
         actionLabel: 'Open Friends Hub',
       },
       {
         stepNumber: 2,
-        title: 'Share UPI QR or WhatsApp Statement',
+        title: 'Scan UPI QR or Share on WhatsApp',
         description:
-          'Generate a scannable UPI QR code or copy a formatted WhatsApp breakdown with exact minor-unit amounts.',
+          'Generate an exact-amount UPI QR code or copy a ready-to-send WhatsApp summary.',
         targetTab: 'friends',
-        actionLabel: 'Launch UPI Studio',
+        actionLabel: 'Open UPI Studio',
       },
     ],
   },
   {
     pageKey: 'analytics',
-    pageTitle: 'Deep Spending Analytics & Global Instant Search',
+    pageTitle: 'Spending Insights & Global Search',
     shortTip:
-      'Full visual breakdowns by category and split mode, plus instant search across all groups and currencies.',
+      'See where your group money went by category and instantly find any bill across all groups, tags, and currencies.',
     whereToFindWhat: [
-      'Category & Split Mode Charts: Proportional SVG ring and bar distributions.',
-      'Global Search: Filter by keyword, #tag, currency (INR/JPY/KWD/EUR/USD), or split mode.',
+      'Category Ring & Bars: Visual breakdown of Food, Stays, Flights, Groceries, and Activities.',
+      'Instant Search: Find any expense by name, #tag, friend, or travel currency (INR, EUR, JPY, KWD).',
     ],
     steps: [
       {
         stepNumber: 1,
-        title: 'Search Across All Groups & Direct Splits',
+        title: 'Find Any Bill Instantly',
         description:
-          'Filter bills by keyword, #tag, currency code, or split algorithm across your entire ledger.',
+          'Type a keyword, #tag, or currency code to filter across every group and direct split.',
         targetTab: 'analytics',
-        actionLabel: 'Open Global Search',
+        actionLabel: 'Search Bills',
       },
     ],
   },
   {
     pageKey: 'portability',
-    pageTitle: 'Local IndexedDB, Supabase Sync & Data Portability',
+    pageTitle: 'Cloud Sync, Exports & Switch from Splitwise',
     shortTip:
-      'Manage your local Dexie IndexedDB mirror, Supabase wise_spliter cloud sync, Splitwise CSV imports, and AES-256-GCM encrypted backups.',
+      'Works 100% offline on flights, syncs automatically when online, imports Splitwise CSVs, and exports Excel, PDF, or encrypted backups.',
     whereToFindWhat: [
-      'Cloud Sync Center: Toggle Offline Flight Mode and flush queued outbox mutations to wise_spliter.',
-      'Splitwise Importer & CSV/PDF Exporter: Migrate data in or export statements out.',
-      'Encrypted Backup Vault: PBKDF2 + AES-256-GCM encrypted .wisesplit backup and restore.',
+      'Offline & Cloud Sync: Test Airplane Mode and sync queued changes whenever you reconnect.',
+      'Splitwise Importer: Bring over existing Splitwise CSV/JSON history in one click.',
+      'Spreadsheet, PDF & Backup: Download .xlsx, .pdf, .csv statements or a password-locked .wisesplit backup.',
     ],
     steps: [
       {
         stepNumber: 1,
-        title: 'Import Splitwise CSV or Export Encrypted Backup',
+        title: 'Import Splitwise or Export Statements',
         description:
-          'Preview and import Splitwise CSV/JSON files or download an AES-256-GCM encrypted .wisesplit archive.',
+          'Migrate from Splitwise in seconds or download clean Excel / PDF trip statements.',
         targetTab: 'portability',
-        actionLabel: 'Open Sync & Backups',
+        actionLabel: 'Open Exports & Backup',
       },
     ],
   },
@@ -209,26 +209,16 @@ export function ContextualPageGuideBanner({
   pageKey: GuidePageKey;
   onOpenFullHelp?: () => void;
 }) {
-  const { dataset, setActivePage } = useLedger();
+  const { setActivePage } = useLedger();
   const [showPills, setShowPills] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
   const [internalModalOpen, setInternalModalOpen] = useState(false);
 
   const guideSection = useMemo(() => {
-    const fromCatalog = dataset.helpGuidesCatalog?.find((h) => h.pageKey === pageKey);
-    const fallback = FALLBACK_HELP_GUIDES.find((h) => h.pageKey === pageKey) ?? FALLBACK_HELP_GUIDES[0]!;
-    if (!fromCatalog) return fallback;
-    return {
-      ...fallback,
-      ...fromCatalog,
-      whereToFindWhat:
-        fromCatalog.whereToFindWhat && fromCatalog.whereToFindWhat.length > 0
-          ? fromCatalog.whereToFindWhat
-          : fallback.whereToFindWhat,
-      steps:
-        fromCatalog.steps && fromCatalog.steps.length > 0 ? fromCatalog.steps : fallback.steps,
-    };
-  }, [dataset.helpGuidesCatalog, pageKey]);
+    const fallback =
+      FALLBACK_HELP_GUIDES.find((h) => h.pageKey === pageKey) ?? FALLBACK_HELP_GUIDES[0]!;
+    return fallback;
+  }, [pageKey]);
 
   const handleOpenHelp = () => {
     if (onOpenFullHelp) {
@@ -253,7 +243,7 @@ export function ContextualPageGuideBanner({
             <button
               type="button"
               onClick={() => setIsDismissed(false)}
-              className="text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-[#059669] transition-colors"
+              className="text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-[#059669] transition-colors cursor-pointer"
             >
               Show Tip
             </button>
@@ -261,7 +251,7 @@ export function ContextualPageGuideBanner({
               type="button"
               data-testid="open-full-help-btn"
               onClick={handleOpenHelp}
-              className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 text-xs font-semibold transition-colors"
+              className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer"
             >
               <BookOpen className="w-3.5 h-3.5" />
               <span>Full App Guide</span>
@@ -283,39 +273,32 @@ export function ContextualPageGuideBanner({
     <>
       <div
         data-testid="contextual-page-guide"
-        className="rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.04] dark:bg-emerald-500/[0.06] px-4 py-3 transition-all"
+        className="rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white/85 dark:bg-slate-900/75 px-3.5 py-2.5 transition-colors"
       >
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div className="flex items-start gap-2.5 min-w-0">
-            <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-[#059669] dark:text-emerald-400">
-              <Compass className="w-4 h-4" weight="duotone" />
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-[#059669] dark:text-emerald-400">
+              <Compass className="w-3.5 h-3.5" weight="duotone" />
             </span>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                  {guideSection.pageTitle}
-                </span>
-                <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-                  Page Guide
-                </span>
-              </div>
-              <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                {guideSection.shortTip}
-              </p>
-            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-snug truncate sm:whitespace-normal">
+              <span className="font-bold text-slate-900 dark:text-slate-100 mr-1.5">
+                {guideSection.pageTitle}:
+              </span>
+              {guideSection.shortTip}
+            </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
             <button
               type="button"
               onClick={() => setShowPills((prev) => !prev)}
-              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:border-emerald-500/40 transition-colors"
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-800/80 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:border-emerald-500/40 transition-colors cursor-pointer"
             >
-              <span>Where to find what on this screen</span>
+              <span>Quick tips</span>
               {showPills ? (
-                <CaretUp className="w-3.5 h-3.5" weight="bold" />
+                <CaretUp className="w-3 h-3" weight="bold" />
               ) : (
-                <CaretDown className="w-3.5 h-3.5" weight="bold" />
+                <CaretDown className="w-3 h-3" weight="bold" />
               )}
             </button>
 
@@ -323,18 +306,18 @@ export function ContextualPageGuideBanner({
               type="button"
               data-testid="open-full-help-btn"
               onClick={handleOpenHelp}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-[#059669] hover:bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors"
+              className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/12 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/25 px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer"
             >
               <Question className="w-3.5 h-3.5" weight="bold" />
-              <span>Full App Guide</span>
+              <span>Help Guide</span>
             </button>
 
             <button
               type="button"
               onClick={() => setIsDismissed(true)}
-              className="rounded-lg p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+              className="rounded-lg p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
               aria-label="Minimize page guide"
-              title="Minimize guide"
+              title="Hide tip"
             >
               <X className="w-3.5 h-3.5" weight="bold" />
             </button>
@@ -342,11 +325,11 @@ export function ContextualPageGuideBanner({
         </div>
 
         {showPills && (
-          <div className="mt-3 pt-2.5 border-t border-emerald-500/20 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="mt-2.5 pt-2.5 border-t border-slate-200/70 dark:border-white/10 grid grid-cols-1 sm:grid-cols-2 gap-2">
             {guideSection.whereToFindWhat.map((item, idx) => (
               <div
                 key={idx}
-                className="flex items-start gap-2 rounded-xl bg-white/90 dark:bg-slate-900/80 border border-slate-200/70 dark:border-white/10 px-3 py-2 text-xs text-slate-700 dark:text-slate-300"
+                className="flex items-start gap-2 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/70 dark:border-white/10 px-3 py-2 text-xs text-slate-700 dark:text-slate-300"
               >
                 <CheckCircle
                   className="w-3.5 h-3.5 text-[#059669] shrink-0 mt-0.5"
@@ -377,35 +360,31 @@ export function HelpGuideModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onNavigateTab: (tab: any) => void;
+  onNavigateTab: (tab: ActivePageTab) => void;
 }) {
-  const { dataset } = useLedger();
   const [selectedTabKey, setSelectedTabKey] = useState<GuidePageKey>('home');
 
   const mergedCatalog: HelpGuideSection[] = useMemo(() => {
     return SECTION_TAB_LABELS.map(({ key }) => {
-      const fromData = dataset.helpGuidesCatalog?.find((h) => h.pageKey === key);
-      const fallback = FALLBACK_HELP_GUIDES.find((h) => h.pageKey === key)!;
-      if (!fromData) return fallback;
-      return {
-        ...fallback,
-        ...fromData,
-        whereToFindWhat:
-          fromData.whereToFindWhat && fromData.whereToFindWhat.length > 0
-            ? fromData.whereToFindWhat
-            : fallback.whereToFindWhat,
-        steps: fromData.steps && fromData.steps.length > 0 ? fromData.steps : fallback.steps,
-      };
+      return FALLBACK_HELP_GUIDES.find((h) => h.pageKey === key)!;
     });
-  }, [dataset.helpGuidesCatalog]);
+  }, []);
 
   const activeSection =
     mergedCatalog.find((s) => s.pageKey === selectedTabKey) ?? mergedCatalog[0]!;
 
   if (!isOpen) return null;
 
+  const isValidTab = (val: string): val is ActivePageTab =>
+    val === 'home' ||
+    val === 'groups' ||
+    val === 'activity' ||
+    val === 'friends' ||
+    val === 'analytics' ||
+    val === 'portability';
+
   const handleJumpToFeature = (targetTab: string) => {
-    onNavigateTab(targetTab);
+    onNavigateTab(isValidTab(targetTab) ? targetTab : 'home');
     onClose();
   };
 
