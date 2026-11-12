@@ -20,16 +20,28 @@ export interface DevAuthModalProps {
 }
 
 export function DevAuthModal({ isOpen, onClose }: DevAuthModalProps) {
-  const { dataset, isOnline, switchActiveUserProfile, showToast } = useLedger();
+  const {
+    dataset,
+    isOnline,
+    switchActiveUserProfile,
+    restoreFullDatasetFromBackup,
+    resetToInitialMockData,
+    showToast,
+  } = useLedger();
 
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isDemoLoading, setIsDemoLoading] = useState<boolean>(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const activeGroupsCount = dataset.groups.filter((g) => !g.deletedAt).length;
+  const isCurrentlyDemoProfile =
+    dataset.currentUser.id === 'usr_arjun_01' &&
+    dataset.currentUser.email.toLowerCase() === 'arjun.mehta@gmail.com';
 
   const handleLoginSubmit = async (
     event: React.SyntheticEvent<HTMLFormElement>
@@ -63,15 +75,63 @@ export function DevAuthModal({ isOpen, onClose }: DevAuthModalProps) {
     }
   };
 
+  const handleDemoSandboxLogin = async () => {
+    setAuthError(null);
+    setIsDemoLoading(true);
+    try {
+      const demoRes = await wiseSpliterSyncEngine.signInWithDemoProfile();
+      if (demoRes.ok && demoRes.dataset && demoRes.profile) {
+        restoreFullDatasetFromBackup({
+          ...demoRes.dataset,
+          currentUser: demoRes.profile,
+        });
+        showToast(
+          `Signed into Demo Sandbox: ${demoRes.profile.fullName} (${demoRes.profile.email})`
+        );
+        onClose();
+        return;
+      }
+
+      resetToInitialMockData();
+      showToast('Switched to Offline Demo Sandbox: Arjun Mehta (Demo)');
+      onClose();
+    } finally {
+      setIsDemoLoading(false);
+    }
+  };
+
   const handleGoogleSignIn = async () => {
     setAuthError(null);
-    const result = await wiseSpliterSyncEngine.signInWithGoogleOAuth(
-      email.trim() || dataset.currentUser.email
-    );
-    if (result.ok) {
-      showToast(
-        `Google OAuth session verified for ${result.sessionEmail} (${result.schema})`
+    setIsGoogleLoading(true);
+    try {
+      const result = await wiseSpliterSyncEngine.signInWithGoogleOAuth(
+        email.trim() || dataset.currentUser.email
       );
+      if (!result.ok) {
+        setAuthError(
+          result.error ||
+            'Google Sign-In could not be started. Verify Supabase Google OAuth settings.'
+        );
+        return;
+      }
+
+      if (result.exchangedDataset && result.exchangedProfile) {
+        restoreFullDatasetFromBackup({
+          ...result.exchangedDataset,
+          currentUser: result.exchangedProfile,
+        });
+        showToast(
+          `Signed in with Google as ${result.exchangedProfile.fullName} (${result.exchangedProfile.email})`
+        );
+        onClose();
+        return;
+      }
+
+      if (result.oauthUrl && typeof window !== 'undefined') {
+        window.location.assign(result.oauthUrl);
+      }
+    } finally {
+      setIsGoogleLoading(false);
     }
   };
 
@@ -153,6 +213,61 @@ export function DevAuthModal({ isOpen, onClose }: DevAuthModalProps) {
             </div>
           </DoubleBezelCard>
 
+          {/* Quick Access: 1-Tap Demo Sandbox + Continue with Google */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              data-testid="demo-profile-login-btn"
+              disabled={isDemoLoading}
+              onClick={() => void handleDemoSandboxLogin()}
+              className="flex flex-col items-start justify-between gap-2 rounded-2xl bg-emerald-600/10 dark:bg-emerald-500/10 hover:bg-emerald-600/15 dark:hover:bg-emerald-500/20 p-3.5 text-left ring-1 ring-emerald-500/30 transition-colors cursor-pointer disabled:opacity-60"
+            >
+              <div className="flex items-center justify-between w-full gap-2">
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                  <ShieldCheck size={16} weight="bold" aria-hidden="true" />
+                  <span>1-Tap Demo Profile</span>
+                </span>
+                <StatusBadge tone={isCurrentlyDemoProfile ? 'emerald' : 'slate'}>
+                  {isCurrentlyDemoProfile ? 'Active' : 'Sandbox'}
+                </StatusBadge>
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug">
+                {isDemoLoading
+                  ? 'Opening isolated demo ledger...'
+                  : 'Arjun Mehta (Demo) - explore 4 sample groups & offline splits with zero credentials.'}
+              </p>
+            </button>
+
+            <button
+              type="button"
+              data-testid="dev-google-oauth-btn"
+              disabled={isGoogleLoading}
+              onClick={() => void handleGoogleSignIn()}
+              className="flex flex-col items-start justify-between gap-2 rounded-2xl bg-slate-100 dark:bg-slate-800/90 hover:bg-slate-200/80 dark:hover:bg-slate-800 disabled:opacity-60 p-3.5 text-left ring-1 ring-slate-200 dark:ring-white/10 transition-colors cursor-pointer"
+            >
+              <div className="flex items-center justify-between w-full gap-2">
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
+                  <GoogleLogo size={16} weight="bold" aria-hidden="true" />
+                  <span>
+                    {isGoogleLoading ? 'Connecting to Google...' : 'Continue with Google'}
+                  </span>
+                </span>
+                <StatusBadge tone="blue">OAuth 2.0</StatusBadge>
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug">
+                Verified Supabase Google sign-in with automatic invited-group claiming.
+              </p>
+            </button>
+          </div>
+
+          <div className="relative flex items-center py-0.5">
+            <div className="flex-grow border-t border-slate-200 dark:border-white/10" />
+            <span className="mx-3 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              Sign in with Email / Team Account
+            </span>
+            <div className="flex-grow border-t border-slate-200 dark:border-white/10" />
+          </div>
+
           {/* Email & Password Login Form */}
           <form onSubmit={handleLoginSubmit} className="space-y-4">
             <div>
@@ -222,25 +337,15 @@ export function DevAuthModal({ isOpen, onClose }: DevAuthModalProps) {
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
+            <div className="flex items-center pt-1">
               <button
                 type="submit"
                 data-testid="dev-login-submit-btn"
                 disabled={isSubmitting}
-                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white px-4 py-2.5 text-xs font-bold shadow-sm transition-colors cursor-pointer"
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white px-4 py-2.5 text-xs font-bold shadow-sm transition-colors cursor-pointer"
               >
                 <SignIn size={16} weight="bold" aria-hidden="true" />
                 <span>{isSubmitting ? 'Verifying Credentials...' : 'Sign In with Email'}</span>
-              </button>
-
-              <button
-                type="button"
-                data-testid="dev-google-oauth-btn"
-                onClick={() => void handleGoogleSignIn()}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200/80 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 px-4 py-2.5 text-xs font-semibold ring-1 ring-slate-200 dark:ring-white/10 transition-colors cursor-pointer"
-              >
-                <GoogleLogo size={16} weight="bold" aria-hidden="true" />
-                <span>Continue with Google</span>
               </button>
             </div>
           </form>

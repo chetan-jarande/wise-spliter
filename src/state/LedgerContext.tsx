@@ -18,7 +18,17 @@ import {
   SplitMode,
   UserProfile,
 } from '../types/ledger';
-import { convertMinorAmountWithFx, formatMinorToMajor, getMinorScaleFactor } from '../domain/money/currencies';
+import {
+  convertMinorAmountWithFx,
+  formatMinorToMajor,
+  parseFxRateToScaled,
+} from '../domain/money/currencies';
+import {
+  allocateProportionalMinorAmounts,
+  reconcileMultiPayerFxContributions,
+  redenominateExpenseCurrency,
+  redenominateSettlementCurrency,
+} from '../domain/splits/split-calculator';
 import { FriendCrossGroupSummary } from '../domain/ledger/ledger-engine';
 import { ParsedSplitwiseExpense } from '../portability/portability-engine';
 import {
@@ -27,7 +37,13 @@ import {
   saveDatasetToIndexedDb,
   saveReceiptBlobLocally,
 } from '../storage/local-db';
-import { wiseSpliterSyncEngine } from '../sync-engine/supabase-sync';
+import {
+  exchangeGoogleOAuthSession,
+  getBrowserSupabaseClient,
+  resolveApiUrl,
+  setBackendSessionToken,
+  wiseSpliterSyncEngine,
+} from '../sync-engine/supabase-sync';
 
 export type ActivePageTab = 'home' | 'groups' | 'activity' | 'friends' | 'analytics' | 'portability';
 
@@ -228,6 +244,64 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     }
   }, [theme]);
 
+  useEffect(() => {
+    let active = true;
+    const client = getBrowserSupabaseClient();
+
+    const completeGoogleCallbackIfPresent = async (accessToken: string) => {
+      const exchanged = await exchangeGoogleOAuthSession(accessToken);
+      if (!active || !exchanged.ok || !exchanged.profile) return;
+
+      if (exchanged.dataset && Array.isArray(exchanged.dataset.groups)) {
+        const nextDataset: MockLedgerDataset = {
+          ...exchanged.dataset,
+          currentUser: exchanged.profile,
+        };
+        setDataset(nextDataset);
+        if (nextDataset.groups[0]?.id) {
+          setActiveGroupIdState(nextDataset.groups[0].id);
+        }
+      } else {
+        setDataset((prev) => ({
+          ...prev,
+          currentUser: exchanged.profile!,
+        }));
+      }
+      setAuthModalOpen(false);
+      setToastMessage(
+        `Signed in with Google as ${exchanged.profile.fullName} (${exchanged.profile.email})`
+      );
+
+      if (typeof window !== 'undefined' && window.location.hash.includes('access_token=')) {
+        window.history.replaceState(
+          null,
+          '',
+          `${window.location.pathname}${window.location.search}`
+        );
+      }
+    };
+
+    const { data: sub } = client.auth.onAuthStateChange((event, session) => {
+      if (
+        (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') &&
+        session?.access_token
+      ) {
+        const hasOAuthCallbackUrl =
+          typeof window !== 'undefined' &&
+          (window.location.hash.includes('access_token=') ||
+            window.location.search.includes('code='));
+        if (event === 'SIGNED_IN' || hasOAuthCallbackUrl) {
+          void completeGoogleCallbackIfPresent(session.access_token);
+        }
+      }
+    });
+
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
   };
@@ -365,8 +439,9 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(resolveApiUrl('/api/auth/login'), {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
@@ -385,11 +460,15 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       }
 
       const verifiedProfile = payload.profile;
-      await wiseSpliterSyncEngine.ensureBackendSessionToken({
-        id: verifiedProfile.id,
-        email: verifiedProfile.email,
-        fullName: verifiedProfile.fullName,
-      });
+      if (payload.token) {
+        setBackendSessionToken(payload.token, verifiedProfile);
+      } else {
+        await wiseSpliterSyncEngine.ensureBackendSessionToken({
+          id: verifiedProfile.id,
+          email: verifiedProfile.email,
+          fullName: verifiedProfile.fullName,
+        });
+      }
 
       if (payload.dataset && Array.isArray(payload.dataset.groups)) {
         const nextDataset: MockLedgerDataset = {
@@ -532,54 +611,74 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       const newRateToInr = prev.fxRatesToInr[targetCode] ?? 1;
       const computedCrossRate =
         customFxRate && customFxRate > 0 ? customFxRate : oldRateToInr / newRateToInr;
+      const fxRateScaled = parseFxRateToScaled(String(computedCrossRate));
 
-      const oldScale = Number(getMinorScaleFactor(oldCode));
-      const newScale = Number(getMinorScaleFactor(targetCode));
-
-      const scaleOrConvert = (minorVal: number): number => {
-        if (mode === 'relabel') {
-          return Math.round((minorVal * newScale) / oldScale);
-        }
-        const majorVal = minorVal / oldScale;
-        return Math.round(majorVal * computedCrossRate * newScale);
-      };
-
+      const newRevisions: ExpenseRevision[] = [];
       const updatedExpenses = prev.expenses.map((exp) => {
         if (exp.groupId !== groupId) return exp;
-        const newTotal = scaleOrConvert(exp.amountMinor);
-        const newPayers = exp.payers.map((p, idx) => ({
-          ...p,
-          paidMinor: idx === 0 ? newTotal - exp.payers.slice(1).reduce((a, b) => a + scaleOrConvert(b.paidMinor), 0) : scaleOrConvert(p.paidMinor),
-        }));
-        const includedSplits = exp.splits.filter((s) => s.included);
-        const convertedSplits = exp.splits.map((s) =>
-          s.included ? { ...s, owedMinor: scaleOrConvert(s.owedMinor) } : s
-        );
-        const splitSum = convertedSplits.filter((s) => s.included).reduce((a, b) => a + b.owedMinor, 0);
-        const diff = newTotal - splitSum;
-        if (diff !== 0 && includedSplits.length > 0) {
-          const firstIncludedId = includedSplits[0]!.memberId;
-          for (const s of convertedSplits) {
-            if (s.memberId === firstIncludedId) {
-              s.owedMinor += diff;
-              break;
-            }
-          }
-        }
-        return {
-          ...exp,
-          groupCurrency: targetCode,
-          amountMinor: newTotal,
-          payers: newPayers,
-          splits: convertedSplits,
+        const converted = redenominateExpenseCurrency({
+          expense: exp,
+          newCurrency: targetCode,
+          mode,
+          fxRateScaled,
           updatedAt: nowIso,
           hlc,
-        };
+        });
+        if (mode === 'reconvert' && !exp.deletedAt) {
+          const revId = `rev_${exp.id}_fx_${Date.now()}`;
+          const nextRevNum = exp.revisionNumber + 1;
+          newRevisions.push({
+            id: revId,
+            expenseId: exp.id,
+            groupId,
+            revisionNumber: nextRevNum,
+            baseRevisionId: exp.currentRevisionId,
+            actorMemberId: grp.members[0]?.id ?? exp.updatedByMemberId,
+            actorDisplayName: dataset.currentUser.fullName,
+            action: 'currency_reconverted',
+            changes: [
+              {
+                field: 'groupCurrency',
+                fromValue: formatMinorToMajor(exp.amountMinor, oldCode),
+                toValue: formatMinorToMajor(converted.amountMinor, targetCode),
+                label: `Converted ${formatMinorToMajor(exp.amountMinor, oldCode)} -> ${formatMinorToMajor(converted.amountMinor, targetCode)}`,
+              },
+            ],
+            snapshot: {
+              title: converted.title,
+              category: converted.category,
+              amountMinor: converted.amountMinor,
+              originalCurrency: converted.originalCurrency,
+              originalAmountMinor: converted.originalAmountMinor,
+              fxRateScaled: converted.fxRateScaled,
+              fxStatus: converted.fxStatus,
+              splitMode: converted.splitMode,
+              payers: converted.payers,
+              splits: converted.splits,
+              notes: converted.notes,
+            },
+            isConflictBranch: false,
+            createdAt: nowIso,
+            hlc,
+          });
+          return {
+            ...converted,
+            currentRevisionId: revId,
+            revisionNumber: nextRevNum,
+          };
+        }
+        return converted;
       });
 
       const updatedSettlements = prev.settlements.map((stl) =>
         stl.groupId === groupId
-          ? { ...stl, currency: targetCode, amountMinor: scaleOrConvert(stl.amountMinor), hlc }
+          ? redenominateSettlementCurrency({
+              settlement: stl,
+              newCurrency: targetCode,
+              mode,
+              fxRateScaled,
+              hlc,
+            })
           : stl
       );
 
@@ -607,6 +706,10 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
           g.id === groupId ? { ...g, baseCurrency: targetCode, updatedAt: nowIso, hlc } : g
         ),
         expenses: updatedExpenses,
+        expenseRevisions:
+          newRevisions.length > 0
+            ? [...newRevisions, ...prev.expenseRevisions]
+            : prev.expenseRevisions,
         settlements: updatedSettlements,
         groupActivityLog: [act, ...prev.groupActivityLog],
       };
@@ -1134,7 +1237,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
   const refreshOfflineExpenseFx = (expenseId: string, liveRate: number) => {
     const nowIso = new Date().toISOString();
     const hlc = makeHlc(dataset.currentUser.id);
-    const scaled = Math.round(liveRate * 100000000);
+    const scaled = parseFxRateToScaled(String(liveRate));
     setDataset((prev) => {
       const exp = prev.expenses.find((e) => e.id === expenseId);
       if (!exp) return prev;
@@ -1146,27 +1249,51 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
         fxStatus: 'live',
         dateIso: nowIso.slice(0, 10),
       });
-      const ratio = exp.amountMinor > 0 ? conv.convertedMinor / exp.amountMinor : 1;
-      const newPayers = exp.payers.map((p, idx) =>
-        idx === 0
-          ? { ...p, paidMinor: conv.convertedMinor }
-          : { ...p, paidMinor: Math.round(p.paidMinor * ratio) }
-      );
-      const activeSplits = exp.splits.filter((s) => s.included);
-      const newSplits = exp.splits.map((s) =>
-        s.included ? { ...s, owedMinor: Math.round(s.owedMinor * ratio) } : s
-      );
-      const sumSplits = newSplits.filter((s) => s.included).reduce((a, b) => a + b.owedMinor, 0);
-      const diff = conv.convertedMinor - sumSplits;
-      if (diff !== 0 && activeSplits.length > 0) {
-        const firstId = activeSplits[0]!.memberId;
-        for (const s of newSplits) {
-          if (s.memberId === firstId) {
-            s.owedMinor += diff;
-            break;
-          }
+      const reconciledPayers = reconcileMultiPayerFxContributions({
+        payers: exp.payers.map((p) => ({
+          memberId: p.memberId,
+          originalPaidMinor: p.originalPaidMinor > 0 ? p.originalPaidMinor : p.paidMinor,
+        })),
+        originalCurrency: exp.originalCurrency,
+        groupCurrency: exp.groupCurrency,
+        fxRateScaled: scaled,
+        targetAmountMinor: conv.convertedMinor,
+        rotationSeed: exp.rotationSeed,
+      }).payers;
+
+      const includedIndices: number[] = [];
+      const splitWeights: bigint[] = [];
+      exp.splits.forEach((s, idx) => {
+        if (s.included) {
+          includedIndices.push(idx);
+          splitWeights.push(BigInt(Math.max(0, Math.round(s.owedMinor))));
         }
-      }
+      });
+      const effectiveWeights =
+        splitWeights.reduce((a, b) => a + b, 0n) > 0n
+          ? splitWeights
+          : splitWeights.map(() => 1n);
+      const splitAlloc = allocateProportionalMinorAmounts(
+        BigInt(conv.convertedMinor),
+        effectiveWeights,
+        exp.rotationSeed
+      ).amounts;
+      const includedOwedMap = new Map<number, number>();
+      includedIndices.forEach((splitIdx, i) => {
+        includedOwedMap.set(splitIdx, Number(splitAlloc[i]!));
+      });
+      const newSplits: ExpenseSplitShare[] = exp.splits.map((s, idx) => {
+        const nextOwed = includedOwedMap.get(idx);
+        if (nextOwed === undefined) {
+          return { ...s, included: false, owedMinor: 0 };
+        }
+        return {
+          ...s,
+          included: true,
+          owedMinor: nextOwed,
+          ...(exp.splitMode === 'exact' ? { rawInputValue: nextOwed } : {}),
+        };
+      });
 
       const act: GroupActivityItem = {
         id: `act_${Date.now()}`,
@@ -1193,7 +1320,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
                 fxRateScaled: scaled,
                 fxStatus: 'live',
                 fxAuditNote: conv.fxAuditNote,
-                payers: newPayers,
+                payers: reconciledPayers,
                 splits: newSplits,
                 updatedAt: nowIso,
                 hlc,
@@ -1357,32 +1484,82 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
 
     let count = 0;
     for (const item of parsed.expenses) {
-      const payerMember =
-        grp.members.find(
-          (m) => m.displayName.toLowerCase() === item.payers[0]?.memberName.toLowerCase()
-        ) ?? grp.members[0]!;
+      const itemCurrency = (item.currency || grp.baseCurrency).trim().toUpperCase();
+      const sameCurrency = itemCurrency === grp.baseCurrency.toUpperCase();
+      const fromToInr = dataset.fxRatesToInr[itemCurrency] ?? 1;
+      const toInr = dataset.fxRatesToInr[grp.baseCurrency.toUpperCase()] ?? 1;
+      const crossRate = sameCurrency ? 1 : fromToInr / toInr;
+      const fxRateScaled = sameCurrency ? 100000000 : parseFxRateToScaled(String(crossRate));
+      const conv = convertMinorAmountWithFx({
+        originalMinor: item.amountMinor,
+        fromCurrency: itemCurrency,
+        toCurrency: grp.baseCurrency,
+        fxRateScaled,
+        fxStatus: sameCurrency ? 'identity' : 'live',
+        dateIso: item.date,
+      });
 
-      const splits: ExpenseSplitShare[] = grp.members.map((m) => {
+      const resolvedPayersRaw =
+        item.payers.length > 0
+          ? item.payers.map((p) => {
+              const matchedMem =
+                grp.members.find(
+                  (m) => m.displayName.toLowerCase() === p.memberName.toLowerCase()
+                ) ?? grp.members[0]!;
+              return {
+                memberId: matchedMem.id,
+                originalPaidMinor: p.paidMinor,
+              };
+            })
+          : [
+              {
+                memberId: grp.members[0]!.id,
+                originalPaidMinor: item.amountMinor,
+              },
+            ];
+
+      const reconciledPayers = reconcileMultiPayerFxContributions({
+        payers: resolvedPayersRaw,
+        originalCurrency: itemCurrency,
+        groupCurrency: grp.baseCurrency,
+        fxRateScaled,
+        targetAmountMinor: conv.convertedMinor,
+      }).payers;
+
+      const rawMemberOrigWeights = grp.members.map((m) => {
         const matched = item.splits.find(
           (s) => s.memberName.toLowerCase() === m.displayName.toLowerCase()
         );
-        const owed = matched ? matched.owedMinor : 0;
+        return BigInt(Math.max(0, matched ? matched.owedMinor : 0));
+      });
+      const effectiveOrigWeights =
+        rawMemberOrigWeights.reduce((a, b) => a + b, 0n) > 0n
+          ? rawMemberOrigWeights
+          : grp.members.map((_, idx) => (idx === 0 ? 1n : 0n));
+
+      const baseSplitAlloc = allocateProportionalMinorAmounts(
+        BigInt(conv.convertedMinor),
+        effectiveOrigWeights,
+        0
+      ).amounts;
+      const origSplitAlloc = allocateProportionalMinorAmounts(
+        BigInt(item.amountMinor),
+        effectiveOrigWeights,
+        0
+      ).amounts;
+
+      const splits: ExpenseSplitShare[] = grp.members.map((m, idx) => {
+        const owed = Number(baseSplitAlloc[idx]!);
+        const origOwed = Number(origSplitAlloc[idx]!);
         return {
           memberId: m.id,
-          included: owed > 0,
+          included: owed > 0 || origOwed > 0,
           owedMinor: owed,
-          originalOwedMinor: owed,
+          originalOwedMinor: origOwed,
           rawInputValue: owed,
           remainderMinor: 0,
         };
       });
-
-      const sumSplits = splits.reduce((a, b) => a + b.owedMinor, 0);
-      if (sumSplits !== item.amountMinor && splits.length > 0) {
-        splits[0]!.included = true;
-        splits[0]!.owedMinor += item.amountMinor - sumSplits;
-        splits[0]!.originalOwedMinor = splits[0]!.owedMinor;
-      }
 
       upsertExpense({
         groupId,
@@ -1391,18 +1568,12 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
         tags: ['#splitwise-import'],
         notes: 'Imported from Splitwise CSV',
         expenseDate: item.date,
-        originalCurrency: grp.baseCurrency,
+        originalCurrency: itemCurrency,
         originalAmountMinor: item.amountMinor,
-        fxRateScaled: 100000000,
-        fxStatus: 'identity',
+        fxRateScaled,
+        fxStatus: sameCurrency ? 'identity' : 'live',
         splitMode: 'exact',
-        payers: [
-          {
-            memberId: payerMember.id,
-            paidMinor: item.amountMinor,
-            originalPaidMinor: item.amountMinor,
-          },
-        ],
+        payers: reconciledPayers,
         splits,
       });
       count++;

@@ -5,7 +5,7 @@ import {
   enqueueSyncOutboxMutation,
   listSyncOutboxMutations,
 } from '../storage/local-db';
-import { MockLedgerDataset } from '../types/ledger';
+import { MockLedgerDataset, UserProfile } from '../types/ledger';
 
 export const WISE_SPLITER_SCHEMA = 'wise_spliter' as const;
 
@@ -21,6 +21,43 @@ const DEFAULT_SESSION_USER = {
   email: 'arjun.mehta@gmail.com',
   fullName: 'Arjun Mehta',
 };
+
+/**
+ * Resolves `/api/*` paths so web browsers keep same-origin proxy paths (`/api/...`, preserving
+ * `SameSite=Lax` cookies in dev/prod reverse proxies), while native Capacitor/Tauri shells
+ * (`capacitor://`, `tauri://`, or `Capacitor.isNativePlatform()`) or HTTPS remote API hosts
+ * automatically prefix `VITE_API_BASE_URL`.
+ */
+export function resolveApiUrl(apiPath: string): string {
+  const normalizedPath = apiPath.startsWith('/') ? apiPath : `/${apiPath}`;
+  const metaEnv = (
+    import.meta as unknown as {
+      env?: Record<string, string | undefined>;
+    }
+  ).env;
+  const configuredBase = (metaEnv?.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (!configuredBase) {
+    return normalizedPath;
+  }
+
+  if (typeof window !== 'undefined') {
+    const proto = window.location?.protocol || '';
+    const cap = (
+      window as unknown as {
+        Capacitor?: { isNativePlatform?: () => boolean };
+      }
+    ).Capacitor;
+    const isNativeShell =
+      proto === 'capacitor:' ||
+      proto === 'tauri:' ||
+      Boolean(cap?.isNativePlatform?.());
+    if (isNativeShell || configuredBase.startsWith('https://')) {
+      return `${configuredBase}${normalizedPath}`;
+    }
+  }
+
+  return normalizedPath;
+}
 
 function createWiseSpliterBrowserClient() {
   const metaEnv = (
@@ -63,9 +100,189 @@ export function getBrowserSupabaseClient(): WiseSpliterSupabaseClient {
 let cachedSessionToken: string | null = null;
 let cachedSessionUserKey: string | null = null;
 
+function buildUserCacheKey(user: { id: string; email: string }): string {
+  return `${user.id.trim()}:${user.email.trim().toLowerCase()}`;
+}
+
+function isDesignatedDemoUser(user: { id: string; email: string }): boolean {
+  return (
+    user.id.trim() === DEFAULT_SESSION_USER.id &&
+    user.email.trim().toLowerCase() === DEFAULT_SESSION_USER.email
+  );
+}
+
 /**
- * Acquires and caches a signed Backend API session token via `POST /api/auth/session`
- * (or falls back to an active Supabase Auth access token), scoped to `user`.
+ * Stores a backend-verified session token returned by `/api/auth/login`, `/api/auth/demo`, or `/api/auth/google`.
+ */
+export function setBackendSessionToken(
+  token: string,
+  user: { id: string; email: string; fullName?: string }
+): void {
+  const trimmedToken = token.trim();
+  if (!trimmedToken || !user.id?.trim() || !user.email?.trim()) {
+    return;
+  }
+  cachedSessionToken = trimmedToken;
+  cachedSessionUserKey = buildUserCacheKey(user);
+}
+
+/**
+ * Clears the cached backend session token and clears the `HttpOnly` `ws_session` cookie on `/api/auth/logout`.
+ */
+export async function clearBackendSessionToken(options?: {
+  notifyServer?: boolean;
+}): Promise<void> {
+  cachedSessionToken = null;
+  cachedSessionUserKey = null;
+  if (options?.notifyServer !== false) {
+    try {
+      await fetch(resolveApiUrl('/api/auth/logout'), {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+    } catch {
+      // Best-effort cookie clear in offline or unit-test environments
+    }
+  }
+}
+
+export interface DemoSandboxAuthResult {
+  ok: boolean;
+  token: string | null;
+  profile: UserProfile | null;
+  dataset: MockLedgerDataset | null;
+  error?: string;
+}
+
+/**
+ * Explicitly authenticates into the isolated Demo Sandbox Profile (`usr_arjun_01` / `arjun.mehta@gmail.com`)
+ * via `POST /api/auth/demo`.
+ */
+export async function signInWithDemoProfile(): Promise<DemoSandboxAuthResult> {
+  try {
+    const res = await fetch(resolveApiUrl('/api/auth/demo'), {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const payload = (await res.json()) as {
+      ok?: boolean;
+      token?: string;
+      profile?: UserProfile;
+      dataset?: MockLedgerDataset;
+      error?: string;
+    };
+    if (res.ok && payload.ok && payload.profile) {
+      if (payload.token) {
+        setBackendSessionToken(payload.token, payload.profile);
+      }
+      return {
+        ok: true,
+        token: payload.token ?? null,
+        profile: payload.profile,
+        dataset: payload.dataset ?? null,
+      };
+    }
+    return {
+      ok: false,
+      token: null,
+      profile: null,
+      dataset: null,
+      error: payload.error || 'Demo sandbox login failed',
+    };
+  } catch {
+    return {
+      ok: false,
+      token: null,
+      profile: null,
+      dataset: null,
+      error: 'Unable to reach /api/auth/demo',
+    };
+  }
+}
+
+export interface GoogleSessionExchangeResult {
+  ok: boolean;
+  token: string | null;
+  profile: UserProfile | null;
+  dataset: MockLedgerDataset | null;
+  claimedGroupCount: number;
+  error?: string;
+}
+
+/**
+ * Exchanges a verified Supabase Google OAuth `access_token` for a Backend API session
+ * via `POST /api/auth/google`, auto-provisioning `wise_spliter.profiles` and claiming invited groups.
+ */
+export async function exchangeGoogleOAuthSession(
+  accessToken: string
+): Promise<GoogleSessionExchangeResult> {
+  const trimmed = accessToken.trim();
+  if (!trimmed) {
+    return {
+      ok: false,
+      token: null,
+      profile: null,
+      dataset: null,
+      claimedGroupCount: 0,
+      error: 'Missing Supabase Google accessToken',
+    };
+  }
+
+  try {
+    const res = await fetch(resolveApiUrl('/api/auth/google'), {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessToken: trimmed }),
+    });
+    const payload = (await res.json()) as {
+      ok?: boolean;
+      token?: string;
+      profile?: UserProfile;
+      dataset?: MockLedgerDataset;
+      claimedGroupCount?: number;
+      error?: string;
+    };
+    if (res.ok && payload.ok && payload.profile) {
+      if (payload.token) {
+        setBackendSessionToken(payload.token, payload.profile);
+      }
+      return {
+        ok: true,
+        token: payload.token ?? null,
+        profile: payload.profile,
+        dataset: payload.dataset ?? null,
+        claimedGroupCount: Number(payload.claimedGroupCount ?? 0),
+      };
+    }
+    return {
+      ok: false,
+      token: null,
+      profile: null,
+      dataset: null,
+      claimedGroupCount: 0,
+      error: payload.error || 'Google OAuth session verification failed',
+    };
+  } catch {
+    return {
+      ok: false,
+      token: null,
+      profile: null,
+      dataset: null,
+      claimedGroupCount: 0,
+      error: 'Unable to reach /api/auth/google',
+    };
+  }
+}
+
+/**
+ * Acquires and caches a signed Backend API session token scoped to `user`:
+ * 1. Returns cached token if already verified for `user`.
+ * 2. Exchanges an active Supabase Google OAuth `access_token` via `POST /api/auth/google`.
+ * 3. Falls back to `POST /api/auth/demo` ONLY when `user` is the designated Demo Profile (`usr_arjun_01`).
+ * 4. For non-demo accounts, refreshes via `POST /api/auth/session` ONLY if an active `HttpOnly` `ws_session` cookie matches `user`.
  */
 export async function ensureBackendSessionToken(
   user: {
@@ -79,15 +296,56 @@ export async function ensureBackendSessionToken(
     email: (user.email?.trim() || DEFAULT_SESSION_USER.email).toLowerCase(),
     fullName: user.fullName?.trim() || DEFAULT_SESSION_USER.fullName,
   };
-  const userKey = `${targetUser.id}:${targetUser.email}`;
+  const userKey = buildUserCacheKey(targetUser);
 
   if (cachedSessionToken && cachedSessionUserKey === userKey) {
     return cachedSessionToken;
   }
 
+  // 1. Check active Supabase Google OAuth session first and exchange via /api/auth/google
   try {
-    const res = await fetch('/api/auth/session', {
+    const client = getBrowserSupabaseClient();
+    const { data } = await client.auth.getSession();
+    const activeSession = data?.session;
+    const accessToken = activeSession?.access_token;
+    const oauthEmail = activeSession?.user?.email?.trim().toLowerCase() || '';
+    if (accessToken && (!oauthEmail || oauthEmail === targetUser.email)) {
+      const exchanged = await exchangeGoogleOAuthSession(accessToken);
+      if (exchanged.ok && exchanged.token) {
+        return exchanged.token;
+      }
+    }
+  } catch {
+    // Offline or unit-test environment
+  }
+
+  // 2. Designated Demo Profile sandbox fallback (/api/auth/demo)
+  if (isDesignatedDemoUser(targetUser)) {
+    try {
+      const res = await fetch(resolveApiUrl('/api/auth/demo'), {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { ok?: boolean; token?: string };
+        if (data.token && typeof data.token === 'string') {
+          setBackendSessionToken(data.token, targetUser);
+          return cachedSessionToken;
+        }
+      }
+    } catch {
+      // Offline mode
+    }
+    return null;
+  }
+
+  // 3. Non-demo user: refresh session only if browser already holds a verified HttpOnly `ws_session` cookie
+  try {
+    const res = await fetch(resolveApiUrl('/api/auth/session'), {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         userId: targetUser.id,
@@ -98,29 +356,15 @@ export async function ensureBackendSessionToken(
     if (res.ok) {
       const data = (await res.json()) as { ok?: boolean; token?: string };
       if (data.token && typeof data.token === 'string') {
-        cachedSessionToken = data.token;
-        cachedSessionUserKey = userKey;
+        setBackendSessionToken(data.token, targetUser);
         return cachedSessionToken;
       }
     }
   } catch {
-    // Fallback to active Supabase Auth session or offline mode
+    // Offline mode
   }
 
-  try {
-    const client = getBrowserSupabaseClient();
-    const { data } = await client.auth.getSession();
-    const accessToken = data?.session?.access_token;
-    if (accessToken) {
-      cachedSessionToken = accessToken;
-      cachedSessionUserKey = userKey;
-      return cachedSessionToken;
-    }
-  } catch {
-    // Offline or unit-test environment
-  }
-
-  return cachedSessionToken;
+  return null;
 }
 
 export interface GoogleOAuthSignInResult {
@@ -130,33 +374,105 @@ export interface GoogleOAuthSignInResult {
   oauthUrl: string | null;
   sessionEmail: string;
   syncedAt: string;
+  error?: string;
+  exchangedDataset?: MockLedgerDataset | null;
+  exchangedProfile?: UserProfile | null;
+  claimedGroupCount?: number;
 }
 
 export async function signInWithGoogleOAuth(
   email = 'arjun.mehta@gmail.com'
 ): Promise<GoogleOAuthSignInResult> {
   const client = getBrowserSupabaseClient();
-  let oauthUrl: string | null = null;
+
   try {
-    const { data } = await client.auth.signInWithOAuth({
+    const { data: sessionData } = await client.auth.getSession();
+    const existingAccessToken = sessionData?.session?.access_token;
+    if (existingAccessToken) {
+      const exchanged = await exchangeGoogleOAuthSession(existingAccessToken);
+      if (exchanged.ok && exchanged.profile) {
+        return {
+          ok: true,
+          provider: 'google',
+          schema: WISE_SPLITER_SCHEMA,
+          oauthUrl: null,
+          sessionEmail: exchanged.profile.email,
+          syncedAt: new Date().toISOString(),
+          exchangedDataset: exchanged.dataset,
+          exchangedProfile: exchanged.profile,
+          claimedGroupCount: exchanged.claimedGroupCount,
+        };
+      }
+    }
+  } catch {
+    // Continue to OAuth initiation below
+  }
+
+  const redirectTo =
+    typeof window !== 'undefined' && window.location?.origin
+      ? window.location.origin
+      : 'http://localhost:4173';
+
+  try {
+    const { data, error } = await client.auth.signInWithOAuth({
       provider: 'google',
       options: {
+        redirectTo,
         skipBrowserRedirect: true,
       },
     });
-    oauthUrl = data?.url ?? null;
-  } catch {
-    // Fallback to local development OAuth session confirmation
-  }
 
-  return {
-    ok: true,
-    provider: 'google',
-    schema: WISE_SPLITER_SCHEMA,
-    oauthUrl,
-    sessionEmail: email,
-    syncedAt: new Date().toISOString(),
-  };
+    if (error) {
+      const isProviderDisabled = /not enabled|unsupported provider/i.test(
+        error.message
+      );
+      return {
+        ok: false,
+        provider: 'google',
+        schema: WISE_SPLITER_SCHEMA,
+        oauthUrl: null,
+        sessionEmail: email,
+        syncedAt: new Date().toISOString(),
+        error: isProviderDisabled
+          ? 'Google OAuth provider is disabled in local Supabase GoTrue (:54321). Configure [auth.external.google] with SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID and SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET in centralized Supabase, or use Demo Sandbox / Email Sign-In below.'
+          : error.message,
+      };
+    }
+
+    if (data?.url) {
+      return {
+        ok: true,
+        provider: 'google',
+        schema: WISE_SPLITER_SCHEMA,
+        oauthUrl: data.url,
+        sessionEmail: email,
+        syncedAt: new Date().toISOString(),
+      };
+    }
+
+    return {
+      ok: false,
+      provider: 'google',
+      schema: WISE_SPLITER_SCHEMA,
+      oauthUrl: null,
+      sessionEmail: email,
+      syncedAt: new Date().toISOString(),
+      error: 'Supabase Auth did not return a Google OAuth redirect URL.',
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      provider: 'google',
+      schema: WISE_SPLITER_SCHEMA,
+      oauthUrl: null,
+      sessionEmail: email,
+      syncedAt: new Date().toISOString(),
+      error:
+        err instanceof Error
+          ? err.message
+          : 'Unable to reach Supabase Auth (:54321) for Google Sign-In.',
+    };
+  }
 }
 
 export interface ReceiptUploadPayload {
@@ -188,8 +504,9 @@ export async function uploadReceiptAttachment(
   const fallbackPath = `${payload.groupId || 'standalone'}/${payload.expenseId}/${payload.id}-${payload.fileName}`;
   try {
     const token = await ensureBackendSessionToken(user);
-    const res = await fetch('/api/receipts/upload', {
+    const res = await fetch(resolveApiUrl('/api/receipts/upload'), {
       method: 'POST',
+      credentials: 'same-origin',
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -234,9 +551,10 @@ export async function pullDeltaChanges(
   try {
     const token = await ensureBackendSessionToken(user);
     const res = await fetch(
-      `/api/ledger/pull-changes?sinceSeq=${encodeURIComponent(String(sinceSeq))}`,
+      resolveApiUrl(`/api/ledger/pull-changes?sinceSeq=${encodeURIComponent(String(sinceSeq))}`),
       {
         method: 'GET',
+        credentials: 'same-origin',
         headers: {
           Accept: 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -295,6 +613,29 @@ export class WiseSpliterCloudSyncEngine {
 
   public getSupabaseClient(): WiseSpliterSupabaseClient {
     return getBrowserSupabaseClient();
+  }
+
+  public setBackendSessionToken(
+    token: string,
+    user: { id: string; email: string; fullName?: string }
+  ): void {
+    setBackendSessionToken(token, user);
+  }
+
+  public async clearBackendSessionToken(options?: {
+    notifyServer?: boolean;
+  }): Promise<void> {
+    await clearBackendSessionToken(options);
+  }
+
+  public async signInWithDemoProfile(): Promise<DemoSandboxAuthResult> {
+    return signInWithDemoProfile();
+  }
+
+  public async exchangeGoogleOAuthSession(
+    accessToken: string
+  ): Promise<GoogleSessionExchangeResult> {
+    return exchangeGoogleOAuthSession(accessToken);
   }
 
   public async ensureBackendSessionToken(user?: {
@@ -356,7 +697,7 @@ export class WiseSpliterCloudSyncEngine {
 
   public async checkBackendHealth(): Promise<WiseSpliterBackendHealth> {
     try {
-      const res = await fetch('/api/health', {
+      const res = await fetch(resolveApiUrl('/api/health'), {
         method: 'GET',
         headers: { Accept: 'application/json' },
       });
@@ -390,8 +731,9 @@ export class WiseSpliterCloudSyncEngine {
         email: dataset.currentUser.email,
         fullName: dataset.currentUser.fullName,
       });
-      const res = await fetch('/api/ledger/sync', {
+      const res = await fetch(resolveApiUrl('/api/ledger/sync'), {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -424,8 +766,9 @@ export class WiseSpliterCloudSyncEngine {
     if (outboxItems.length > 0) {
       try {
         const token = await ensureBackendSessionToken();
-        await fetch('/api/ledger/push-mutations', {
+        await fetch(resolveApiUrl('/api/ledger/push-mutations'), {
           method: 'POST',
+          credentials: 'same-origin',
           headers: {
             'Content-Type': 'application/json',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),

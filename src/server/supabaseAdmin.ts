@@ -6,7 +6,7 @@
  * must never be imported from code that reaches the browser bundle.
  */
 
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import initialMockData from '../data/mock-ledger-data.json';
 import {
   AdHocParticipant,
@@ -28,6 +28,7 @@ import {
   RevisionChangeField,
   SettlementItem,
   SplitMode,
+  UserProfile,
 } from '../types/ledger';
 
 export const SUPABASE_URL = (
@@ -58,31 +59,35 @@ export function readSupabaseCreds(): SupabaseCreds | null {
   return { url, secretKey, schema: schema || 'wise_spliter' };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let adminClient: any = null;
-
-/**
- * Process-wide Supabase admin client using official `@supabase/supabase-js`
- * with `persistSession: false`, `autoRefreshToken: false`, `detectSessionInUrl: false`,
- * and `db: { schema: SUPABASE_SCHEMA }`.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function getSupabaseAdmin(): any {
-  if (adminClient) return adminClient;
+function createWiseSpliterAdminClient() {
   const creds = readSupabaseCreds();
   if (!creds) {
     throw new Error('supabase-not-configured');
   }
-  adminClient = createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, {
+  return createClient(creds.url, creds.secretKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
       detectSessionInUrl: false,
     },
     db: {
-      schema: SUPABASE_SCHEMA,
+      schema: creds.schema as 'wise_spliter',
     },
-  }) as SupabaseClient;
+  });
+}
+
+export type WiseSpliterAdminClient = ReturnType<typeof createWiseSpliterAdminClient>;
+
+let adminClient: WiseSpliterAdminClient | null = null;
+
+/**
+ * Process-wide Supabase admin client using official `@supabase/supabase-js`
+ * with `persistSession: false`, `autoRefreshToken: false`, `detectSessionInUrl: false`,
+ * and `db: { schema: SUPABASE_SCHEMA }`.
+ */
+export function getSupabaseAdmin(): WiseSpliterAdminClient {
+  if (adminClient) return adminClient;
+  adminClient = createWiseSpliterAdminClient();
   return adminClient;
 }
 
@@ -92,12 +97,85 @@ export interface ExistingDbGroupOwnership {
   members: Array<{
     user_id: string | null;
     invited_email: string | null;
+    removed_at?: string | null;
   }>;
+}
+
+export interface ExistingDbExpenseOwnership {
+  id: string;
+  group_id: string | null;
+  created_by_member_id: string;
+  ad_hoc_participants: AdHocParticipant[];
+}
+
+export interface ExistingDbSettlementOwnership {
+  id: string;
+  group_id: string | null;
+  from_member_id: string;
+  to_member_id: string;
+}
+
+export interface ExistingDbMemberOwnership {
+  id: string;
+  group_id: string;
+}
+
+export interface ExistingDbRevisionOwnership {
+  id: string;
+  expense_id: string;
+  group_id: string | null;
+}
+
+export interface ExistingDbActivityOwnership {
+  id: string;
+  group_id: string | null;
+  entity_id: string;
+  actor_member_id: string;
+}
+
+export interface ExistingDbReceiptOwnership {
+  id: string;
+  expense_id: string;
+  group_id: string | null;
+}
+
+export interface ExistingDbEntityOwnershipSnapshot {
+  expenses: Map<string, ExistingDbExpenseOwnership>;
+  settlements: Map<string, ExistingDbSettlementOwnership>;
+  groupMembers: Map<string, ExistingDbMemberOwnership>;
+  revisions: Map<string, ExistingDbRevisionOwnership>;
+  activityLogs: Map<string, ExistingDbActivityOwnership>;
+  receipts: Map<string, ExistingDbReceiptOwnership>;
 }
 
 const persistedGroupsOwnershipCache = new Map<
   string,
   ExistingDbGroupOwnership
+>();
+
+const persistedExpensesOwnershipCache = new Map<
+  string,
+  ExistingDbExpenseOwnership
+>();
+const persistedSettlementsOwnershipCache = new Map<
+  string,
+  ExistingDbSettlementOwnership
+>();
+const persistedMembersOwnershipCache = new Map<
+  string,
+  ExistingDbMemberOwnership
+>();
+const persistedRevisionsOwnershipCache = new Map<
+  string,
+  ExistingDbRevisionOwnership
+>();
+const persistedActivityOwnershipCache = new Map<
+  string,
+  ExistingDbActivityOwnership
+>();
+const persistedReceiptsOwnershipCache = new Map<
+  string,
+  ExistingDbReceiptOwnership
 >();
 
 function seedInitialOwnershipCache(): void {
@@ -111,12 +189,72 @@ function seedInitialOwnershipCache(): void {
       members: (g.members ?? []).map((m) => ({
         user_id: m.userId ?? null,
         invited_email: m.invitedEmail ?? null,
+        removed_at: null,
       })),
+    });
+    for (const m of g.members ?? []) {
+      persistedMembersOwnershipCache.set(m.id, {
+        id: m.id,
+        group_id: g.id,
+      });
+    }
+  }
+
+  for (const e of seed.expenses ?? []) {
+    persistedExpensesOwnershipCache.set(e.id, {
+      id: e.id,
+      group_id: e.groupId,
+      created_by_member_id: e.createdByMemberId,
+      ad_hoc_participants: e.adHocParticipants ?? [],
+    });
+    for (const r of e.receipts ?? []) {
+      persistedReceiptsOwnershipCache.set(r.id, {
+        id: r.id,
+        expense_id: e.id,
+        group_id: e.groupId,
+      });
+    }
+  }
+
+  for (const s of seed.settlements ?? []) {
+    persistedSettlementsOwnershipCache.set(s.id, {
+      id: s.id,
+      group_id: s.groupId,
+      from_member_id: s.fromMemberId,
+      to_member_id: s.toMemberId,
+    });
+  }
+
+  for (const rev of seed.expenseRevisions ?? []) {
+    persistedRevisionsOwnershipCache.set(rev.id, {
+      id: rev.id,
+      expense_id: rev.expenseId,
+      group_id: rev.groupId,
+    });
+  }
+
+  for (const act of seed.groupActivityLog ?? []) {
+    persistedActivityOwnershipCache.set(act.id, {
+      id: act.id,
+      group_id: act.groupId,
+      entity_id: act.entityId,
+      actor_member_id: act.actorMemberId,
     });
   }
 }
 
 seedInitialOwnershipCache();
+
+export function resetOwnershipCachesForTests(): void {
+  persistedGroupsOwnershipCache.clear();
+  persistedExpensesOwnershipCache.clear();
+  persistedSettlementsOwnershipCache.clear();
+  persistedMembersOwnershipCache.clear();
+  persistedRevisionsOwnershipCache.clear();
+  persistedActivityOwnershipCache.clear();
+  persistedReceiptsOwnershipCache.clear();
+  seedInitialOwnershipCache();
+}
 
 export async function fetchExistingDbGroups(): Promise<
   ExistingDbGroupOwnership[]
@@ -131,24 +269,38 @@ export async function fetchExistingDbGroups(): Promise<
       getSupabaseAdmin().from('groups').select('id, created_by'),
       getSupabaseAdmin()
         .from('group_members')
-        .select('group_id, user_id, invited_email'),
+        .select('id, group_id, user_id, invited_email, removed_at'),
     ]);
 
     if (!groupsRes.error && Array.isArray(groupsRes.data)) {
       const membersByGroupId = new Map<
         string,
-        Array<{ user_id: string | null; invited_email: string | null }>
+        Array<{
+          user_id: string | null;
+          invited_email: string | null;
+          removed_at?: string | null;
+        }>
       >();
       if (!membersRes.error && Array.isArray(membersRes.data)) {
         for (const m of membersRes.data as Array<{
+          id: string;
           group_id: string;
           user_id: string | null;
           invited_email: string | null;
+          removed_at?: string | null;
         }>) {
+          persistedMembersOwnershipCache.set(m.id, {
+            id: m.id,
+            group_id: m.group_id,
+          });
+          if (m.removed_at) {
+            continue;
+          }
           const list = membersByGroupId.get(m.group_id) ?? [];
           list.push({
             user_id: m.user_id ?? null,
             invited_email: m.invited_email ?? null,
+            removed_at: null,
           });
           membersByGroupId.set(m.group_id, list);
         }
@@ -175,6 +327,150 @@ export async function fetchExistingDbGroups(): Promise<
   }
 
   return Array.from(merged.values());
+}
+
+export async function fetchExistingDbEntityOwnership(): Promise<ExistingDbEntityOwnershipSnapshot> {
+  seedInitialOwnershipCache();
+
+  const expenses = new Map(persistedExpensesOwnershipCache);
+  const settlements = new Map(persistedSettlementsOwnershipCache);
+  const groupMembers = new Map(persistedMembersOwnershipCache);
+  const revisions = new Map(persistedRevisionsOwnershipCache);
+  const activityLogs = new Map(persistedActivityOwnershipCache);
+  const receipts = new Map(persistedReceiptsOwnershipCache);
+
+  try {
+    const [expRes, stlRes, memRes, revRes, actRes, rcptRes] = await Promise.all([
+      getSupabaseAdmin()
+        .from('expenses')
+        .select('id, group_id, created_by_member_id, ad_hoc_participants'),
+      getSupabaseAdmin()
+        .from('settlements')
+        .select('id, group_id, from_member_id, to_member_id'),
+      getSupabaseAdmin()
+        .from('group_members')
+        .select('id, group_id'),
+      getSupabaseAdmin()
+        .from('expense_revisions')
+        .select('id, expense_id, group_id'),
+      getSupabaseAdmin()
+        .from('group_activity_log')
+        .select('id, group_id, entity_id, actor_member_id'),
+      getSupabaseAdmin()
+        .from('receipt_attachments')
+        .select('id, expense_id, group_id'),
+    ]);
+
+    if (!expRes.error && Array.isArray(expRes.data)) {
+      for (const e of expRes.data as Array<{
+        id: string;
+        group_id: string | null;
+        created_by_member_id: string;
+        ad_hoc_participants: AdHocParticipant[] | null;
+      }>) {
+        const item: ExistingDbExpenseOwnership = {
+          id: e.id,
+          group_id: e.group_id,
+          created_by_member_id: e.created_by_member_id,
+          ad_hoc_participants: Array.isArray(e.ad_hoc_participants)
+            ? e.ad_hoc_participants
+            : [],
+        };
+        expenses.set(e.id, item);
+        persistedExpensesOwnershipCache.set(e.id, item);
+      }
+    }
+
+    if (!stlRes.error && Array.isArray(stlRes.data)) {
+      for (const s of stlRes.data as Array<{
+        id: string;
+        group_id: string | null;
+        from_member_id: string;
+        to_member_id: string;
+      }>) {
+        const item: ExistingDbSettlementOwnership = {
+          id: s.id,
+          group_id: s.group_id,
+          from_member_id: s.from_member_id,
+          to_member_id: s.to_member_id,
+        };
+        settlements.set(s.id, item);
+        persistedSettlementsOwnershipCache.set(s.id, item);
+      }
+    }
+
+    if (!memRes.error && Array.isArray(memRes.data)) {
+      for (const m of memRes.data as Array<{ id: string; group_id: string }>) {
+        const item: ExistingDbMemberOwnership = {
+          id: m.id,
+          group_id: m.group_id,
+        };
+        groupMembers.set(m.id, item);
+        persistedMembersOwnershipCache.set(m.id, item);
+      }
+    }
+
+    if (!revRes.error && Array.isArray(revRes.data)) {
+      for (const r of revRes.data as Array<{
+        id: string;
+        expense_id: string;
+        group_id: string | null;
+      }>) {
+        const item: ExistingDbRevisionOwnership = {
+          id: r.id,
+          expense_id: r.expense_id,
+          group_id: r.group_id,
+        };
+        revisions.set(r.id, item);
+        persistedRevisionsOwnershipCache.set(r.id, item);
+      }
+    }
+
+    if (!actRes.error && Array.isArray(actRes.data)) {
+      for (const a of actRes.data as Array<{
+        id: string;
+        group_id: string | null;
+        entity_id: string;
+        actor_member_id: string;
+      }>) {
+        const item: ExistingDbActivityOwnership = {
+          id: a.id,
+          group_id: a.group_id,
+          entity_id: a.entity_id,
+          actor_member_id: a.actor_member_id,
+        };
+        activityLogs.set(a.id, item);
+        persistedActivityOwnershipCache.set(a.id, item);
+      }
+    }
+
+    if (!rcptRes.error && Array.isArray(rcptRes.data)) {
+      for (const rcpt of rcptRes.data as Array<{
+        id: string;
+        expense_id: string;
+        group_id: string | null;
+      }>) {
+        const item: ExistingDbReceiptOwnership = {
+          id: rcpt.id,
+          expense_id: rcpt.expense_id,
+          group_id: rcpt.group_id,
+        };
+        receipts.set(rcpt.id, item);
+        persistedReceiptsOwnershipCache.set(rcpt.id, item);
+      }
+    }
+  } catch {
+    // Fallback to in-memory snapshot when DB is unreachable
+  }
+
+  return {
+    expenses,
+    settlements,
+    groupMembers,
+    revisions,
+    activityLogs,
+    receipts,
+  };
 }
 
 export async function checkSupabaseSchemaHealth(): Promise<{
@@ -243,7 +539,7 @@ export async function syncDatasetToSupabase(
     };
   });
 
-  // Update ownership cache for existing/new groups
+  // Update ownership caches for existing/new groups and child entities
   for (const g of dataset.groups) {
     const existingOwner =
       persistedGroupsOwnershipCache.get(g.id)?.created_by ||
@@ -251,14 +547,66 @@ export async function syncDatasetToSupabase(
     persistedGroupsOwnershipCache.set(g.id, {
       id: g.id,
       created_by: existingOwner,
-      members: (g.members ?? []).map((m) => ({
-        user_id: m.userId ?? null,
-        invited_email: m.invitedEmail ?? null,
-      })),
+      members: (g.members ?? [])
+        .filter((m) => !(m as GroupMember & { removedAt?: string | null }).removedAt)
+        .map((m) => ({
+          user_id: m.userId ?? null,
+          invited_email: m.invitedEmail ?? null,
+          removed_at: null,
+        })),
     });
+    for (const m of g.members ?? []) {
+      persistedMembersOwnershipCache.set(m.id, {
+        id: m.id,
+        group_id: g.id,
+      });
+    }
   }
 
   const validGroupIds = new Set(dataset.groups.map((g) => g.id));
+
+  for (const e of dataset.expenses ?? []) {
+    const resolvedGrpId = e.groupId && validGroupIds.has(e.groupId) ? e.groupId : null;
+    persistedExpensesOwnershipCache.set(e.id, {
+      id: e.id,
+      group_id: resolvedGrpId,
+      created_by_member_id: e.createdByMemberId,
+      ad_hoc_participants: e.adHocParticipants ?? [],
+    });
+    for (const r of e.receipts ?? []) {
+      persistedReceiptsOwnershipCache.set(r.id, {
+        id: r.id,
+        expense_id: e.id,
+        group_id: resolvedGrpId,
+      });
+    }
+  }
+
+  for (const s of dataset.settlements ?? []) {
+    persistedSettlementsOwnershipCache.set(s.id, {
+      id: s.id,
+      group_id: s.groupId && validGroupIds.has(s.groupId) ? s.groupId : null,
+      from_member_id: s.fromMemberId,
+      to_member_id: s.toMemberId,
+    });
+  }
+
+  for (const rev of dataset.expenseRevisions ?? []) {
+    persistedRevisionsOwnershipCache.set(rev.id, {
+      id: rev.id,
+      expense_id: rev.expenseId,
+      group_id: rev.groupId && validGroupIds.has(rev.groupId) ? rev.groupId : null,
+    });
+  }
+
+  for (const act of dataset.groupActivityLog ?? []) {
+    persistedActivityOwnershipCache.set(act.id, {
+      id: act.id,
+      group_id: act.groupId && validGroupIds.has(act.groupId) ? act.groupId : null,
+      entity_id: act.entityId,
+      actor_member_id: act.actorMemberId,
+    });
+  }
 
   const memberRows = dataset.groups.flatMap((g) =>
     g.members.map((m) => ({
@@ -274,7 +622,7 @@ export async function syncDatasetToSupabase(
       joined_at: m.joinedAt,
       last_accessed_at: g.lastAccessedAt ?? g.updatedAt,
       claimed_at: m.claimedAt,
-      removed_at: null,
+      removed_at: (m as GroupMember & { removedAt?: string | null }).removedAt ?? null,
       hlc: g.hlc || fallbackHlc,
     }))
   );
@@ -532,6 +880,7 @@ interface DbGroupMemberRow {
   member_order: number;
   joined_at: string;
   claimed_at: string | null;
+  removed_at?: string | null;
 }
 
 interface DbExpenseRow {
@@ -671,6 +1020,9 @@ export async function fetchDatasetFromSupabase(
 
     const membersByGroup = new Map<string, GroupMember[]>();
     for (const m of memberRows) {
+      if (m.removed_at) {
+        continue;
+      }
       const list = membersByGroup.get(m.group_id) ?? [];
       list.push({
         id: m.id,
@@ -809,10 +1161,225 @@ export async function fetchDatasetFromSupabase(
   }
 }
 
+const SAFE_STORAGE_SEGMENT_REGEX = /^[a-zA-Z0-9_-]{1,80}$/;
+
+function computeInitialsFromName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0]![0] ?? ''}${parts[parts.length - 1]![0] ?? ''}`.toUpperCase();
+  }
+  const fallback = name.trim().slice(0, 2).toUpperCase();
+  return fallback || 'US';
+}
+
+/**
+ * Resolves the designated single Demo Sandbox Profile (`usr_arjun_01` / `arjun.mehta@gmail.com`).
+ */
+export async function resolveDemoSandboxProfile(): Promise<UserProfile> {
+  const seedUser = (initialMockData as unknown as MockLedgerDataset).currentUser;
+  const nowIso = new Date().toISOString();
+
+  try {
+    const { data, error } = await getSupabaseAdmin()
+      .from('profiles')
+      .select(
+        'id, email, full_name, avatar_initials, default_currency, upi_id, google_connected'
+      )
+      .eq('id', 'usr_arjun_01')
+      .maybeSingle();
+
+    if (!error && data) {
+      const row = data as {
+        id: string;
+        email: string;
+        full_name: string;
+        avatar_initials: string;
+        default_currency: string | null;
+        upi_id: string | null;
+        google_connected: boolean | null;
+      };
+      return {
+        id: String(row.id),
+        email: String(row.email).toLowerCase(),
+        fullName: String(row.full_name),
+        avatarInitials: String(row.avatar_initials || 'AM'),
+        defaultCurrency: String(row.default_currency || 'INR'),
+        upiId: String(row.upi_id || ''),
+        googleConnected: Boolean(row.google_connected ?? true),
+        supabaseSchema: SUPABASE_SCHEMA,
+        syncState: 'synced',
+        lastSyncedAt: nowIso,
+      };
+    }
+  } catch {
+    // Fallback to seed Demo Profile when offline/unreachable
+  }
+
+  return {
+    id: 'usr_arjun_01',
+    email: 'arjun.mehta@gmail.com',
+    fullName: seedUser?.fullName || 'Arjun Mehta',
+    avatarInitials: seedUser?.avatarInitials || 'AM',
+    defaultCurrency: seedUser?.defaultCurrency || 'INR',
+    upiId: seedUser?.upiId || 'arjun.mehta@okicici',
+    googleConnected: true,
+    supabaseSchema: SUPABASE_SCHEMA,
+    syncState: 'synced',
+    lastSyncedAt: nowIso,
+  };
+}
+
+/**
+ * Auto-links unclaimed `wise_spliter.group_members` rows matching `email` where `user_id IS NULL`.
+ */
+export async function claimPendingGroupMembershipsForEmail(
+  userId: string,
+  email: string
+): Promise<number> {
+  const normEmail = email.trim().toLowerCase();
+  if (!normEmail || !userId.trim()) return 0;
+
+  try {
+    const { data: pendingRows, error: selectErr } = await getSupabaseAdmin()
+      .from('group_members')
+      .select('id, group_id')
+      .ilike('invited_email', normEmail)
+      .is('user_id', null)
+      .is('removed_at', null);
+
+    if (selectErr || !Array.isArray(pendingRows) || pendingRows.length === 0) {
+      return 0;
+    }
+
+    const nowIso = new Date().toISOString();
+    const ids = (pendingRows as Array<{ id: string; group_id: string }>).map(
+      (r) => r.id
+    );
+
+    const { error: updateErr } = await getSupabaseAdmin()
+      .from('group_members')
+      .update({
+        user_id: userId.trim(),
+        claimed_at: nowIso,
+      })
+      .in('id', ids);
+
+    if (updateErr) {
+      return 0;
+    }
+
+    for (const row of pendingRows as Array<{ id: string; group_id: string }>) {
+      const cached = persistedGroupsOwnershipCache.get(row.group_id);
+      if (cached) {
+        cached.members = cached.members.map((m) =>
+          m.invited_email?.trim().toLowerCase() === normEmail
+            ? { ...m, user_id: userId.trim() }
+            : m
+        );
+      }
+    }
+
+    return ids.length;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Upserts a verified Google OAuth user into `wise_spliter.profiles` (preserving existing
+ * profile ID if previously invited/seeded) and auto-claims matching `group_members` rows.
+ */
+export async function upsertGoogleProfileAndClaimMembers(authUser: {
+  authUid: string;
+  email: string;
+  fullName?: string;
+  avatarUrl?: string | null;
+}): Promise<{ profile: UserProfile; claimedGroupCount: number }> {
+  const normEmail = authUser.email.trim().toLowerCase();
+  const nowIso = new Date().toISOString();
+  let resolvedId = authUser.authUid.trim();
+  let resolvedName =
+    authUser.fullName?.trim() || normEmail.split('@')[0] || 'Wise-Spliter User';
+  let resolvedInitials = computeInitialsFromName(resolvedName);
+  let resolvedCurrency = 'INR';
+  let resolvedUpiId = '';
+
+  try {
+    const { data: existingRow } = await getSupabaseAdmin()
+      .from('profiles')
+      .select('id, email, full_name, avatar_initials, default_currency, upi_id')
+      .ilike('email', normEmail)
+      .maybeSingle();
+
+    if (existingRow) {
+      const typedExisting = existingRow as {
+        id: string;
+        email: string;
+        full_name: string;
+        avatar_initials: string;
+        default_currency: string | null;
+        upi_id: string | null;
+      };
+      resolvedId = String(typedExisting.id);
+      resolvedName = authUser.fullName?.trim() || String(typedExisting.full_name);
+      resolvedInitials =
+        String(typedExisting.avatar_initials || '') ||
+        computeInitialsFromName(resolvedName);
+      resolvedCurrency = String(typedExisting.default_currency || 'INR');
+      resolvedUpiId = String(typedExisting.upi_id || '');
+    }
+
+    const hlc = `${Date.now().toString(16).padStart(12, '0')}-0001-${resolvedId}`;
+    await getSupabaseAdmin()
+      .from('profiles')
+      .upsert(
+        [
+          {
+            id: resolvedId,
+            email: normEmail,
+            full_name: resolvedName,
+            avatar_initials: resolvedInitials,
+            avatar_url: authUser.avatarUrl ?? null,
+            default_currency: resolvedCurrency,
+            upi_id: resolvedUpiId || null,
+            google_connected: true,
+            updated_at: nowIso,
+            hlc,
+          },
+        ],
+        { onConflict: 'id' }
+      );
+  } catch {
+    // Graceful fallback if DB is temporarily unreachable
+  }
+
+  const claimedGroupCount = await claimPendingGroupMembershipsForEmail(
+    resolvedId,
+    normEmail
+  );
+
+  return {
+    profile: {
+      id: resolvedId,
+      email: normEmail,
+      fullName: resolvedName,
+      avatarInitials: resolvedInitials,
+      defaultCurrency: resolvedCurrency,
+      upiId: resolvedUpiId,
+      googleConnected: true,
+      supabaseSchema: SUPABASE_SCHEMA,
+      syncState: 'synced',
+      lastSyncedAt: nowIso,
+    },
+    claimedGroupCount,
+  };
+}
+
 export async function uploadReceiptToSupabaseStorage(params: {
   id: string;
   expenseId: string;
   groupId: string | null;
+  actorUserId?: string;
   fileName: string;
   mimeType: string;
   sizeKb: number;
@@ -829,12 +1396,25 @@ export async function uploadReceiptToSupabaseStorage(params: {
   metadataPersisted: boolean;
   error?: string;
 }> {
+  if (
+    !SAFE_STORAGE_SEGMENT_REGEX.test(params.id) ||
+    !SAFE_STORAGE_SEGMENT_REGEX.test(params.expenseId) ||
+    (params.groupId !== null &&
+      params.groupId !== '' &&
+      !SAFE_STORAGE_SEGMENT_REGEX.test(params.groupId))
+  ) {
+    throw new Error('Invalid receipt, expense, or group identifier format');
+  }
+
   const bucket = 'wise-spliter-receipts';
-  const safeFileName = (params.fileName || 'receipt.webp').replace(
-    /[^a-zA-Z0-9._-]/g,
-    '_'
-  );
-  const storagePath = `${params.groupId || 'standalone'}/${params.expenseId}/${params.id}-${safeFileName}`;
+  const safeFileName = (params.fileName || 'receipt.webp')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/\.{2,}/g, '_')
+    .slice(0, 80);
+  const groupSegment =
+    params.groupId && params.groupId.length > 0 ? params.groupId : 'standalone';
+  const storagePath = `${groupSegment}/${params.expenseId}/${params.id}-${safeFileName}`;
+  const actorId = params.actorUserId?.trim() || 'usr_arjun_01';
 
   let binaryBuffer: Buffer;
   const base64Match = /^data:([^;]+);base64,(.+)$/i.exec(params.dataUrl || '');
@@ -864,16 +1444,16 @@ export async function uploadReceiptToSupabaseStorage(params: {
     expense_id: params.expenseId,
     storage_bucket: bucket,
     storage_path: storagePath,
-    file_name: params.fileName || 'receipt.webp',
+    file_name: safeFileName,
     mime_type: params.mimeType || 'image/webp',
     size_kb: Math.max(0, Math.round(params.sizeKb ?? 0)),
-    uploaded_by_name: params.uploadedByName || 'Arjun Mehta',
+    uploaded_by_name: params.uploadedByName || 'Wise-Spliter Member',
     preview_note: params.previewNote ?? '',
     data_url: params.dataUrl || null,
     created_at: nowIso,
     hlc:
       params.hlc ||
-      `${Date.now().toString(16).padStart(12, '0')}-0001-usr_arjun_01`,
+      `${Date.now().toString(16).padStart(12, '0')}-0001-${actorId}`,
   };
 
   let metadataPersisted = false;
@@ -885,14 +1465,14 @@ export async function uploadReceiptToSupabaseStorage(params: {
       .upsert([rowPayload], { onConflict: 'id' });
 
     if (metaErr) {
-      // Ensure parent expense exists if foreign key constraint triggered
+      // Ensure parent expense exists if foreign key constraint triggered during concurrent save
       await getSupabaseAdmin()
         .from('expenses')
         .upsert(
           [
             {
               id: params.expenseId,
-              group_id: null,
+              group_id: params.groupId || null,
               ad_hoc_participants: [],
               title: params.previewNote || 'Receipt-attached Expense',
               category: 'general',
@@ -910,14 +1490,14 @@ export async function uploadReceiptToSupabaseStorage(params: {
               rotation_seed: 0,
               payers: [
                 {
-                  memberId: 'usr_arjun_01',
+                  memberId: actorId,
                   paidMinor: 100,
                   originalPaidMinor: 100,
                 },
               ],
               splits: [
                 {
-                  memberId: 'usr_arjun_01',
+                  memberId: actorId,
                   included: true,
                   owedMinor: 100,
                   originalOwedMinor: 100,
@@ -931,8 +1511,8 @@ export async function uploadReceiptToSupabaseStorage(params: {
               revision_number: 1,
               has_unresolved_conflict: false,
               conflict_revision_id: null,
-              created_by_member_id: 'usr_arjun_01',
-              updated_by_member_id: 'usr_arjun_01',
+              created_by_member_id: actorId,
+              updated_by_member_id: actorId,
               created_at: nowIso,
               updated_at: nowIso,
               deleted_at: null,
@@ -944,13 +1524,21 @@ export async function uploadReceiptToSupabaseStorage(params: {
 
       const retryRes = await getSupabaseAdmin()
         .from('receipt_attachments')
-        .upsert([{ ...rowPayload, group_id: null }], { onConflict: 'id' });
+        .upsert([{ ...rowPayload, group_id: params.groupId || null }], {
+          onConflict: 'id',
+        });
       metaErr = retryRes.error;
     }
 
     metadataPersisted = !metaErr;
     if (metaErr) {
       errorText = metaErr.message;
+    } else {
+      persistedReceiptsOwnershipCache.set(params.id, {
+        id: params.id,
+        expense_id: params.expenseId,
+        group_id: params.groupId || null,
+      });
     }
   } catch (err) {
     metadataPersisted = false;
