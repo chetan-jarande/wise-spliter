@@ -14,8 +14,8 @@ Wise-Spliter is a 100% free, local-first, multi-platform daily expense-splitting
 
 ## Phase 1: Core & Essential Features (MVP)
 
-### 1. Authentication, Offline-First Local DB & Multi-User Group Membership
-* **Google Sign-In (Passwordless OAuth):** One-tap Sign in with Google provides verified identity (`email`, `name`, `avatar`) without password management.
+### 1. Authentication, Demo Sandbox, Offline-First Local DB & Multi-User Group Membership
+* **Google Sign-In (Passwordless OAuth) & 1-Tap Demo Sandbox:** One-tap Sign in with Google (`POST /api/auth/google`) provides verified identity (`email`, `name`, `avatar`) and auto-claims invited groups, paired with a 1-tap Demo Sandbox Profile (`POST /api/auth/demo`) so first-time visitors can explore sample multi-currency groups with zero setup.
 * **100% Offline-First Local Database with Automatic Cloud Sync:** The app always reads and writes to a complete on-device local database first (working seamlessly on flights and trips without internet) and automatically syncs with the cloud database (`wise_spliter` schema) when online.
 * **Instant Unclaimed / Placeholder Group Members with Auto-Linking:** Add friends to any group immediately by Name (and optional Gmail/UPI ID) so you can split bills right away even if they haven't installed the app yet; if they sign in with Google or join via group invite link later, their account links to their existing member history automatically.
 * **Unlimited Everything (100% Free):** No daily expense caps, no cooldown timers, no ads, and no paywalled features.

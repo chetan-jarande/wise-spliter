@@ -58,60 +58,58 @@ wise-spliter/
 │   ├── manifest.webmanifest                  # Installable PWA manifest
 │   └── sw.js                                 # Offline Service Worker caching app shell & static assets
 ├── scripts/
-│   └── apply-migration.mjs                   # Applies & verifies `wise_spliter` migration on SUPABASE_DIR
+│   ├── apply-migration.mjs                   # Applies & verifies `0001` + `0002` `wise_spliter` migrations & RLS posture
+│   ├── check-deprecations.mjs                # TypeScript zero-deprecation gate (`TS6385` / `TS6387`)
+│   ├── dev-stack.mjs                         # Concurrent API (:4174) + Vite UI (:4173) dev orchestrator
+│   └── setup-dev-user.mjs                    # Seeds dev accounts in Supabase Auth + `wise_spliter.*`
 ├── supabase/
 │   └── migrations/
-│       └── 0001_wise_spliter_schema.sql      # Complete `wise_spliter` schema, RPCs (`schema_health`, `push_mutations`, `pull_changes`) & RLS
+│       ├── 0001_wise_spliter_schema.sql      # Core `wise_spliter` tables, indexes, bucket & RPCs
+│       └── 0002_wise_spliter_security_hardening.sql # `FORCE RLS`, `service_role`-only RPCs & Storage policies
 ├── src/
 │   ├── types/
 │   │   └── ledger.ts                         # Canonical TypeScript contracts (groups, direct splits, receipts, revisions)
 │   ├── domain/
 │   │   ├── money/
-│   │   │   ├── currencies.ts                 # 170+ ISO-4217 currencies (0, 2, 3 decimals), parser, formatter & FX converter
-│   │   │   ├── minor-units.ts                # Exact string <-> BigInt minor unit parser & formatter
-│   │   │   └── fx-converter.ts               # Scaled integer FX conversion + Splitwise audit note builder
+│   │   │   └── currencies.ts                 # 170+ ISO-4217 currencies (0, 2, 3 decimals), strict BigInt parser/formatter & FX converter
 │   │   ├── splits/
-│   │   │   ├── split-calculator.ts           # Equal, Exact, Percentage, Shares, and +/- Adjustment modes + rotating remainder
-│   │   │   ├── rotating-remainder.ts         # Stateless deterministic remainder rotation
-│   │   │   └── invariant-validator.ts        # Strict pre-commit reconciliation checks
-│   │   ├── ledger/
-│   │   │   ├── ledger-engine.ts              # Group balances, Bitmask-DP debt simplifier, explain-balance & HLC diff engine
-│   │   │   ├── group-balances.ts             # Net balance & raw pairwise bilateral debt matrix
-│   │   │   ├── debt-simplifier.ts            # Bitmask-DP + Greedy minimum-transfer solver
-│   │   │   ├── cross-group-ledger.ts         # Friend net balance across groups + atomic batch settlements
-│   │   │   └── explain-balance.ts            # Full mathematical provenance & lineage explainer
-│   │   └── sync/
-│   │       ├── hlc.ts                        # Monotonic Hybrid Logical Clock generator & comparator
-│   │       └── revision-diff.ts              # Structured diff generator for Expense & Group Activity History
+│   │   │   └── split-calculator.ts           # 5 split modes, rotating remainder, multi-payer FX & currency re-denomination helpers
+│   │   └── ledger/
+│   │       └── ledger-engine.ts              # Net balances, Margin-Conserving Hamilton bilateral matrix, O(n*2^n) BigInt Bitmask-DP & provenance
 │   ├── storage/
 │   │   └── local-db.ts                       # Dexie IndexedDB mirror (`wise_spliter_local_db`), `syncOutbox` & `local_receipt_blobs`
 │   ├── sync-engine/
-│   │   └── supabase-sync.ts                  # Offline outbox flusher, `/api/ledger/sync` & `/api/receipts/upload` client
+│   │   └── supabase-sync.ts                  # `resolveApiUrl`, Demo/Google/Login session management, outbox flusher & receipt upload client
 │   ├── server/
-│   │   ├── index.ts                          # Backend API Gatekeeper on :4174 (`/api/health`, `/api/ledger/bootstrap`, `/api/ledger/sync`, `/api/receipts/upload`)
+│   │   ├── index.ts                          # Backend API Gatekeeper on `127.0.0.1:4174` (`/api/auth/*`, `/api/ledger/*`, `/api/receipts/upload`)
+│   │   ├── securityAndAuth.ts                # HMAC/JWT/Cookie auth, CSRF/Origin checks, 5-rule tenant & entity-PK authorization & rate limits
 │   │   └── supabaseAdmin.ts                  # Server-only `SUPABASE_SECRET_KEY` adapter targeting `wise_spliter` schema & `wise-spliter-receipts` bucket
 │   ├── portability/
-│   │   └── portability-engine.ts             # Splitwise CSV/JSON importer, CSV/Multi-Sheet `.xlsx`/`.pdf` exporters, UPI & WhatsApp summary, AES-256-GCM backup
+│   │   └── portability-engine.ts             # RFC-4180 Splitwise importer, formula-safe CSV/XLSX/PDF exporters, UPI/WhatsApp & AES-256-GCM backup
 │   ├── state/
-│   │   └── LedgerContext.tsx                 # Reactive local-first state provider & mutation coordinator
+│   │   └── LedgerContext.tsx                 # Reactive local-first state provider, OAuth callback listener & mutation coordinator
 │   └── ui/
 │       ├── primitives/
-│       │   └── DesignPrimitives.tsx          # DoubleBezelCard, StatusBadge, ContextualPageGuideBanner
+│       │   └── DesignPrimitives.tsx          # DoubleBezelCard, StatusBadge, PersonalExpenseImpactBadge, ContextualPageGuideBanner
 │       ├── modals/
-│       │   ├── ExpenseEditorModal.tsx        # Modular Quick-Add & Edit modal (`group_id = null` direct splits + group-preselected splits + offline WebP receipts)
-│       │   ├── ExplainBalanceModal.tsx       # Mathematical balance lineage & Bitmask-DP routing drawer
+│       │   ├── DevAuthModal.tsx              # 1-Tap Demo Sandbox, Google OAuth 2.0 & Email/Password Sign-In modal
+│       │   ├── ExpenseEditorModal.tsx        # Settl quick-amount presets, Splitwise live sentence, 5 split modes & offline WebP receipts
+│       │   ├── ExplainBalanceModal.tsx       # Plain-English verdict + mathematical balance lineage & Bitmask-DP routing drawer
 │       │   └── HelpGuideModal.tsx            # Interactive step-by-step Help & Feature Guide modal
 │       └── pages/
-│           ├── HomeDashboardPage.tsx         # Minimalist Home Dashboard (`<= 3` recent groups via `last_accessed_at` + direct splits)
-│           ├── GroupsLedgerPage.tsx          # Progressive Group Workspace insights, roster, bills & next-step guidance
-│           ├── ActivityAndTrashPage.tsx      # Group activity feed, immutable expense revisions, conflict resolution & Trash recovery
-│           ├── FriendsAndSettlePage.tsx      # Cross-group net balances, atomic batch settlement, UPI QR/deep-link & WhatsApp summary
-│           ├── AnalyticsAndSearchPage.tsx    # Spending analytics & instant multi-filter search
+│           ├── HomeDashboardPage.tsx         # Plain-English standing, Quick-Start strip, Top-3 recent groups & direct splits
+│           ├── GroupsLedgerPage.tsx          # Progressive Group Workspace insights, personal impact pills, roster & currency re-denomination
+│           ├── ActivityAndTrashPage.tsx      # Group/Global activity feed, immutable expense revisions, conflict resolution & Trash recovery
+│           ├── FriendsAndSettlePage.tsx      # Cross-group multi-currency net balances, atomic batch settlement, UPI QR & WhatsApp summary
+│           ├── AnalyticsAndSearchPage.tsx    # Spending analytics & instant multi-filter search with personal impact pills
 │           └── PortabilityAndSyncPage.tsx    # Splitwise import, CSV/Multi-Sheet `.xlsx`/`.pdf` export, AES-256-GCM backup & cloud sync status
 └── tests/
-    ├── property/                             # `fast-check` fuzz tests verifying conservation laws
-    ├── unit/                                 # Edge-case unit tests for currencies, splits, IndexedDB, sync & portability
-    └── e2e/                                  # Playwright end-to-end verification suite
+    ├── unit/
+    │   ├── domain-and-portability.test.ts    # Core currency, split, Bitmask-DP, Dexie, portability & auth isolation unit tests (15)
+    │   ├── math-engine-scenarios.test.ts     # Edge-case scenarios, FX re-denomination & `fast-check` property fuzz suites (21)
+    │   └── security-breach.test.ts           # Live red-team breach, CSRF, PK-overwrite, path-traversal & PostgREST lockdown tests (11)
+    └── e2e/
+        └── wise-spliter.spec.ts              # 7-story full-stack Playwright E2E acceptance suite
 ```
 
 ---
@@ -193,22 +191,22 @@ For every member $m$ in a group:
 $$\text{Net}(m) = \sum_{e \in \text{ActiveExpenses}} \left(\text{Paid}(e, m) - \text{Owed}(e, m)\right) + \sum_{s \in \text{ActiveSettlements}} \left(\text{Sent}(s, m) - \text{Received}(s, m)\right)$$
 * **Hard Invariant:** $\sum_{m \in \text{Group}} \text{Net}(m) \equiv 0\text{n}$.
 
-#### 2. Mode A — Unsimplified (Raw Pairwise Bilateral Debts)
+#### 2. Mode A - Unsimplified (Raw Pairwise Bilateral Debts via Intra-Bill Net Surplus/Deficit Conservation)
 When `group.simplify_debts == false`:
-* For each expense $e$ with total $T$, each member $u$ who owes $\text{Owed}(e, u)$ owes each payer $v$ who paid $\text{Paid}(e, v)$ the proportional share:
-  $$d_e(u \to v) = \text{LargestRemainderAllocate}\left(\text{Owed}(e, u), \text{weights} = [\text{Paid}(e, v)]\right)$$
+* For each active expense $e$, compute each participant's intra-bill net delta $\delta_e(m) = \text{Paid}(e, m) - \text{Owed}(e, m)$, partitioning participants into net debtors ($\delta_e(u) < 0$) and net creditors ($\delta_e(v) > 0$) so an underpaying co-payer is never treated as a creditor.
+* Allocate each debtor's deficit $-\delta_e(u)$ across remaining creditor surpluses via **Sequential Margin-Conserving Hamilton Largest Remainder** (`allocateExpenseBilateralDebts`), strictly preserving both $\sum_v d_e(u \to v) = -\delta_e(u)$ and $\sum_u d_e(u \to v) = \delta_e(v)$.
 * Pairwise net debt between any two members $(u, v)$ is:
   $$\text{PairwiseNet}(u, v) = \sum_e \left(d_e(u \to v) - d_e(v \to u)\right) - \text{DirectSettlements}(u \to v) + \text{DirectSettlements}(v \to u)$$
 
-#### 3. Mode B — Simplified (Minimum-Transfer Graph Solver)
-When `group.simplify_debts == true` ( strictly isolated **within the group** ):
-* Collects all members with $\text{Net}(m) \neq 0\text{n}$.
-* **Exact Bitmask DP Partitioning ($n \le 16$ non-zero members):**
-  * Finds the maximum number of disjoint non-empty zero-sum subsets $S_1, S_2, \dots, S_p$ of non-zero balances using dynamic programming over $2^n$ masks.
-  * Each zero-sum subset $S_r$ of size $|S_r|$ is settled in exactly $|S_r| - 1$ transfers by greedily matching the largest debtor with the largest creditor inside $S_r$.
-  * Total transfers = $n - p$, which is **mathematically proven to be the global minimum number of transactions**!
-* **Deterministic Max-Heap Greedy Fallback ($n > 16$):**
-  * Repeatedly matches $\arg\max_{c} \text{Net}(c)$ with $\arg\min_{d} \text{Net}(d)$ in $O(n \log n)$.
+#### 3. Mode B - Simplified (Minimum-Transfer Graph Solver)
+When `group.simplify_debts == true` (strictly isolated **within the group**):
+* Collects all members with $\text{Net}(m) \neq 0\text{n}$ using exact `BigInt` subset sums (immune to 32-bit integer overflow).
+* **Exact $O(n \cdot 2^n)$ Prefix-Zero-Sum Bitmask DP Partitioning ($n \le 16$ non-zero members):**
+  * Finds the maximum number of disjoint non-empty zero-sum subsets $S_1, S_2, \dots, S_p$ in $O(n \cdot 2^n)$ (`< 2ms` at $n = 16$) by transitioning from minimal zero-sum transitions and reconstructing disjoint components.
+  * Each zero-sum subset $S_r$ of size $|S_r|$ is settled in exactly $|S_r| - 1$ transfers by matching the largest creditor with the largest debtor inside $S_r$.
+  * Total transfers = $n - p$, which is **mathematically proven to be the global minimum number of transactions**.
+* **Deterministic `BigInt` Max-Creditor / Max-Debtor Greedy Fallback ($n > 16$):**
+  * Dynamically pairs $\arg\max_{c} \text{Net}(c)$ with $\arg\min_{d} \text{Net}(d)$ until all balances reach `0n`.
 
 #### 4. "Explain This Balance" Provenance Engine (`explain-balance.ts`)
 Tapping any member or suggested settlement produces a structured `BalanceExplanation`:

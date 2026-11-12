@@ -337,33 +337,16 @@ CREATE TABLE wise_spliter.applied_sync_ops (
 
 ### 2.3 Core Schema RPC Functions (`wise_spliter.schema_health`, `wise_spliter.push_mutations`, `wise_spliter.pull_changes`)
 
-All synchronization and schema health verification operations execute through three dedicated RPC functions inside the `wise_spliter` schema:
+All synchronization and schema health verification operations execute through three dedicated `SECURITY DEFINER` RPC functions inside the `wise_spliter` schema. Per `supabase/migrations/0002_wise_spliter_security_hardening.sql`, `EXECUTE` on all three RPCs is **revoked from `PUBLIC`, `anon`, and `authenticated`** (and guarded at runtime by `IF current_user NOT IN ('service_role', 'postgres') THEN RAISE EXCEPTION ...`) so callers cannot bypass the Backend API Gatekeeper (`:4174`) via direct PostgREST (`:54321`) requests:
 
-1. **`wise_spliter.schema_health()`:**
-   * Invoked by `scripts/apply-migration.mjs` and the Backend API (`GET /api/health`) via `POST /rest/v1/rpc/schema_health` (`Accept-Profile: wise_spliter`) to confirm the schema and tables are online.
-   ```sql
-   CREATE OR REPLACE FUNCTION wise_spliter.schema_health()
-   RETURNS JSONB
-   LANGUAGE sql
-   SECURITY DEFINER
-   STABLE
-   SET search_path = wise_spliter
-   AS $$
-     SELECT jsonb_build_object(
-       'ok', true,
-       'schema', 'wise_spliter',
-       'groups_count', (SELECT count(*) FROM wise_spliter.groups),
-       'expenses_count', (SELECT count(*) FROM wise_spliter.expenses)
-     );
-   $$;
-   ```
+1. **`wise_spliter.schema_health()` (`service_role` only):**
+   * Invoked by `scripts/apply-migration.mjs` and the Backend API (`GET /api/health`) to confirm the schema, tables, `FORCE ROW LEVEL SECURITY` count (`8`), and RPC privilege posture are healthy.
 
-2. **`wise_spliter.push_mutations(p_ops JSONB)`:**
-   * Ingests an ordered array of offline outbox mutations (`op_id`, `entity_type`, `action`, `base_revision_id`, `hlc`, `payload`).
-   * Checks `wise_spliter.applied_sync_ops` for `op_id` idempotency (`noop_duplicate` on replay), enforces strict financial conservation ($\sum \text{payers} == \text{amount\_minor} == \sum \text{splits}$), resolves concurrent offline edits atomically by comparing `base_revision_id` and `hlc` (preserving both versions in `wise_spliter.expense_revisions` and setting `has_unresolved_conflict = true` when a conflict occurs), and logs all mutations to `wise_spliter.group_activity_log`.
+2. **`wise_spliter.push_mutations(p_ops JSONB)` (`service_role` only):**
+   * Called by the Backend API Gatekeeper after validating `authorizeMutationsForUser` for outbox batches. *(Note: before high-scale multi-user cloud rollout, move per-mutation upsert + `applied_sync_ops` idempotency + row-locked `base_revision_id` conflict branching directly into this transactional SQL body so clients no longer push full dataset snapshots.)*
 
-3. **`wise_spliter.pull_changes(p_cursor BIGINT, p_group_ids TEXT[])`:**
-   * Performs cursor-based incremental delta synchronization, returning all rows in `groups`, `group_members`, `expenses`, `expense_revisions`, `settlements`, `group_activity_log`, and `receipt_attachments` where `server_seq > p_cursor` for the caller's groups and direct non-group splits (`group_id IS NULL`), along with the new high-water `max_server_seq`.
+3. **`wise_spliter.pull_changes(p_since_seq BIGINT)` (`service_role` only):**
+   * Streams rows across `groups`, `expenses`, `settlements`, `expense_revisions`, and `group_activity_log` where `server_seq > p_since_seq` to the Backend API Gatekeeper, which filters all 5 collections through active group/direct-split membership before returning to the authenticated caller.
 
 ---
 
@@ -461,24 +444,33 @@ Additionally, if a friend joins via a group's shareable invite link (`/join/:inv
 
 Every table in `wise_spliter` has `ALTER TABLE ... ENABLE ROW LEVEL SECURITY;` and `FORCE ROW LEVEL SECURITY;`.
 
-### 5.1 Fast Security-Definer Membership Helper
-To avoid recursive RLS performance bottlenecks, membership checks use an indexed `SECURITY DEFINER` function:
+### 5.1 Caller-Scoped Security-Definer Membership Helpers (`0002_wise_spliter_security_hardening.sql`)
+All 8 tables enforce `ENABLE ROW LEVEL SECURITY` and `FORCE ROW LEVEL SECURITY`. Membership predicates resolve verified identity strictly from `auth.users` via `(SELECT auth.uid())` (`SET search_path = ''`, never trusting editable `user_metadata` or deprecated `auth.role()`) and check `gm.removed_at IS NULL` so soft-removed members immediately lose access:
 
 ```sql
-CREATE OR REPLACE FUNCTION wise_spliter.is_group_member(target_group_id UUID)
+CREATE OR REPLACE FUNCTION wise_spliter.is_group_member(p_group_id TEXT)
 RETURNS BOOLEAN
 LANGUAGE sql
 SECURITY DEFINER
 STABLE
-SET search_path = wise_spliter
+SET search_path = ''
 AS $$
-  SELECT EXISTS (
-    SELECT 1
-    FROM wise_spliter.group_members gm
-    WHERE gm.group_id = target_group_id
-      AND gm.user_id = auth.uid()
-      AND gm.removed_at IS NULL
-  );
+  SELECT CASE
+    WHEN (SELECT auth.uid()) IS NULL OR p_group_id IS NULL THEN false
+    ELSE EXISTS (
+      SELECT 1 FROM wise_spliter.groups g
+      WHERE g.id = p_group_id
+        AND g.created_by IN ((SELECT wise_spliter.current_profile_id()), (SELECT auth.uid())::text)
+    ) OR EXISTS (
+      SELECT 1 FROM wise_spliter.group_members gm
+      WHERE gm.group_id = p_group_id
+        AND gm.removed_at IS NULL
+        AND (
+          gm.user_id IN ((SELECT wise_spliter.current_profile_id()), (SELECT auth.uid())::text)
+          OR lower(gm.invited_email) = (SELECT wise_spliter.current_auth_email())
+        )
+    )
+  END;
 $$;
 ```
 
