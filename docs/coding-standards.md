@@ -7,19 +7,28 @@
 
 ---
 
-## 1. Core Engineering Philosophy
+## 1. Core Engineering Philosophy & Gravity of Standards
 
-1. **Facts Over Assumptions:**
-   * Every architectural, schema, and financial decision must be grounded in verified repository state, deterministic math, and live database/API checks. Never assume a schema exists, a port is free, or floating-point rounding is "close enough."
-2. **Zero Floating-Point Money Math:**
+Wise-Spliter handles real multi-party money, multi-currency conversions, and private financial ledgers designed for **$10^6+$ users** across Web, Android, iOS, and Desktop. A 1-paisa rounding bug destroys trust; an unbounded query melts PostgreSQL at scale; an unverified IDOR leaks private bills. Every developer and AI agent must internalize the gravity of the following 7 pillars before writing a single line of code:
+
+1. **Critical Thinking First - Never Follow Instructions Blindly:**
+   * Evaluate technical feasibility, edge cases, and scale impact *before* coding. If a requested approach introduces bloat, race conditions, or $O(N)$ DB bottlenecks, **stop, brainstorm (`brainstorming` + `ponytail`), and propose the superior design with explicit trade-offs and why it wins.**
+   * Never guess when requirements, credentials, or tools are ambiguous or unavailable. Prove behavior from source code, live DB checks, and up-to-date official docs (`find-docs`, `context7-cli`, `web_fetch`, `supabase`). If blocked or uncertain, ask the user rather than inventing workarounds.
+2. **Architecture Adherence & User-Approved Lockstep Documentation:**
+   * Strictly preserve the 5-layer topology in [`architecture.md`](./architecture.md) (UI -> Pure Domain -> Dexie Offline DB -> Stateless API Gatekeeper -> `wise_spliter` PostgreSQL).
+   * **Hard Gate:** Any change that alters layer boundaries, schema tables/RPCs, sync semantics, or auth flows **must be explained and justified to the user first**, and all impacted docs (`architecture.md`, `technical-spec.md`, `database-and-sync-spec.md`, `coding-standards.md`, `feature-requiremrnts.md`) must be updated in the same task.
+3. **Grandmaster Code Quality (Codeforces / LeetCode Standard):**
+   * Write the shortest, cleanest, most deterministic code that covers 100% of boundary conditions (`0`, `1`, negative inputs, tied weights, `> 2^53` via `BigInt`, malformed strings). Prefer deletion and stdlib/existing helpers over new abstractions (`ponytail` ladder).
+   * Never compromise algorithmic time/space complexity: e.g., $O(n \cdot 2^n)$ prefix-zero-sum `BigInt` Bitmask-DP ($n \le 16$) + $O(n \log n)$ greedy fallback ($n > 16$) for minimum-transfer debt simplification, and $O(n \log n)$ Sequential Margin-Conserving Hamilton Largest Remainder over intra-bill net surpluses/deficits.
+4. **Million-User Scale Mandate ($10^6+$ Users, $10^8+$ Rows):**
+   * Every line of code must assume millions of concurrent users. **Unbounded `SELECT *` queries, cross-tenant JS filtering, and unbounded in-memory `Map` caches are strictly forbidden** on production paths (PostgREST truncates at `max_rows = 1000`, silently dropping user data).
+   * Enforce indexed PostgreSQL predicates (`WHERE group_id = ANY($1)`, `(SELECT auth.uid())`), cursor pagination (`server_seq > $cursor LIMIT $n`), stateless horizontally scalable API processes, and `< 1ms` local Dexie IndexedDB commits flushed asynchronously via `syncOutbox`.
+5. **Industry Gold-Standard Library Conventions:**
+   * Always verify and follow current stable idioms for **React 19**, **TypeScript 5.8**, **Vite 6**, **Tailwind CSS v4**, **Dexie 4**, and **`@supabase/supabase-js` v2** rather than relying on stale training memory.
+6. **Zero Floating-Point Money Math:**
    * Standard IEEE-754 floating-point division (`number` arithmetic for currency allocation) is strictly forbidden. All monetary values are represented, split, converted, and persisted as exact integer minor units (`BigInt` in domain algorithms, `BIGINT` in PostgreSQL).
-3. **Modular, Pure & Reusable Components:**
-   * Domain algorithms in `src/domain/` must remain 100% pure TypeScript functions with zero React, DOM, or network dependencies so they can be fuzz-tested in isolation at 10,000+ iterations.
-   * UI primitives (`DoubleBezelCard`, `StatusBadge`, modals, drawers) must be composable and driven by typed props rather than duplicated markup.
-4. **Progressive Disclosure UX:**
-   * Keep primary views calm, scannable, and uncluttered. The Home Dashboard displays at most `<= 3` recently accessed/updated groups (`Top-3 Recent Groups`) alongside a fast **Quick Add Expense** trigger (supporting both direct non-group splits and group bills). Advanced provenance equations, revision diffs, and onboarding guidance open on demand.
-5. **Strict Anti-Slop Visual Craft:**
-   * Every screen must look like an institutional-grade consumer fintech product: crisp 1px borders, tactile Double-Bezel cards, tabular monospace figures, high-contrast semantic badges, and full Light/Dark theme parity.
+7. **Independent Multi-Agent Verification (`Builder != Verifier`):**
+   * An agent that writes feature code is biased toward its own happy-path assumptions and **must never be the sole author/judge of its test suite.** Every non-trivial change must pass independent multi-persona scrutiny (`test-author-e2e`, `red-team-hacker`, `ux-performance-breaker`, and `fact-checker-arbiter`) orchestrated via [`../agents/ORCHESTRATOR.md`](../agents/ORCHESTRATOR.md) and `node agents/orchestrate-personas.mjs`.
 
 ---
 
@@ -58,13 +67,20 @@
   * Primary UI & display font: `'Plus Jakarta Sans'`.
   * Financial amounts, exchange rates, HLC clocks, and equations: `'JetBrains Mono'` with `font-variant-numeric: tabular-nums` (`tabular-nums` class) so decimal columns align vertically to the pixel.
 * **Strict Punctuation Hygiene (Zero Em/En-Dashes):**
-  * Never render em-dashes (`—`) or en-dashes (`–`) in UI copy, labels, activity logs, or error messages. Use standard ASCII hyphens (`-`), colons (`:`), or bullets (`•`).
+  * Never render em-dashes (`U+2014`) or en-dashes (`U+2013`) in UI copy, labels, activity logs, comments, or error messages. Use standard ASCII hyphens (`-`), colons (`:`), or bullets (`•`).
 * **Double-Bezel Card Architecture:**
   * Surface containers use a two-layer bezel structure (`ws-bezel-outer` wrapping `ws-bezel-inner`) with subtle 1px structural borders and clean spatial hierarchy instead of heavy drop shadows or neon gradients.
 * **Accessibility & Mobile Ergonomics:**
   * Every icon-only button must include an explicit, descriptive `aria-label`.
-  * Mobile bottom navigation must contain `<= 5` top-level items with touch hit targets `>= 44px x 44px`.
+  * Mobile bottom navigation must contain `<= 5` top-level items with touch hit targets `>= 44px x 44px` and full responsive parity from `375px` mobile through `1440px` desktop.
   * Every component must maintain WCAG AA contrast across both **Light Mode** (`data-theme="light"`) and **Dark Mode** (`data-theme="dark"`).
+* **Canonical UI Pattern Reference Map (Follow Existing Components - Never Duplicate):**
+  * Design tokens, colors & spacing: [`../design-system/wise-spliter/MASTER.md`](../design-system/wise-spliter/MASTER.md) & [`../src/index.css`](../src/index.css)
+  * Shared cards, amounts, precision pills & personal impact badges: [`../src/ui/primitives/DesignPrimitives.tsx`](../src/ui/primitives/DesignPrimitives.tsx) (`DoubleBezelCard`, `StatusBadge`, `CurrencyAmount`, `PersonalExpenseImpactBadge`, `ContextualPageGuideBanner`)
+  * Responsive app shell, mobile nav & thumb-zone FAB: [`../src/App.tsx`](../src/App.tsx)
+  * Calm hero summary, `<= 3` recent groups & progressive `<details class="ws-disclosure">` drawers: [`../src/ui/pages/HomeDashboardPage.tsx`](../src/ui/pages/HomeDashboardPage.tsx) & [`../src/ui/pages/GroupsLedgerPage.tsx`](../src/ui/pages/GroupsLedgerPage.tsx)
+  * Settl quick-amount presets, Splitwise live split sentence & calm `0.00` reconciliation bar: [`../src/ui/modals/ExpenseEditorModal.tsx`](../src/ui/modals/ExpenseEditorModal.tsx)
+  * 1-Tap Demo Sandbox, Google OAuth & Email login modal: [`../src/ui/modals/DevAuthModal.tsx`](../src/ui/modals/DevAuthModal.tsx)
 
 ### 2.4 Security, Official `@supabase/supabase-js` SDK Pattern & Database Isolation Rules
 * **Official `@supabase/supabase-js` Client/Server Pattern (Modeled on `merry-tools`):**
@@ -82,7 +98,7 @@
     * `filterDatasetForUser(dataset, user)` scopes `GET /api/ledger/bootstrap` and `GET /api/ledger/pull-changes` so users only receive groups where they are an active member (`removed_at IS NULL`) and standalone direct splits (`groupId === null`) where `adHocParticipants` includes their identity.
     * `authorizeDatasetSyncForUser`, `authorizeMutationsForUser`, and `authorizeReceiptUploadForUser` enforce 5 strict rules across `POST /api/ledger/sync`, `POST /api/ledger/push-mutations`, and `POST /api/receipts/upload`: (1) Anti-Impersonation (`currentUser` must match the authenticated token), (2) Active Group Membership (`removed_at IS NULL`), (3) Existing DB Group Ownership Protection, (4) Expense Scope Protection, and (5) Cross-Tenant Entity PK Ownership & Storage Path-Traversal Protection (`/^[a-zA-Z0-9_-]{1,80}$/`). Violations are rejected with `HTTP 400` / `HTTP 403`.
   * **Hardening (`buildSecurityHeaders`, `validateCsrfAndOrigin`, Body Caps & `checkRateLimit`):** Binds to `127.0.0.1:4174` by default, rejects untrusted cross-site `Origin` / `Sec-Fetch-Site` state-mutating requests with `HTTP 403` (while permitting `capacitor://localhost` & `tauri://localhost`), caps request body size (`HTTP 413`), enforces production secret fail-fast guards, and gates `X-Forwarded-For` behind `TRUST_PROXY=true`.
-* **Dedicated PostgreSQL Schema (`wise_spliter` — `0001` & `0002` Migrations):**
+* **Dedicated PostgreSQL Schema (`wise_spliter` - `0001` & `0002` Migrations):**
   * All database objects live inside `CREATE SCHEMA IF NOT EXISTS wise_spliter;`. Never create tables or functions in `public`.
   * Enforce `REVOKE ALL ON SCHEMA wise_spliter FROM PUBLIC, anon;`, `FORCE ROW LEVEL SECURITY` on all 8 tables with `(SELECT auth.uid())` active-membership policies, and `REVOKE EXECUTE` on `SECURITY DEFINER` RPCs (`schema_health`, `push_mutations`, `pull_changes`) from `PUBLIC, anon, authenticated` so only `service_role` can invoke them (`supabase/migrations/0002_wise_spliter_security_hardening.sql`).
   * All PostgREST calls from `src/server/supabaseAdmin.ts` bind to schema `wise_spliter` via `db: { schema: SUPABASE_SCHEMA }` (`Accept-Profile: wise_spliter` and `Content-Profile: wise_spliter`).
@@ -143,3 +159,16 @@ make e2e
   5. **User Story 5:** Friends Cross-Group Net Balances, 1-Tap Atomic Batch Settle Up across groups, UPI Deep-Link / QR Code Studio (`upi://pay?`), and WhatsApp Summary export.
   6. **User Story 6:** Insights & Global Search across `0, 2, 3` decimal currencies (`JPY`, `INR`, `KWD`), Portability (`Splitwise CSV import`, `.xlsx`, `.pdf`, `PBKDF2 + AES-256-GCM` `.wisesplit` backup round-trip), live Backend API & PostgREST Security Breach checks (`HTTP 401` on unauthenticated `/api/auth/session` minting, `HTTP 403` on CSRF / cross-user impersonation / private group hijack, direct `:54321` RPC rejection), collaborator login (`rohan.verma@gmail.com`), and 1-Tap Demo Sandbox Login (`POST /api/auth/demo`).
   7. **User Story 7:** Math & UX Precision Lab verifying Settl quick-amount preset chips, 3-way rotating remainder, Splitwise personal impact badge, and `INR -> KWD` (3-decimal fils) FX re-conversion passing strict backend invariant validation (`HTTP 200`).
+
+### Step 6: Independent 4-Persona Verification Council (`Builder != Verifier`)
+```bash
+make verify-agents
+# Full gates + persona dispatch packets:
+node agents/orchestrate-personas.mjs --phase all
+```
+* **Requirement:** Test updates and post-change verification must be executed by separate, independent agent personas defined in [`../agents/personas/`](../agents/personas/) and orchestrated by [`../agents/ORCHESTRATOR.md`](../agents/ORCHESTRATOR.md):
+  1. **`test-author-e2e` ([`../agents/personas/test-author-e2e.md`](../agents/personas/test-author-e2e.md)):** Independently authors/updates Playwright end-user journey specs and `fast-check` boundary tests without trusting builder assumptions.
+  2. **`red-team-hacker` ([`../agents/personas/red-team-hacker.md`](../agents/personas/red-team-hacker.md)):** Uses security skills to actively probe auth bypass, IDOR, PK overwrite, CSRF, path traversal, and direct PostgREST `:54321` access.
+  3. **`ux-performance-breaker` ([`../agents/personas/ux-performance-breaker.md`](../agents/personas/ux-performance-breaker.md)):** Stress-tests first-time user psychology, `375px` mobile usability, $10^6$-user DB/algorithmic scale ceilings, and code bloat.
+  4. **`fact-checker-arbiter` ([`../agents/personas/fact-checker-arbiter.md`](../agents/personas/fact-checker-arbiter.md)):** Re-verifies every claim from Personas 1-3 against live code/command output and casts the binding `SHIP` / `BLOCK` consensus vote.
+

@@ -10,7 +10,7 @@ SUPABASE_DIR  = /home/chetan/projects/my-scripts/setup/dependencies
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up dev dev-ui api prod build start stop check-port install test e2e typecheck clean \
+.PHONY: help up dev dev-ui api prod build start stop check-port install test e2e typecheck verify-agents clean \
         supabase-up supabase-down supabase-status supabase-ensure \
         migrate-up migrate-local migrate-verify migrate-sql migrate-docker setup-dev \
         docker-up-dev docker-down-dev docker-build docker-up docker-down docker-logs down
@@ -63,6 +63,9 @@ e2e:
 
 typecheck:
 	bun run typecheck
+
+verify-agents:
+	node agents/orchestrate-personas.mjs --phase check
 
 clean:
 	rm -rf dist test-results playwright-report
