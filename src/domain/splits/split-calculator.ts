@@ -2,6 +2,7 @@ import {
   ExpenseItem,
   ExpensePayer,
   ExpenseSplitShare,
+  FxStatus,
   SettlementItem,
   SplitMode,
 } from '../../types/ledger';
@@ -224,6 +225,8 @@ export function validateExpenseInvariants(params: {
   const total = Number.isFinite(params.amountMinor) ? Math.round(params.amountMinor) : 0;
   if (!Number.isFinite(params.amountMinor) || total <= 0) {
     errors.push('Total bill amount must be greater than zero.');
+  } else if (total > Number.MAX_SAFE_INTEGER) {
+    errors.push('Total bill amount is too large to store exactly.');
   }
 
   if (params.payers.length === 0) {
@@ -357,11 +360,20 @@ export function reconcileMultiPayerFxContributions(params: {
  * Pure domain helper for changing a group's base currency on an ExpenseItem (`relabel` or `reconvert`).
  * Strictly preserves sum(payers) === newAmountMinor === sum(included splits) and all split-mode invariants.
  */
+function reconvertRate(fxRateScaled: number | undefined, from: string, to: string): bigint {
+  const rate = fxRateScaled !== undefined && Number.isFinite(fxRateScaled) ? Math.round(fxRateScaled) : 0;
+  if (rate <= 0) throw new RangeError(`No exchange rate for ${from} to ${to}`);
+  return BigInt(rate);
+}
+
+/** Reconvert requires a positive fxRateScaled (old group currency to new) and throws otherwise. */
 export function redenominateExpenseCurrency(params: {
   expense: ExpenseItem;
   newCurrency: string;
   mode: 'relabel' | 'reconvert';
   fxRateScaled?: number;
+  fxStatus?: FxStatus;
+  fxRateDate?: string;
   updatedAt?: string;
   hlc?: string;
 }): ExpenseItem {
@@ -370,16 +382,11 @@ export function redenominateExpenseCurrency(params: {
   const targetCode = params.newCurrency.trim().toUpperCase();
   const oldScale = getMinorScaleFactor(oldCode);
   const newScale = getMinorScaleFactor(targetCode);
-  const rateBig =
-    params.fxRateScaled !== undefined &&
-    Number.isFinite(params.fxRateScaled) &&
-    Math.round(params.fxRateScaled) > 0
-      ? BigInt(Math.round(params.fxRateScaled))
-      : 100000000n;
 
-  if (oldCode === targetCode && (mode === 'relabel' || rateBig === 100000000n)) {
+  if (oldCode === targetCode) {
     return { ...expense, groupCurrency: targetCode };
   }
+  const rateBig = mode === 'reconvert' ? reconvertRate(params.fxRateScaled, oldCode, targetCode) : 0n;
 
   const oldTotalBig = BigInt(Math.max(0, Math.round(expense.amountMinor)));
   let newTotalBig: bigint;
@@ -585,15 +592,15 @@ export function redenominateExpenseCurrency(params: {
         newTotalBig * origScale * 100000000n,
         nextOriginalAmountBig * newScale
       );
-      nextFxRateScaled = impliedRateScaled > 0n ? Number(impliedRateScaled) : 100000000;
-      nextFxStatus = expense.fxStatus === 'identity' ? 'manual' : expense.fxStatus;
+      nextFxRateScaled = Number(impliedRateScaled > 0n ? impliedRateScaled : 1n);
+      nextFxStatus = params.fxStatus ?? (expense.fxStatus === 'identity' ? 'manual' : expense.fxStatus);
       nextFxAuditNote = convertMinorAmountWithFx({
         originalMinor: Number(nextOriginalAmountBig),
         fromCurrency: nextOriginalCurrency,
         toCurrency: targetCode,
         fxRateScaled: nextFxRateScaled,
         fxStatus: nextFxStatus,
-        dateIso: expense.expenseDate,
+        dateIso: params.fxRateDate ?? expense.expenseDate,
       }).fxAuditNote;
     }
   }
@@ -629,16 +636,11 @@ export function redenominateSettlementCurrency(params: {
   const targetCode = params.newCurrency.trim().toUpperCase();
   const oldScale = getMinorScaleFactor(oldCode);
   const newScale = getMinorScaleFactor(targetCode);
-  const rateBig =
-    params.fxRateScaled !== undefined &&
-    Number.isFinite(params.fxRateScaled) &&
-    Math.round(params.fxRateScaled) > 0
-      ? BigInt(Math.round(params.fxRateScaled))
-      : 100000000n;
 
-  if (oldCode === targetCode && (mode === 'relabel' || rateBig === 100000000n)) {
+  if (oldCode === targetCode) {
     return { ...settlement, currency: targetCode };
   }
+  const rateBig = mode === 'reconvert' ? reconvertRate(params.fxRateScaled, oldCode, targetCode) : 0n;
 
   const oldAmtBig = BigInt(Math.max(0, Math.round(settlement.amountMinor)));
   let newAmtBig: bigint;

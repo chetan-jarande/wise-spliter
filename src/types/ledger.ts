@@ -43,8 +43,11 @@ export type GroupActivityActionType =
   | 'expense_conflict_flagged'
   | 'expense_conflict_resolved'
   | 'settlement_recorded'
+  | 'settlement_updated'
   | 'settlement_deleted'
-  | 'comment_added';
+  | 'settlement_restored'
+  | 'comment_added'
+  | 'upi_changed';
 
 export interface ActionTypeCatalogItem {
   action: GroupActivityActionType;
@@ -103,6 +106,7 @@ export interface GroupMember {
   memberOrder: number;
   joinedAt: string;
   claimedAt: string | null;
+  removedAt?: string | null;
 }
 
 export interface ExpensePayer {
@@ -127,6 +131,14 @@ export interface ExpenseComment {
   authorName: string;
   body: string;
   createdAt: string;
+  /** Set once the comment has synced as its own 'expense_comment' row. */
+  hlc?: string;
+  /** Local only, never pushed: why the server refused this new row. It stays here so the user can edit, retry or remove it. */
+  syncRejection?: string | null;
+  isMine?: boolean;
+  /** Migrated or seeded: the author text is not verified, so show it read-only as imported. */
+  isLegacy?: boolean;
+  editedAt?: string | null;
 }
 
 export interface ReceiptAttachment {
@@ -138,6 +150,8 @@ export interface ReceiptAttachment {
   uploadedByName: string;
   createdAt: string;
   previewNote: string;
+  sha256?: string;
+  localDeviceOnly?: boolean;
   storageBucket?: string;
   storagePath?: string;
   dataUrl?: string;
@@ -162,6 +176,10 @@ export interface ExpenseSnapshotData {
   payers: ExpensePayer[];
   splits: ExpenseSplitShare[];
   notes: string;
+  /** Currency of amountMinor, payers and splits in this snapshot. */
+  groupCurrency?: string;
+  /** On 'currency_reconverted' revisions: the previous currency and the rate used (scaled 10^8). */
+  convertedFrom?: { currency: string; fxRateScaled: number };
 }
 
 export interface ExpenseRevision {
@@ -170,7 +188,8 @@ export interface ExpenseRevision {
   groupId: string | null;
   revisionNumber: number;
   baseRevisionId: string | null;
-  actorMemberId: string;
+  /** Null on direct bills when the actor is not one of the bill's bound participants. */
+  actorMemberId: string | null;
   actorDisplayName: string;
   action:
     | 'created'
@@ -219,11 +238,15 @@ export interface ExpenseItem {
   hlc: string;
   comments: ExpenseComment[];
   receipts: ReceiptAttachment[];
+  /** Local only, never pushed: why the server refused this new row. It stays here so the user can edit, retry or remove it. */
+  syncRejection?: string | null;
 }
 
 export interface SettlementItem {
   id: string;
   groupId: string | null;
+  /** Direct (groupId null) settlements only: the direct expense they settle; both parties are its participants. */
+  expenseId?: string | null;
   batchSettlementId: string | null;
   fromMemberId: string;
   toMemberId: string;
@@ -236,12 +259,15 @@ export interface SettlementItem {
   createdAt: string;
   deletedAt: string | null;
   hlc: string;
+  /** Local only, never pushed: why the server refused this new row. It stays here so the user can edit, retry or remove it. */
+  syncRejection?: string | null;
 }
 
 export interface GroupActivityItem {
   id: string;
   groupId: string | null;
-  actorMemberId: string;
+  /** Null on rows the server writes itself (for example 'upi_changed'). */
+  actorMemberId: string | null;
   actorDisplayName: string;
   entityType: 'group' | 'member' | 'expense' | 'settlement' | 'comment' | 'currency';
   entityId: string;
@@ -275,6 +301,8 @@ export interface GroupRecord {
   deletedAt: string | null;
   hlc: string;
   members: GroupMember[];
+  /** Local only, never pushed: why the server refused this new row. It stays here so the user can edit, retry or remove it. */
+  syncRejection?: string | null;
 }
 
 export interface SuggestedTransfer {

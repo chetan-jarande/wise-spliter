@@ -456,7 +456,10 @@ export interface FriendCrossGroupSummary {
   friendKey: string;
   displayName: string;
   email: string | null;
+  /** Set only when every member and participant record for this friend holds the same UPI id. */
   upiId: string | null;
+  /** Their records hold different UPI ids; pay from a bill's own payee line instead. */
+  upiIdVaries?: boolean;
   avatarInitials: string;
   isClaimedAccount: boolean;
   netInInrMinor: number;
@@ -468,9 +471,49 @@ export interface FriendCrossGroupSummary {
     myMemberId: string;
     friendMemberId: string;
     netMinor: number; // Positive means friend owes current user; negative means current user owes friend
+    expenseId?: string;
   }>;
 }
 
+/**
+ * One friend per email (or claimed account). Without either, a group placeholder is its own friend
+ * per group, so two "Rahul"s in different groups never merge; direct-bill contacts match by name.
+ */
+export function friendKeyOf(
+  p: { invitedEmail: string | null; displayName: string; userId?: string | null },
+  groupId: string | null = null
+): string {
+  const email = p.invitedEmail?.trim().toLowerCase();
+  if (email) return email;
+  if (p.userId) return `user:${p.userId}`;
+  const name = p.displayName.trim().toLowerCase();
+  return groupId ? `${name}|${groupId}` : name;
+}
+
+/**
+ * Friend keys for my direct-bill contacts, by participant id: the email when there is one, else the
+ * name, unless that name belongs to several participant ids (different people), then `name|id`.
+ */
+export function directFriendKeys(userEmail: string, expenses: ExpenseItem[]): Map<string, string> {
+  const me = userEmail.trim().toLowerCase();
+  const isMe = (p: { invitedEmail: string | null }) => p.invitedEmail?.trim().toLowerCase() === me;
+  const people = new Map<string, string>();
+  const idsByName = new Map<string, Set<string>>();
+  for (const e of expenses) {
+    if (e.groupId !== null || e.deletedAt || !(e.adHocParticipants ?? []).some(isMe)) continue;
+    for (const p of e.adHocParticipants ?? []) {
+      if (isMe(p)) continue;
+      const key = friendKeyOf(p);
+      people.set(p.id, key);
+      if (!p.invitedEmail?.trim()) idsByName.set(key, (idsByName.get(key) ?? new Set()).add(p.id));
+    }
+  }
+  const keys = new Map<string, string>();
+  for (const [id, key] of people) keys.set(id, (idsByName.get(key)?.size ?? 0) > 1 ? `${key}|${id}` : key);
+  return keys;
+}
+
+/** Currencies without a usable rate contribute 0 here; netByCurrencyMinor keeps their exact amounts. */
 function convertCurrencyMinorToInrMinor(
   minorAmount: number,
   currencyCode: string,
@@ -480,11 +523,8 @@ function convertCurrencyMinorToInrMinor(
   if (minorAmount === 0) return 0;
   if (normCode === 'INR') return Math.round(minorAmount);
 
-  const rawRate =
-    fxRatesToInr[normCode] ??
-    fxRatesToInr[currencyCode] ??
-    1;
-  const rateScaled = parseFxRateToScaled(rawRate);
+  const rateScaled = parseFxRateToScaled(fxRatesToInr[normCode] ?? 0);
+  if (rateScaled <= 0) return 0;
   const converted = convertForeignToBaseMinor(minorAmount, normCode, 'INR', rateScaled);
   return converted === 0n ? 0 : Number(converted);
 }
@@ -498,6 +538,11 @@ export function computeCrossGroupFriendsSummary(
 ): FriendCrossGroupSummary[] {
   const normUserEmail = currentUserEmail.trim().toLowerCase();
   const friendMap = new Map<string, FriendCrossGroupSummary>();
+  const upiSeen = new Map<string, Set<string>>();
+  const seeUpi = (friendKey: string, upiId: string | null) => {
+    const v = upiId?.trim();
+    if (v) upiSeen.set(friendKey, (upiSeen.get(friendKey) ?? new Set()).add(v));
+  };
 
   const ensureFriendEntry = (params: {
     friendKey: string;
@@ -522,7 +567,6 @@ export function computeCrossGroupFriendsSummary(
     }
     const entry = friendMap.get(params.friendKey)!;
     if (params.isClaimedAccount) entry.isClaimedAccount = true;
-    if (params.upiId && !entry.upiId) entry.upiId = params.upiId;
     if (params.email && !entry.email) entry.email = params.email;
     return entry;
   };
@@ -548,7 +592,8 @@ export function computeCrossGroupFriendsSummary(
 
     for (const m of grp.members) {
       if (m.id === myMember.id) continue;
-      const friendKey = (m.invitedEmail?.trim() || m.displayName.trim()).toLowerCase();
+      const friendKey = friendKeyOf(m, grp.id);
+      seeUpi(friendKey, m.upiId);
 
       let netMinor = 0;
       for (const t of transfers) {
@@ -583,6 +628,7 @@ export function computeCrossGroupFriendsSummary(
 
   // Aggregate Direct Non-Group Expenses (groupId === null) & Direct Settlements (groupId === null)
   const standaloneExpenses = expenses.filter((e) => e.groupId === null && !e.deletedAt);
+  const directKeys = directFriendKeys(currentUserEmail, expenses);
   const adHocDirectory = new Map<
     string,
     {
@@ -611,7 +657,11 @@ export function computeCrossGroupFriendsSummary(
     const me = participants.find(
       (p) => p.invitedEmail?.trim().toLowerCase() === normUserEmail
     );
-    if (!me || exp.amountMinor <= 0) continue;
+    if (!me) continue;
+    for (const p of participants) {
+      if (p.id !== me.id) seeUpi(directKeys.get(p.id) ?? friendKeyOf(p), p.upiId);
+    }
+    if (exp.amountMinor <= 0) continue;
 
     const orderMap = new Map(participants.map((p) => [p.id, p.memberOrder]));
     const pairwiseWithMe = new Map<string, bigint>();
@@ -627,10 +677,10 @@ export function computeCrossGroupFriendsSummary(
     const normCurrency = exp.groupCurrency.trim().toUpperCase();
     for (const p of participants) {
       if (p.id === me.id) continue;
+      const friendKey = directKeys.get(p.id) ?? friendKeyOf(p);
       const deltaBig = pairwiseWithMe.get(p.id) ?? 0n;
       if (deltaBig === 0n) continue;
 
-      const friendKey = (p.invitedEmail?.trim() || p.displayName.trim()).toLowerCase();
       const entry = ensureFriendEntry({
         friendKey,
         displayName: p.displayName,
@@ -647,6 +697,7 @@ export function computeCrossGroupFriendsSummary(
         myMemberId: me.id,
         friendMemberId: p.id,
         netMinor: Number(deltaBig),
+        expenseId: exp.id,
       });
     }
   }
@@ -665,9 +716,7 @@ export function computeCrossGroupFriendsSummary(
     const friendMeta = fromIsMe ? toMeta : fromMeta;
     const myId = fromIsMe ? stl.fromMemberId : stl.toMemberId;
     const friendId = fromIsMe ? stl.toMemberId : stl.fromMemberId;
-    const friendKey = friendMeta
-      ? (friendMeta.invitedEmail?.trim() || friendMeta.displayName.trim()).toLowerCase()
-      : friendId.toLowerCase();
+    const friendKey = friendMeta ? directKeys.get(friendId) ?? friendKeyOf(friendMeta) : friendId.toLowerCase();
 
     const entry = friendMap.get(friendKey);
     const stlCurrency = stl.currency.trim().toUpperCase();
@@ -675,7 +724,10 @@ export function computeCrossGroupFriendsSummary(
     let remainingDelta = fromIsMe ? Math.round(stl.amountMinor) : -Math.round(stl.amountMinor);
 
     if (entry) {
-      for (const bd of entry.groupBreakdowns) {
+      const anchoredFirst = [...entry.groupBreakdowns].sort(
+        (a, b) => Number(b.expenseId === stl.expenseId) - Number(a.expenseId === stl.expenseId)
+      );
+      for (const bd of anchoredFirst) {
         if (bd.groupId !== null || bd.currency !== stlCurrency || remainingDelta === 0) continue;
         // Offset opposing balances first
         if ((bd.netMinor > 0 && remainingDelta < 0) || (bd.netMinor < 0 && remainingDelta > 0)) {
@@ -700,6 +752,12 @@ export function computeCrossGroupFriendsSummary(
     }
   }
 
+  for (const entry of friendMap.values()) {
+    const seen = upiSeen.get(entry.friendKey);
+    entry.upiId = seen?.size === 1 ? [...seen][0]! : null;
+    entry.upiIdVaries = (seen?.size ?? 0) > 1;
+  }
+
   // Compute exact per-currency totals and BigInt-accurate INR normalized totals
   for (const entry of friendMap.values()) {
     let totalInr = 0;
@@ -716,4 +774,28 @@ export function computeCrossGroupFriendsSummary(
   return Array.from(friendMap.values()).sort(
     (a, b) => Math.abs(b.netInInrMinor) - Math.abs(a.netInInrMinor)
   );
+}
+
+/** Members that may be picked for new data. Former members stay only when `keepIds` (rows of the bill being edited) names them. */
+export function pickableMembers<T extends { id: string; removedAt?: string | null }>(
+  members: T[],
+  keepIds: Iterable<string> = []
+): T[] {
+  const keep = new Set(keepIds);
+  return members.filter((m) => !m.removedAt || keep.has(m.id));
+}
+
+/**
+ * Direct-bill UPI ids may change only by the bill owner, or by a participant on their own entry.
+ * For anyone else, keeps the stored ids and adds new participants without one.
+ */
+export function lockParticipantUpiIds<T extends { id: string; upiId: string | null }>(
+  next: T[],
+  prev: T[] | undefined,
+  myParticipantId: string | null,
+  isOwner: boolean
+): T[] {
+  if (isOwner || !prev) return next;
+  const stored = new Map(prev.map((p) => [p.id, p.upiId]));
+  return next.map((p) => (p.id === myParticipantId ? p : { ...p, upiId: stored.get(p.id) ?? null }));
 }
