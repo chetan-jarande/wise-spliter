@@ -17,6 +17,7 @@ import {
   XIcon as X,
 } from '@phosphor-icons/react';
 import { useLedger } from '../../state/LedgerContext';
+import { canDeleteDirectSettlement } from '../../utils/direct-settlements';
 import { ExpenseItem, GroupRecord } from '../../types/ledger';
 import {
   CurrencyAmount,
@@ -25,13 +26,27 @@ import {
   PersonalExpenseImpactBadge,
   StatusBadge,
 } from '../primitives/DesignPrimitives';
-import { formatMinorToMajor } from '../../domain/money/currencies';
+import { convertMinorAmountWithFx, formatMinorToMajor } from '../../domain/money/currencies';
 import {
   computeCrossGroupFriendsSummary,
   computeGroupNetBalances,
 } from '../../domain/ledger/ledger-engine';
 import { ExpenseEditorModal } from '../modals/ExpenseEditorModal';
 import { HelpGuideModal } from '../modals/HelpGuideModal';
+import { JoinGroupForm } from '../components/GroupManagement';
+import { parseInviteCode } from '../../utils/expense-search';
+
+const PENDING_JOIN_KEY = 'ws_pending_join_code';
+
+function readPendingJoinCode(): string | null {
+  try {
+    const fromUrl = parseInviteCode(new URLSearchParams(window.location.search).get('join') ?? '');
+    if (fromUrl) sessionStorage.setItem(PENDING_JOIN_KEY, fromUrl);
+    return fromUrl ?? parseInviteCode(sessionStorage.getItem(PENDING_JOIN_KEY) ?? '');
+  } catch {
+    return null;
+  }
+}
 
 const QUICKSTART_STORAGE_KEY = 'wise_spliter_quickstart_dismissed_v1';
 
@@ -49,6 +64,8 @@ export function HomeDashboardPage({
     setActiveGroupId,
     setActivePage,
     softDeleteExpense,
+    deleteSettlement,
+    getFxQuote,
   } = useLedger();
 
   // Local modal states so HomeDashboardPage always opens ExpenseEditorModal & HelpGuideModal cleanly
@@ -56,6 +73,19 @@ export function HomeDashboardPage({
   const [modalDefaultGroupId, setModalDefaultGroupId] = useState<string | null>(null);
   const [editingExpense, setEditingExpense] = useState<ExpenseItem | null>(null);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+  const [pendingJoinCode, setPendingJoinCode] = useState<string | null>(readPendingJoinCode);
+
+  const clearPendingJoin = () => {
+    setPendingJoinCode(null);
+    try {
+      sessionStorage.removeItem(PENDING_JOIN_KEY);
+      const url = new URL(window.location.href);
+      url.searchParams.delete('join');
+      window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+    } catch {
+      // URL cleanup is best effort
+    }
+  };
   const [isQuickStartDismissed, setIsQuickStartDismissed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(QUICKSTART_STORAGE_KEY) === '1';
@@ -98,7 +128,8 @@ export function HomeDashboardPage({
     setIsHelpModalOpen(true);
   };
 
-  // 1. Cross-Group & Direct Split Net Position in INR
+  // 1. Cross-Group & Direct Split Net Position in the user's currency (rates only from getFxQuote)
+  const displayCurrency = (dataset.currentUser.defaultCurrency || 'INR').toUpperCase();
   const friendsSummary = useMemo(
     () =>
       computeCrossGroupFriendsSummary(
@@ -106,33 +137,57 @@ export function HomeDashboardPage({
         dataset.groups,
         dataset.expenses,
         dataset.settlements,
-        dataset.fxRatesToInr
+        {}
       ),
-    [
-      dataset.currentUser.email,
-      dataset.groups,
-      dataset.expenses,
-      dataset.settlements,
-      dataset.fxRatesToInr,
-    ]
+    [dataset.currentUser.email, dataset.groups, dataset.expenses, dataset.settlements]
   );
 
   const crossGroupTotals = useMemo(() => {
     let youAreOwedInrMinor = 0;
     let youOweInrMinor = 0;
+    let oldestRateDate: string | null = null;
+    const unconverted = new Map<string, { owed: number; owe: number }>();
     for (const friend of friendsSummary) {
-      if (friend.netInInrMinor > 0) {
-        youAreOwedInrMinor += friend.netInInrMinor;
-      } else if (friend.netInInrMinor < 0) {
-        youOweInrMinor += Math.abs(friend.netInInrMinor);
+      let net = 0;
+      const perCurrency = new Map<string, number>();
+      for (const bd of friend.groupBreakdowns) {
+        const code = bd.currency.toUpperCase();
+        if (code === displayCurrency) {
+          net += bd.netMinor;
+          continue;
+        }
+        const quote = getFxQuote(code, displayCurrency);
+        if (!quote) {
+          perCurrency.set(code, (perCurrency.get(code) ?? 0) + bd.netMinor);
+          continue;
+        }
+        net += convertMinorAmountWithFx({
+          originalMinor: bd.netMinor,
+          fromCurrency: code,
+          toCurrency: displayCurrency,
+          fxRateScaled: quote.rateScaled,
+          fxStatus: quote.status,
+          dateIso: quote.rateDate,
+        }).convertedMinor;
+        if (!oldestRateDate || quote.rateDate < oldestRateDate) oldestRateDate = quote.rateDate;
+      }
+      if (net > 0) youAreOwedInrMinor += net;
+      else youOweInrMinor -= net;
+      for (const [code, amt] of perCurrency) {
+        const t = unconverted.get(code) ?? { owed: 0, owe: 0 };
+        if (amt > 0) t.owed += amt;
+        else t.owe -= amt;
+        unconverted.set(code, t);
       }
     }
     return {
       youAreOwedInrMinor,
       youOweInrMinor,
       netBalanceInrMinor: youAreOwedInrMinor - youOweInrMinor,
+      oldestRateDate,
+      unconverted: [...unconverted.entries()].filter(([, t]) => t.owed !== 0 || t.owe !== 0),
     };
-  }, [friendsSummary]);
+  }, [friendsSummary, displayCurrency, getFxQuote]);
 
   // 2. Active Groups & Strictly Top 3 Recently Accessed/Updated Groups
   const allActiveGroups = useMemo(
@@ -242,17 +297,19 @@ export function HomeDashboardPage({
               {crossGroupTotals.netBalanceInrMinor > 0 ? (
                 <>
                   Overall, you are owed{' '}
-                  <span className="text-emerald-600 dark:text-emerald-400 font-mono tabular-nums">
-                    +{formatMinorToMajor(crossGroupTotals.netBalanceInrMinor, 'INR')}
+                  <span className="text-emerald-600 dark:text-emerald-400 font-mono tabular-nums whitespace-nowrap">
+                    +{formatMinorToMajor(crossGroupTotals.netBalanceInrMinor, displayCurrency)}
                   </span>
                 </>
               ) : crossGroupTotals.netBalanceInrMinor < 0 ? (
                 <>
                   Overall, you owe{' '}
-                  <span className="text-rose-600 dark:text-rose-400 font-mono tabular-nums">
-                    {formatMinorToMajor(Math.abs(crossGroupTotals.netBalanceInrMinor), 'INR')}
+                  <span className="text-rose-600 dark:text-rose-400 font-mono tabular-nums whitespace-nowrap">
+                    {formatMinorToMajor(Math.abs(crossGroupTotals.netBalanceInrMinor), displayCurrency)}
                   </span>
                 </>
+              ) : crossGroupTotals.unconverted.length > 0 ? (
+                <span>Your open balances are in other currencies</span>
               ) : (
                 <span className="text-emerald-600 dark:text-emerald-400">
                   You are all settled up!
@@ -260,57 +317,79 @@ export function HomeDashboardPage({
               )}
             </h1>
 
+            {(crossGroupTotals.oldestRateDate || crossGroupTotals.unconverted.length > 0) && (
+              <p data-testid="home-fx-note" className="text-[11px] text-slate-500 dark:text-slate-400">
+                {crossGroupTotals.oldestRateDate &&
+                  `Approx., rates from ${crossGroupTotals.oldestRateDate}. `}
+                {crossGroupTotals.unconverted.length > 0 && (
+                  <span data-testid="home-unconverted-totals">
+                    Not included, no rate yet:{' '}
+                    {crossGroupTotals.unconverted
+                      .map(([code, t]) =>
+                        [
+                          t.owed ? `owed ${formatMinorToMajor(t.owed, code)}` : '',
+                          t.owe ? `you owe ${formatMinorToMajor(t.owe, code)}` : '',
+                        ]
+                          .filter(Boolean)
+                          .join(', ')
+                      )
+                      .join('; ')}
+                  </span>
+                )}
+              </p>
+            )}
+
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-              {crossGroupTotals.netBalanceInrMinor === 0
-                ? 'Every group and friend balance is settled at 0.00. Tap + Split a Bill anytime.'
+              {crossGroupTotals.netBalanceInrMinor === 0 && crossGroupTotals.unconverted.length === 0
+                ? 'Every group and friend balance is settled at 0.00. Tap Split a Bill anytime.'
                 : `Combined across ${allActiveGroups.length} active groups and ${directExpenses.length} direct 1-on-1 splits.`}
             </p>
           </div>
 
           {/* 3 Clean Numbers in INR: You Are Owed, You Owe, Net Balance */}
-          <div className="grid grid-cols-3 gap-2.5 sm:gap-3.5">
-            <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.05] px-3.5 py-2.5">
+          <div data-testid="home-stat-tiles" className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3.5">
+            <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.05] px-3.5 py-2.5 min-w-0 flex items-center justify-between gap-3 sm:block">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
                 You Are Owed
               </div>
               <div
                 data-testid="home-you-are-owed-amount"
-                className="mt-1 text-sm sm:text-base font-extrabold font-mono tabular-nums text-emerald-600 dark:text-emerald-400"
+                className="sm:mt-1 shrink-0 whitespace-nowrap text-base sm:text-sm lg:text-base font-extrabold font-mono tabular-nums text-emerald-600 dark:text-emerald-400"
               >
                 <CurrencyAmount
                   minorAmount={crossGroupTotals.youAreOwedInrMinor}
-                  currencyCode="INR"
+                  currencyCode={displayCurrency}
                   showPlusSign
                 />
               </div>
             </div>
 
-            <div className="rounded-2xl border border-rose-500/25 bg-rose-500/[0.05] px-3.5 py-2.5">
+            <div className="rounded-2xl border border-rose-500/25 bg-rose-500/[0.05] px-3.5 py-2.5 min-w-0 flex items-center justify-between gap-3 sm:block">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-rose-700 dark:text-rose-300">
                 You Owe
               </div>
               <div
                 data-testid="home-you-owe-amount"
-                className="mt-1 text-sm sm:text-base font-extrabold font-mono tabular-nums text-rose-600 dark:text-rose-400"
+                className="sm:mt-1 shrink-0 whitespace-nowrap text-base sm:text-sm lg:text-base font-extrabold font-mono tabular-nums text-rose-600 dark:text-rose-400"
               >
                 <CurrencyAmount
                   minorAmount={crossGroupTotals.youOweInrMinor}
-                  currencyCode="INR"
+                  currencyCode={displayCurrency}
                 />
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900/70 px-3.5 py-2.5">
+            <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900/70 px-3.5 py-2.5 min-w-0 flex items-center justify-between gap-3 sm:block">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Net Balance
               </div>
               <div
                 data-testid="home-net-balance-amount"
-                className="mt-1 text-sm sm:text-base font-extrabold font-mono tabular-nums"
+                className="sm:mt-1 shrink-0 whitespace-nowrap text-base sm:text-sm lg:text-base font-extrabold font-mono tabular-nums"
               >
                 <CurrencyAmount
                   minorAmount={crossGroupTotals.netBalanceInrMinor}
-                  currencyCode="INR"
+                  currencyCode={displayCurrency}
                   colorize
                   showPlusSign
                 />
@@ -329,7 +408,7 @@ export function HomeDashboardPage({
               className="min-h-[44px] inline-flex items-center gap-2 rounded-xl bg-[#059669] hover:bg-emerald-600 text-white px-5 py-2.5 text-xs sm:text-sm font-bold shadow-md shadow-emerald-600/20 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               <Plus className="w-4 h-4" weight="bold" />
-              <span>+ Split a Bill</span>
+              <span>Split a Bill</span>
             </button>
 
             <button
@@ -358,7 +437,7 @@ export function HomeDashboardPage({
               <button
                 type="button"
                 onClick={() => handleDismissQuickStart(false)}
-                className="inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-white/10 px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-[#059669] transition-colors cursor-pointer"
+                className="min-h-[44px] inline-flex items-center gap-1 rounded-xl border border-slate-200 dark:border-white/10 px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-[#059669] transition-colors cursor-pointer"
               >
                 <span>Show 3-Step Start</span>
               </button>
@@ -394,7 +473,7 @@ export function HomeDashboardPage({
               data-testid="dismiss-quickstart-btn"
               onClick={() => handleDismissQuickStart(true)}
               aria-label="Dismiss 3-step quick start guide"
-              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
+              className="min-h-[44px] min-w-[44px] justify-center inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
             >
               <span>Hide</span>
               <X className="w-3.5 h-3.5" weight="bold" />
@@ -405,7 +484,7 @@ export function HomeDashboardPage({
             <button
               type="button"
               onClick={() => setActivePage('groups')}
-              className="flex items-start gap-3 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-white/10 hover:border-emerald-500/40 p-3 text-left transition-colors cursor-pointer"
+              className="min-h-[44px] flex items-start gap-3 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-white/10 hover:border-emerald-500/40 p-3 text-left transition-colors cursor-pointer"
             >
               <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-mono font-bold">
                 {allActiveGroups.length > 0 ? (
@@ -427,7 +506,7 @@ export function HomeDashboardPage({
             <button
               type="button"
               onClick={() => handleTriggerAddExpense(null, null)}
-              className="flex items-start gap-3 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-white/10 hover:border-emerald-500/40 p-3 text-left transition-colors cursor-pointer"
+              className="min-h-[44px] flex items-start gap-3 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-white/10 hover:border-emerald-500/40 p-3 text-left transition-colors cursor-pointer"
             >
               <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-mono font-bold">
                 {hasActiveExpenses ? (
@@ -449,7 +528,7 @@ export function HomeDashboardPage({
             <button
               type="button"
               onClick={() => setActivePage('friends')}
-              className="flex items-start gap-3 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-white/10 hover:border-emerald-500/40 p-3 text-left transition-colors cursor-pointer"
+              className="min-h-[44px] flex items-start gap-3 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-white/10 hover:border-emerald-500/40 p-3 text-left transition-colors cursor-pointer"
             >
               <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-mono font-bold">
                 {hasRecordedSettlements ? (
@@ -471,6 +550,26 @@ export function HomeDashboardPage({
         </div>
       )}
 
+      {pendingJoinCode && (
+        <DoubleBezelCard testId="home-join-invite-card" innerClassName="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-slate-100">You have a group invite</h2>
+            <button
+              type="button"
+              data-testid="home-join-invite-dismiss"
+              onClick={clearPendingJoin}
+              className="min-h-[44px] px-3 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
+            >
+              Not now
+            </button>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Join to see the group&apos;s bills and balances. You need to be signed in.
+          </p>
+          <JoinGroupForm initialCode={pendingJoinCode} onJoined={clearPendingJoin} />
+        </DoubleBezelCard>
+      )}
+
       {/* 2. Recently Accessed or Updated Groups (Strictly At Most 3 Groups) */}
       <section className="space-y-3.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -485,7 +584,7 @@ export function HomeDashboardPage({
           <button
             type="button"
             onClick={() => setActivePage('groups')}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/15 bg-white dark:bg-slate-900 hover:border-emerald-500/40 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
+            className="min-h-[44px] inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-white/15 bg-white dark:bg-slate-900 hover:border-emerald-500/40 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
           >
             <span>See All {allActiveGroups.length} Groups</span>
             <ArrowRight className="w-3.5 h-3.5 text-[#059669]" weight="bold" />
@@ -514,8 +613,8 @@ export function HomeDashboardPage({
                     <CurrencyPrecisionPill currencyCode={group.baseCurrency} />
                   </div>
 
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 truncate">
+                  <div className="min-w-0">
+                    <h3 dir="auto" title={group.name} className="text-base font-bold text-slate-900 dark:text-slate-100 truncate">
                       {group.name}
                     </h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-1">
@@ -527,7 +626,7 @@ export function HomeDashboardPage({
                     <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                       <Users className="w-3.5 h-3.5 text-[#059669]" weight="bold" />
                       <span>
-                        {group.members.length} people • {activeBillsCount} bills
+                        {group.members.filter((m) => !m.removedAt).length} people • {activeBillsCount} bills
                       </span>
                     </div>
 
@@ -627,7 +726,7 @@ export function HomeDashboardPage({
                 <button
                   type="button"
                   onClick={() => handleTriggerAddExpense(null, null)}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#059669] hover:bg-emerald-600 text-white px-4 py-2 text-xs font-bold transition-colors cursor-pointer"
+                  className="min-h-[44px] inline-flex items-center gap-1.5 rounded-xl bg-[#059669] hover:bg-emerald-600 text-white px-4 py-2 text-xs font-bold transition-colors cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" weight="bold" />
                   <span>Split a Direct Bill</span>
@@ -735,6 +834,36 @@ export function HomeDashboardPage({
                     <p className="text-xs text-slate-500 dark:text-slate-400">{exp.notes}</p>
                   )}
 
+                  {dataset.settlements.some((st) => st.expenseId === exp.id && !st.deletedAt) && (
+                    <ul className="space-y-1.5" aria-label="Payments on this bill">
+                      {dataset.settlements
+                        .filter((st) => st.expenseId === exp.id && !st.deletedAt)
+                        .map((st) => (
+                          <li
+                            key={st.id}
+                            data-testid={`direct-settlement-${st.id}`}
+                            className="flex items-center justify-between gap-2 rounded-xl bg-emerald-500/5 border border-emerald-500/20 px-3 py-1.5 text-xs text-slate-700 dark:text-slate-300"
+                          >
+                            <span>
+                              {participantNameOf(st.fromMemberId)} paid {participantNameOf(st.toMemberId)}{' '}
+                              <CurrencyAmount minorAmount={st.amountMinor} currencyCode={st.currency} /> on{' '}
+                              <span className="font-mono">{st.settledDate}</span>
+                            </span>
+                            {canDeleteDirectSettlement(st, exp, dataset.currentUser.email, dataset.currentUser.id) && (
+                              <button
+                                type="button"
+                                data-testid={`delete-settlement-${st.id}`}
+                                onClick={() => deleteSettlement(st.id)}
+                                className="min-h-[32px] rounded-lg px-2 py-1 font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+
                   <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200/60 dark:border-white/10">
                     <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
                       <CheckCircle className="w-3.5 h-3.5 text-[#059669]" weight="fill" />
@@ -748,7 +877,7 @@ export function HomeDashboardPage({
                       <button
                         type="button"
                         onClick={() => handleTriggerAddExpense(null, exp)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-white/15 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
+                        className="min-h-[44px] inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-white/15 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
                       >
                         <NotePencil className="w-3.5 h-3.5" />
                         <span>Edit</span>
@@ -757,7 +886,7 @@ export function HomeDashboardPage({
                         type="button"
                         data-testid={`delete-expense-${exp.id}`}
                         onClick={() => softDeleteExpense(exp.id)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300 transition-colors cursor-pointer"
+                        className="min-h-[44px] inline-flex items-center gap-1 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300 transition-colors cursor-pointer"
                       >
                         <Trash className="w-3.5 h-3.5" />
                         <span>Trash</span>

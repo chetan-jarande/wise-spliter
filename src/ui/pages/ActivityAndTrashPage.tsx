@@ -22,6 +22,7 @@ import {
   ExpenseRevision,
   GroupActivityActionType,
 } from '../../types/ledger';
+import { actorLabel } from '../../utils/group-permissions';
 import { CurrencyAmount, DoubleBezelCard, StatusBadge } from '../primitives/DesignPrimitives';
 
 function getInitialsFromName(name: string): string {
@@ -48,6 +49,7 @@ function getActionBadgeTone(
     case 'expense_restored':
     case 'expense_conflict_resolved':
     case 'settlement_recorded':
+    case 'settlement_restored':
     case 'member_claimed':
     case 'group_created':
       return 'emerald';
@@ -56,6 +58,7 @@ function getActionBadgeTone(
     case 'group_updated':
       return 'blue';
     case 'expense_conflict_flagged':
+    case 'upi_changed':
       return 'amber';
     case 'expense_deleted':
     case 'settlement_deleted':
@@ -72,6 +75,7 @@ function getActionLabel(
 ): string {
   const found = catalog.find((item) => item.action === action);
   if (found) return found.label;
+  if (action === 'upi_changed') return 'UPI ID changed';
   return action.replace(/_/g, ' ');
 }
 
@@ -83,7 +87,11 @@ export function ActivityAndTrashPage() {
     restoreExpense,
     softDeleteExpense,
     restoreExpenseRevision,
+    restoreGroup,
+    restoreSettlement,
+    isGroupAdmin,
   } = useLedger();
+  const trashedGroups = dataset.groups.filter((g) => g.deletedAt);
 
   const [scope, setScope] = useState<'group' | 'global'>('group');
   const [selectedAction, setSelectedAction] = useState<'all' | GroupActivityActionType>('all');
@@ -125,7 +133,7 @@ export function ActivityAndTrashPage() {
         return false;
       }
       if (normalizedQuery) {
-        const haystack = `${item.actorDisplayName} ${item.summaryText} ${item.detailNote} ${item.diffBadges.join(' ')} ${item.hlc}`.toLowerCase();
+        const haystack = `${actorLabel(item)} ${item.summaryText} ${item.detailNote} ${item.diffBadges.join(' ')} ${item.hlc}`.toLowerCase();
         if (!haystack.includes(normalizedQuery)) {
           return false;
         }
@@ -180,6 +188,21 @@ export function ActivityAndTrashPage() {
       ...data,
     }));
   }, [dataset.expenseRevisions, dataset.expenses, groupMap]);
+
+  const trashedSettlements = useMemo(
+    () => dataset.settlements.filter((s) => s.deletedAt),
+    [dataset.settlements]
+  );
+
+  const participantNameOf = (id: string): string => {
+    const fromGroup = memberNameMap.get(id);
+    if (fromGroup) return fromGroup;
+    for (const e of dataset.expenses) {
+      const p = e.adHocParticipants?.find((x) => x.id === id);
+      if (p) return p.displayName;
+    }
+    return 'Member';
+  };
 
   const trashedExpenses = useMemo(
     () => dataset.expenses.filter((exp) => exp.deletedAt !== null),
@@ -431,7 +454,7 @@ export function ActivityAndTrashPage() {
                     const grpInfo = item.groupId ? groupMap.get(item.groupId) : undefined;
                     const badgeTone = getActionBadgeTone(item.action, dataset.actionTypesCatalog);
                     const actionLabel = getActionLabel(item.action, dataset.actionTypesCatalog);
-                    const initials = getInitialsFromName(item.actorDisplayName);
+                    const initials = getInitialsFromName(actorLabel(item));
 
                     return (
                       <div
@@ -606,13 +629,13 @@ export function ActivityAndTrashPage() {
                                     <StatusBadge tone="slate">{rev.action}</StatusBadge>
                                   )}
                                   <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                                    by {rev.actorDisplayName}
+                                    by {actorLabel(rev)}
                                   </span>
                                 </div>
 
                                 <CurrencyAmount
                                   minorAmount={rev.snapshot.amountMinor}
-                                  currencyCode={groupCurrency}
+                                  currencyCode={rev.snapshot.groupCurrency ?? groupCurrency}
                                   className="text-xs font-bold text-slate-900 dark:text-white"
                                 />
                               </div>
@@ -711,6 +734,74 @@ export function ActivityAndTrashPage() {
                   <span className="font-mono tabular-nums">{trashedExpenses.length} in Trash</span>
                 </StatusBadge>
               </div>
+
+              {trashedGroups.length > 0 && (
+                <ul className="space-y-2" aria-label="Deleted groups">
+                  {trashedGroups.map((g) => (
+                    <li
+                      key={g.id}
+                      data-testid={`trash-group-${g.id}`}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-2xl p-3 bg-rose-500/5 border border-rose-500/20 text-xs"
+                    >
+                      <div>
+                        <div className="font-bold text-slate-900 dark:text-slate-100">{g.name}</div>
+                        <div className="font-mono text-slate-500 dark:text-slate-400">
+                          Group deleted {formatIsoTimestamp(g.deletedAt)}
+                        </div>
+                      </div>
+                      {isGroupAdmin(g) ? (
+                        <button
+                          type="button"
+                          data-testid={`restore-group-${g.id}`}
+                          onClick={() => restoreGroup(g.id)}
+                          className="min-h-[44px] inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 font-semibold bg-emerald-500 text-slate-950 hover:bg-emerald-400 transition cursor-pointer"
+                        >
+                          <ArrowCounterClockwise weight="bold" className="w-4 h-4" />
+                          <span>Restore group</span>
+                        </button>
+                      ) : (
+                        <span className="text-slate-500 dark:text-slate-400">Only a group admin can restore it.</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {trashedSettlements.length > 0 && (
+                <ul className="space-y-2" aria-label="Deleted payments">
+                  {trashedSettlements.map((st) => {
+                    const where = st.groupId
+                      ? groupMap.get(st.groupId)?.name
+                      : dataset.expenses.find((e) => e.id === st.expenseId)?.title;
+                    return (
+                      <li
+                        key={st.id}
+                        data-testid={`trash-settlement-${st.id}`}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-2xl p-3 bg-rose-500/5 border border-rose-500/20 text-xs"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-bold text-slate-900 dark:text-slate-100">
+                            {participantNameOf(st.fromMemberId)} paid {participantNameOf(st.toMemberId)}{' '}
+                            <CurrencyAmount minorAmount={st.amountMinor} currencyCode={st.currency} />
+                          </div>
+                          <div className="font-mono text-slate-500 dark:text-slate-400">
+                            {where ? `${where}, ` : ''}paid {st.settledDate}, removed {formatIsoTimestamp(st.deletedAt)}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          data-testid={`restore-settlement-${st.id}`}
+                          onClick={() => restoreSettlement(st.id)}
+                          className="min-h-[44px] inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 font-semibold bg-emerald-500 text-slate-950 hover:bg-emerald-400 transition cursor-pointer"
+                        >
+                          <ArrowCounterClockwise weight="bold" className="w-4 h-4" />
+                          <span>Restore payment</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
 
               {trashedExpenses.length === 0 ? (
                 <div className="rounded-2xl p-5 text-center bg-slate-50/80 dark:bg-slate-900/50 border border-dashed border-slate-300 dark:border-white/10 space-y-2">

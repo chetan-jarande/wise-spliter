@@ -24,8 +24,7 @@ export function DevAuthModal({ isOpen, onClose }: DevAuthModalProps) {
     dataset,
     isOnline,
     switchActiveUserProfile,
-    restoreFullDatasetFromBackup,
-    resetToInitialMockData,
+    adoptSignedInSession,
     showToast,
   } = useLedger();
 
@@ -41,7 +40,7 @@ export function DevAuthModal({ isOpen, onClose }: DevAuthModalProps) {
   const activeGroupsCount = dataset.groups.filter((g) => !g.deletedAt).length;
   const isCurrentlyDemoProfile =
     dataset.currentUser.id === 'usr_arjun_01' &&
-    dataset.currentUser.email.toLowerCase() === 'arjun.mehta@gmail.com';
+    dataset.currentUser.email.toLowerCase() === 'arjun.mehta@example.com';
 
   const handleLoginSubmit = async (
     event: React.SyntheticEvent<HTMLFormElement>
@@ -67,7 +66,7 @@ export function DevAuthModal({ isOpen, onClose }: DevAuthModalProps) {
         onClose();
       } else {
         setAuthError(
-          'Authentication failed. Please verify your email and password.'
+          'We could not sign you in. Check your email and password. If you signed up with Google, use Continue with Google.'
         );
       }
     } finally {
@@ -80,21 +79,19 @@ export function DevAuthModal({ isOpen, onClose }: DevAuthModalProps) {
     setIsDemoLoading(true);
     try {
       const demoRes = await wiseSpliterSyncEngine.signInWithDemoProfile();
-      if (demoRes.ok && demoRes.dataset && demoRes.profile) {
-        restoreFullDatasetFromBackup({
-          ...demoRes.dataset,
-          currentUser: demoRes.profile,
-        });
-        showToast(
-          `Signed into Demo Sandbox: ${demoRes.profile.fullName} (${demoRes.profile.email})`
-        );
+      if (demoRes.ok && demoRes.profile) {
+        if (await adoptSignedInSession(demoRes.profile, demoRes.token, demoRes.dataset)) {
+          showToast(
+            `Signed into Demo Sandbox: ${demoRes.profile.fullName} (${demoRes.profile.email})`
+          );
+        }
         onClose();
         return;
       }
 
-      resetToInitialMockData();
-      showToast('Switched to Offline Demo Sandbox: Arjun Mehta (Demo)');
-      onClose();
+      setAuthError(
+        'The demo account is not available right now. You can keep using the app on this device without signing in; nothing here was changed.'
+      );
     } finally {
       setIsDemoLoading(false);
     }
@@ -115,14 +112,17 @@ export function DevAuthModal({ isOpen, onClose }: DevAuthModalProps) {
         return;
       }
 
-      if (result.exchangedDataset && result.exchangedProfile) {
-        restoreFullDatasetFromBackup({
-          ...result.exchangedDataset,
-          currentUser: result.exchangedProfile,
-        });
-        showToast(
-          `Signed in with Google as ${result.exchangedProfile.fullName} (${result.exchangedProfile.email})`
+      if (result.exchangedProfile) {
+        const adopted = await adoptSignedInSession(
+          result.exchangedProfile,
+          result.exchangedToken ?? null,
+          result.exchangedDataset ?? null
         );
+        if (adopted) {
+          showToast(
+            `Signed in with Google as ${result.exchangedProfile.fullName} (${result.exchangedProfile.email})`
+          );
+        }
         onClose();
         return;
       }

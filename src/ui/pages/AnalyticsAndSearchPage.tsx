@@ -24,8 +24,10 @@ import {
   PersonalExpenseImpactBadge,
   StatusBadge,
 } from '../primitives/DesignPrimitives';
-import { formatMinorToMajor } from '../../domain/money/currencies';
+import { convertForeignToBaseMinor, formatMinorToMajor } from '../../domain/money/currencies';
 import { ExpenseCategoryKey, SplitMode } from '../../types/ledger';
+import { AmountFilter, matchesAmountFilter, matchesDateRange } from '../../utils/expense-search';
+import { MonthlySpendChart } from '../components/MonthlySpendChart';
 
 const CATEGORY_COLORS: Record<ExpenseCategoryKey, { stroke: string; badge: string; dot: string }> = {
   lodging: {
@@ -130,13 +132,22 @@ export function AnalyticsAndSearchPage() {
     setActiveGroupId,
     setActivePage,
     showToast,
+    getFxQuote,
   } = useLedger();
+  const chartCurrency = dataset.currentUser.defaultCurrency || activeGroup.baseCurrency;
+  const convertForChart = (minor: bigint, from: string) => {
+    const q = getFxQuote(from, chartCurrency);
+    return q ? convertForeignToBaseMinor(minor, from, chartCurrency, q.rateScaled) : null;
+  };
 
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>('all');
   const [selectedSplitModeFilter, setSelectedSplitModeFilter] = useState<string>('all');
   const [selectedCurrencyFilter, setSelectedCurrencyFilter] = useState<string>('all');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<'all' | 'conflict' | 'fx'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [amountFilter, setAmountFilter] = useState<AmountFilter>({ mode: 'any', min: '', max: '' });
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [highlightedCategory, setHighlightedCategory] = useState<ExpenseCategoryKey | null>(null);
 
   const activeGroups = useMemo(
@@ -323,6 +334,9 @@ export function AnalyticsAndSearchPage() {
         ) {
           return false;
         }
+        if (!matchesAmountFilter(exp, amountFilter, typeof navigator !== 'undefined' ? navigator.language : undefined) || !matchesDateRange(exp.expenseDate, dateFrom, dateTo)) {
+          return false;
+        }
 
         if (!q) return true;
 
@@ -365,7 +379,20 @@ export function AnalyticsAndSearchPage() {
     selectedSplitModeFilter,
     selectedCurrencyFilter,
     selectedStatusFilter,
+    amountFilter,
+    dateFrom,
+    dateTo,
   ]);
+
+  const hasFilters =
+    searchQuery !== '' ||
+    selectedCategoryFilter !== 'all' ||
+    selectedSplitModeFilter !== 'all' ||
+    selectedCurrencyFilter !== 'all' ||
+    selectedStatusFilter !== 'all' ||
+    amountFilter.mode !== 'any' ||
+    dateFrom !== '' ||
+    dateTo !== '';
 
   const handleJumpToGroup = (groupId: string | null, groupName: string) => {
     if (!groupId) {
@@ -390,7 +417,7 @@ export function AnalyticsAndSearchPage() {
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
             Spending Insights &amp; Global Search
           </h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 break-words">
             See where money went in{' '}
             <span className="font-semibold text-slate-900 dark:text-slate-200">
               {activeGroup.name}
@@ -411,15 +438,15 @@ export function AnalyticsAndSearchPage() {
                 key={grp.id}
                 type="button"
                 onClick={() => setActiveGroupId(grp.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`min-h-[44px] px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                   isSelected
                     ? 'bg-emerald-600 text-white shadow-sm'
                     : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700/80'
                 }`}
               >
-                <span>{grp.name}</span>
+                <span dir="auto" className="truncate max-w-[10rem]" title={grp.name}>{grp.name}</span>
                 <span
-                  className={`font-mono text-[10px] px-1.5 py-0.5 rounded ${
+                  className={`shrink-0 font-mono text-[10px] px-1.5 py-0.5 rounded ${
                     isSelected
                       ? 'bg-emerald-700 text-emerald-100'
                       : 'bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
@@ -534,6 +561,8 @@ export function AnalyticsAndSearchPage() {
           </div>
         </DoubleBezelCard>
       </div>
+
+      <MonthlySpendChart expenses={groupExpenses} currency={chartCurrency} groupName={activeGroup.name} convert={convertForChart} />
 
       {/* 2. Visual Category Breakdown & Group Spend SVG Chart */}
       <DoubleBezelCard
@@ -793,7 +822,7 @@ export function AnalyticsAndSearchPage() {
                           prev === sm.mode ? 'all' : sm.mode
                         )
                       }
-                      className={`text-left p-2.5 rounded-xl border transition-all cursor-pointer ${
+                      className={`min-h-[44px] text-left p-2.5 rounded-xl border transition-all cursor-pointer ${
                         isFiltered
                           ? 'border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30'
                           : 'border-slate-200/70 dark:border-white/[0.06] bg-white dark:bg-slate-900/70 hover:border-slate-300 dark:hover:border-white/15'
@@ -849,11 +878,7 @@ export function AnalyticsAndSearchPage() {
             <StatusBadge tone="emerald">
               {globalFilteredExpenses.length} matching expenses
             </StatusBadge>
-            {(searchQuery ||
-              selectedCategoryFilter !== 'all' ||
-              selectedSplitModeFilter !== 'all' ||
-              selectedCurrencyFilter !== 'all' ||
-              selectedStatusFilter !== 'all') && (
+            {hasFilters && (
               <button
                 type="button"
                 onClick={() => {
@@ -862,8 +887,11 @@ export function AnalyticsAndSearchPage() {
                   setSelectedSplitModeFilter('all');
                   setSelectedCurrencyFilter('all');
                   setSelectedStatusFilter('all');
+                  setAmountFilter({ mode: 'any', min: '', max: '' });
+                  setDateFrom('');
+                  setDateTo('');
                 }}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 cursor-pointer"
+                className="min-h-[44px] inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
                 <span>Clear Filters</span>
@@ -882,14 +910,14 @@ export function AnalyticsAndSearchPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search bills, notes, #scuba, #villa, #shinkansen, EUR, JPY, KWD, conflict..."
-              className="w-full pl-11 pr-10 py-3 rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-300/80 dark:border-white/10 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full pl-11 pr-12 py-3 rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-300/80 dark:border-white/10 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
             {searchQuery && (
               <button
                 type="button"
                 aria-label="Clear search query"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center absolute right-0 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -913,7 +941,7 @@ export function AnalyticsAndSearchPage() {
                       prev.toLowerCase() === tag.toLowerCase() ? '' : tag
                     )
                   }
-                  className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-colors cursor-pointer ${
+                  className={`min-h-[44px] px-2.5 py-1 rounded-lg text-xs font-mono transition-colors cursor-pointer ${
                     active
                       ? 'bg-emerald-600 text-white'
                       : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
@@ -1004,6 +1032,90 @@ export function AnalyticsAndSearchPage() {
               </select>
             </div>
           </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <label htmlFor="search-amount-mode" className="block text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                Amount
+              </label>
+              <select
+                id="search-amount-mode"
+                data-testid="search-amount-mode"
+                value={amountFilter.mode}
+                onChange={(e) => setAmountFilter((f) => ({ ...f, mode: e.target.value as AmountFilter['mode'] }))}
+                className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-800 dark:text-slate-200"
+              >
+                <option value="any">Any amount</option>
+                <option value="exact">Exactly</option>
+                <option value="between">Between</option>
+              </select>
+            </div>
+            {amountFilter.mode !== 'any' && (
+              <div className="flex items-end gap-2">
+                <div className="flex-1 min-w-0">
+                  <label htmlFor="search-amount-min" className="block text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                    {amountFilter.mode === 'exact' ? 'Amount' : 'From'}
+                  </label>
+                  <input
+                    id="search-amount-min"
+                    data-testid="search-amount-min"
+                    type="text"
+                    inputMode="decimal"
+                    value={amountFilter.min}
+                    onChange={(e) => setAmountFilter((f) => ({ ...f, min: e.target.value }))}
+                    placeholder="250.00"
+                    className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-800 dark:text-slate-200 font-mono"
+                  />
+                </div>
+                {amountFilter.mode === 'between' && (
+                  <div className="flex-1 min-w-0">
+                    <label htmlFor="search-amount-max" className="block text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                      To
+                    </label>
+                    <input
+                      id="search-amount-max"
+                      data-testid="search-amount-max"
+                      type="text"
+                      inputMode="decimal"
+                      value={amountFilter.max}
+                      onChange={(e) => setAmountFilter((f) => ({ ...f, max: e.target.value }))}
+                      placeholder="1000"
+                      className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-800 dark:text-slate-200 font-mono"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            <div>
+              <label htmlFor="search-date-from" className="block text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                From date
+              </label>
+              <input
+                id="search-date-from"
+                data-testid="search-date-from"
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-800 dark:text-slate-200"
+              />
+            </div>
+            <div>
+              <label htmlFor="search-date-to" className="block text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                To date
+              </label>
+              <input
+                id="search-date-to"
+                data-testid="search-date-to"
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-xs font-medium text-slate-800 dark:text-slate-200"
+              />
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            Amounts match the bill total in its group currency or in the currency it was paid in.
+          </p>
         </div>
 
         {/* Search Results List */}
@@ -1039,11 +1151,11 @@ export function AnalyticsAndSearchPage() {
                   key={exp.id}
                   className="p-4 rounded-2xl border border-slate-200/80 dark:border-white/[0.07] bg-slate-50/60 dark:bg-slate-900/50 hover:border-emerald-500/40 transition-all flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
                 >
-                  <div className="space-y-1.5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <StatusBadge tone="emerald">
-                        <Receipt className="w-3.5 h-3.5" />
-                        <span>{grp?.name ?? 'Direct 1-on-1 Split'}</span>
+                  <div className="space-y-1.5 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                      <StatusBadge tone="emerald" className="max-w-full min-w-0">
+                        <Receipt className="w-3.5 h-3.5 shrink-0" />
+                        <span dir="auto" className="truncate" title={grp?.name}>{grp?.name ?? 'Direct 1-on-1 Split'}</span>
                       </StatusBadge>
                       <StatusBadge tone="slate">{exp.category}</StatusBadge>
                       <StatusBadge tone="blue">
@@ -1058,11 +1170,16 @@ export function AnalyticsAndSearchPage() {
                       )}
                     </div>
 
-                    <div className="text-base font-bold text-slate-900 dark:text-white">
+                    <div
+                      dir="auto"
+                      title={exp.title}
+                      data-testid={`search-result-title-${exp.id}`}
+                      className="truncate text-base font-bold text-slate-900 dark:text-white"
+                    >
                       {exp.title}
                     </div>
 
-                    <p className="text-xs text-slate-600 dark:text-slate-400">
+                    <p dir="auto" className="text-xs text-slate-600 dark:text-slate-400 break-words">
                       {exp.notes}
                     </p>
 
@@ -1085,7 +1202,7 @@ export function AnalyticsAndSearchPage() {
                           key={t}
                           type="button"
                           onClick={() => setSearchQuery(t)}
-                          className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 cursor-pointer"
+                          className="min-h-[44px] text-[11px] font-mono px-2 py-0.5 rounded-md bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 cursor-pointer"
                         >
                           {t}
                         </button>
@@ -1127,7 +1244,7 @@ export function AnalyticsAndSearchPage() {
                           grp?.name ?? 'Direct Non-Group Split'
                         )
                       }
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-colors cursor-pointer"
+                      className="min-h-[44px] inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-colors cursor-pointer"
                     >
                       <span>{exp.groupId ? 'Open in Group' : 'Open on Home'}</span>
                       <ArrowUpRight className="w-4 h-4" weight="bold" />

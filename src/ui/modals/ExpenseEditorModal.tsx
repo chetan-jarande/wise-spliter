@@ -24,11 +24,19 @@ import {
   ExpenseItem,
   ExpensePayer,
   FxStatus,
+  GroupMember,
   ReceiptAttachment,
   SplitMode,
 } from '../../types/ledger';
 import { useLedger } from '../../state/LedgerContext';
-import { createSampleWebpReceiptAttachment } from '../../portability/portability-engine';
+import { getLocalReceiptBlobsForExpense } from '../../storage/local-db';
+import { newId, newUuid } from '../../utils/ids';
+import { normalizePersonName } from '../../utils/group-permissions';
+import { localIsoDate } from '../../utils/direct-settlements';
+import {
+  createSampleWebpReceiptAttachment,
+  sha256Hex,
+} from '../../portability/portability-engine';
 import {
   CurrencyAmount,
   CurrencyPrecisionPill,
@@ -41,14 +49,20 @@ import {
   formatMinorToMajor,
   formatScaledFxRate,
   getCurrency,
+  getMinorScaleFactor,
+  localeUsesDecimalComma,
   parseFxRateToScaled,
+  parseLocaleDecimal,
   parseMajorToMinor,
+  toLocaleDecimalInput,
 } from '../../domain/money/currencies';
 import {
   SplitParticipantInput,
   calculateSplits,
   validateExpenseInvariants,
 } from '../../domain/splits/split-calculator';
+import { lockParticipantUpiIds, pickableMembers } from '../../domain/ledger/ledger-engine';
+import { LIMITS, expenseTextProblems } from '../../types/limits';
 
 export interface ExpenseEditorModalProps {
   isOpen: boolean;
@@ -65,56 +79,6 @@ const SPLIT_MODES: Array<{ mode: SplitMode; label: string; hint: string; verb: s
   { mode: 'adjustment', label: '+/- Adjust', hint: 'Equal + item extras', verb: 'with +/- adjustments' },
 ];
 
-const DEFAULT_ADHOC_PARTICIPANTS: AdHocParticipant[] = [
-  {
-    id: 'adhoc_arjun',
-    displayName: 'Arjun Mehta',
-    invitedEmail: 'arjun.mehta@gmail.com',
-    upiId: 'arjun.mehta@okicici',
-    avatarInitials: 'AM',
-    memberOrder: 0,
-  },
-  {
-    id: 'adhoc_rohan',
-    displayName: 'Rohan Verma',
-    invitedEmail: 'rohan.verma@gmail.com',
-    upiId: 'rohan.verma@okaxis',
-    avatarInitials: 'RV',
-    memberOrder: 1,
-  },
-];
-
-const KNOWN_ADHOC_CONTACTS: Array<Omit<AdHocParticipant, 'memberOrder'>> = [
-  {
-    id: 'adhoc_priya',
-    displayName: 'Priya Nair',
-    invitedEmail: 'priya.nair@gmail.com',
-    upiId: 'priya.nair@oksbi',
-    avatarInitials: 'PN',
-  },
-  {
-    id: 'adhoc_kabir',
-    displayName: 'Kabir Kapoor',
-    invitedEmail: 'kabir.kapoor@gmail.com',
-    upiId: 'kabir.kapoor@okhdfcbank',
-    avatarInitials: 'KK',
-  },
-  {
-    id: 'adhoc_neha',
-    displayName: 'Neha Sharma',
-    invitedEmail: 'neha.sharma@gmail.com',
-    upiId: 'neha.sharma@okicici',
-    avatarInitials: 'NS',
-  },
-  {
-    id: 'adhoc_rohan',
-    displayName: 'Rohan Verma',
-    invitedEmail: 'rohan.verma@gmail.com',
-    upiId: 'rohan.verma@okaxis',
-    avatarInitials: 'RV',
-  },
-];
-
 function computeInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length >= 2) {
@@ -123,13 +87,58 @@ function computeInitials(name: string): string {
   return name.trim().slice(0, 2).toUpperCase() || 'FR';
 }
 
+const INPUT_LOCALE = typeof navigator !== 'undefined' ? navigator.language : undefined;
+
+/** Major-unit string for the amount field, written with the device's decimal separator. */
+function toAmountInput(minor: number, currency: string): string {
+  const plain = formatMinorToMajor(minor, currency, false).replace(/,/g, '');
+  return localeUsesDecimalComma(INPUT_LOCALE) ? plain.replace('.', ',') : plain;
+}
+
+/** Rate date recorded in an audit note such as "(live rate, 2026-11-16)". */
+function auditNoteRateDate(expense: ExpenseItem): string {
+  return /, (\d{4}-\d{2}-\d{2})\)$/.exec(expense.fxAuditNote ?? '')?.[1] ?? expense.expenseDate;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const participantKey = (p: { invitedEmail: string | null; displayName: string }) =>
+  (p.invitedEmail?.trim() || p.displayName.trim()).toLowerCase();
+
+/** The owner's direct-split contacts keyed like the ledger engine's friendKey, so a friend keeps one UUID across bills. */
+function knownDirectParticipants(expenses: ExpenseItem[]): Map<string, AdHocParticipant> {
+  const known = new Map<string, AdHocParticipant>();
+  for (const e of expenses) {
+    if (e.groupId !== null) continue;
+    for (const p of e.adHocParticipants ?? []) {
+      if (UUID_RE.test(p.id) && !known.has(participantKey(p))) known.set(participantKey(p), p);
+    }
+  }
+  return known;
+}
+
+function makeSelfParticipant(
+  user: { fullName: string; email: string; upiId: string },
+  known: Map<string, AdHocParticipant>
+): AdHocParticipant {
+  return {
+    id: known.get(user.email.trim().toLowerCase())?.id ?? newUuid(),
+    displayName: user.fullName,
+    invitedEmail: user.email,
+    upiId: user.upiId || null,
+    avatarInitials: computeInitials(user.fullName),
+    memberOrder: 0,
+  };
+}
+
 export function ExpenseEditorModal({
   isOpen,
   onClose,
-  initialExpense = null,
+  initialExpense: initialExpenseProp = null,
   defaultGroupId,
 }: ExpenseEditorModalProps) {
-  const { dataset, activeGroup, isOnline, upsertExpense, saveDefaultSplitPreset } = useLedger();
+  const { dataset, activeGroup, getFxQuote, upsertExpense, saveDefaultSplitPreset } = useLedger();
+  const [initialExpense, setLoadedExpense] = useState<ExpenseItem | null>(initialExpenseProp);
 
   const activeGroups = useMemo(
     () => dataset.groups.filter((g) => !g.deletedAt),
@@ -137,8 +146,8 @@ export function ExpenseEditorModal({
   );
 
   const resolveInitialScopeGroupId = (): string => {
-    if (initialExpense) {
-      return initialExpense.groupId ?? '';
+    if (initialExpenseProp) {
+      return initialExpenseProp.groupId ?? '';
     }
     if (defaultGroupId !== undefined) {
       return defaultGroupId ?? '';
@@ -147,18 +156,22 @@ export function ExpenseEditorModal({
   };
 
   const [selectedGroupId, setSelectedGroupId] = useState<string>(resolveInitialScopeGroupId);
-  const [adHocParticipants, setAdHocParticipants] = useState<AdHocParticipant[]>(
-    DEFAULT_ADHOC_PARTICIPANTS
-  );
+  const knownAdHoc = useMemo(() => knownDirectParticipants(dataset.expenses), [dataset.expenses]);
+  const [adHocParticipants, setAdHocParticipants] = useState<AdHocParticipant[]>(() => [
+    makeSelfParticipant(dataset.currentUser, knownDirectParticipants(dataset.expenses)),
+  ]);
+  const isSelfParticipant = (p: { invitedEmail?: string | null }) =>
+    Boolean(p.invitedEmail) &&
+    p.invitedEmail!.toLowerCase() === dataset.currentUser.email.toLowerCase();
   const [customFriendName, setCustomFriendName] = useState('');
 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<ExpenseCategoryKey>('food');
-  const [expenseDate, setExpenseDate] = useState('2026-11-11');
+  const [expenseDate, setExpenseDate] = useState(() => localIsoDate());
   const [amountInput, setAmountInput] = useState('');
   const [originalCurrency, setOriginalCurrency] = useState(activeGroup.baseCurrency);
-  const [fxRateInput, setFxRateInput] = useState('1.00');
-  const [fxStatus, setFxStatus] = useState<FxStatus>('identity');
+  const [fxRateInput, setFxRateInput] = useState('');
+  const [fxMode, setFxMode] = useState<'auto' | 'manual' | 'stored'>('auto');
   const [notes, setNotes] = useState('');
   const [tagsInput, setTagsInput] = useState('');
 
@@ -172,6 +185,13 @@ export function ExpenseEditorModal({
   const [attachedReceipts, setAttachedReceipts] = useState<ReceiptAttachment[]>([]);
 
   const isDirectSplit = selectedGroupId === '';
+  const groupRoster = (g: { id: string; members: GroupMember[] }): GroupMember[] =>
+    pickableMembers(
+      g.members,
+      initialExpense?.groupId === g.id
+        ? [...initialExpense.payers.map((p) => p.memberId), ...initialExpense.splits.map((sp) => sp.memberId)]
+        : []
+    );
 
   const selectedGroup = useMemo(() => {
     if (isDirectSplit) return null;
@@ -182,12 +202,13 @@ export function ExpenseEditorModal({
 
   const currentParticipants = useMemo(() => {
     if (selectedGroup) {
-      return selectedGroup.members.map((m) => ({
+      return groupRoster(selectedGroup).map((m) => ({
         id: m.id,
         displayName: m.displayName,
         avatarInitials: m.avatarInitials,
         memberOrder: m.memberOrder,
         userId: m.userId,
+        isFormer: Boolean(m.removedAt),
       }));
     }
     return adHocParticipants.map((p, idx) => ({
@@ -195,9 +216,10 @@ export function ExpenseEditorModal({
       displayName: p.displayName,
       avatarInitials: p.avatarInitials,
       memberOrder: idx,
-      userId: p.id === 'adhoc_arjun' ? dataset.currentUser.id : null,
+      userId: isSelfParticipant(p) ? dataset.currentUser.id : null,
+      isFormer: false,
     }));
-  }, [selectedGroup, adHocParticipants, dataset.currentUser.id]);
+  }, [selectedGroup, adHocParticipants, dataset.currentUser.id, dataset.currentUser.email, initialExpense]);
 
   const allCurrencyOptions = useMemo(() => {
     const primaryCodes = new Set(dataset.currenciesCatalog.map((c) => c.code));
@@ -207,11 +229,12 @@ export function ExpenseEditorModal({
     return [...dataset.currenciesCatalog, ...extras];
   }, [dataset.currenciesCatalog]);
 
-  useEffect(() => {
-    if (!isOpen) return;
+  const initForm = (src: ExpenseItem | null) => {
+    setLoadedExpense(src);
+    setSaveError(null);
 
-    const initGroupId = initialExpense
-      ? initialExpense.groupId ?? ''
+    const initGroupId = src
+      ? src.groupId ?? ''
       : defaultGroupId !== undefined
       ? defaultGroupId ?? ''
       : activeGroup.id;
@@ -225,42 +248,36 @@ export function ExpenseEditorModal({
         : null;
 
     const initAdHoc: AdHocParticipant[] =
-      initialExpense?.adHocParticipants && initialExpense.adHocParticipants.length >= 2
-        ? initialExpense.adHocParticipants.map((p, i) => ({ ...p, memberOrder: i }))
-        : DEFAULT_ADHOC_PARTICIPANTS.map((p, i) => ({ ...p, memberOrder: i }));
+      src?.adHocParticipants && src.adHocParticipants.length >= 2
+        ? src.adHocParticipants.map((p, i) => ({ ...p, memberOrder: i }))
+        : [makeSelfParticipant(dataset.currentUser, knownAdHoc)];
 
     setAdHocParticipants(initAdHoc);
 
-    const activeRoster = targetGroup ? targetGroup.members : initAdHoc;
+    const activeRoster = targetGroup ? groupRoster(targetGroup) : initAdHoc;
     const baseCurr = targetGroup
       ? targetGroup.baseCurrency
-      : initialExpense?.originalCurrency ?? dataset.currentUser.defaultCurrency ?? 'INR';
+      : src?.originalCurrency ?? dataset.currentUser.defaultCurrency ?? 'INR';
 
-    if (initialExpense) {
-      setTitle(initialExpense.title);
-      setCategory(initialExpense.category);
-      setExpenseDate(initialExpense.expenseDate);
-      setOriginalCurrency(initialExpense.originalCurrency);
-      setAmountInput(
-        formatMinorToMajor(
-          initialExpense.originalAmountMinor,
-          initialExpense.originalCurrency,
-          false
-        ).replace(/,/g, '')
-      );
-      setFxRateInput(formatScaledFxRate(initialExpense.fxRateScaled));
-      setFxStatus(initialExpense.fxStatus);
-      setNotes(initialExpense.notes);
-      setTagsInput(initialExpense.tags.join(', '));
-      setSplitMode(initialExpense.splitMode);
+    if (src) {
+      setTitle(src.title);
+      setCategory(src.category);
+      setExpenseDate(src.expenseDate);
+      setOriginalCurrency(src.originalCurrency);
+      setAmountInput(toAmountInput(src.originalAmountMinor, src.originalCurrency));
+      setFxRateInput(formatScaledFxRate(src.fxRateScaled));
+      setFxMode(src.fxStatus === 'identity' ? 'auto' : 'stored');
+      setNotes(src.notes);
+      setTagsInput(src.tags.join(', '));
+      setSplitMode(src.splitMode);
 
-      const multi = initialExpense.payers.length > 1;
+      const multi = src.payers.length > 1;
       setIsMultiPayer(multi);
-      setSinglePayerId(initialExpense.payers[0]?.memberId ?? activeRoster[0]?.id ?? '');
+      setSinglePayerId(src.payers[0]?.memberId ?? activeRoster[0]?.id ?? '');
 
       const payerMap: Record<string, string> = {};
       for (const m of activeRoster) {
-        const foundPayer = initialExpense.payers.find((p) => p.memberId === m.id);
+        const foundPayer = src.payers.find((p) => p.memberId === m.id);
         payerMap[m.id] = foundPayer
           ? formatMinorToMajor(foundPayer.paidMinor, baseCurr, false).replace(/,/g, '')
           : '0';
@@ -270,15 +287,15 @@ export function ExpenseEditorModal({
       const incMap: Record<string, boolean> = {};
       const strMap: Record<string, string> = {};
       for (const m of activeRoster) {
-        const sp = initialExpense.splits.find((s) => s.memberId === m.id);
+        const sp = src.splits.find((s) => s.memberId === m.id);
         incMap[m.id] = sp ? sp.included : true;
         if (!sp) {
           strMap[m.id] = '1';
-        } else if (initialExpense.splitMode === 'percentage') {
+        } else if (src.splitMode === 'percentage') {
           strMap[m.id] = (sp.rawInputValue / 100).toFixed(2).replace(/\.00$/, '');
         } else if (
-          initialExpense.splitMode === 'exact' ||
-          initialExpense.splitMode === 'adjustment'
+          src.splitMode === 'exact' ||
+          src.splitMode === 'adjustment'
         ) {
           strMap[m.id] = formatMinorToMajor(sp.rawInputValue, baseCurr, false).replace(/,/g, '');
         } else {
@@ -287,25 +304,38 @@ export function ExpenseEditorModal({
       }
       setIncludedMembers(incMap);
       setMemberInputStrings(strMap);
-      setAttachedReceipts(initialExpense.receipts ?? []);
+      const baseReceipts = src.receipts ?? [];
+      setAttachedReceipts(baseReceipts);
+      if (baseReceipts.some((r) => !r.dataUrl)) {
+        void getLocalReceiptBlobsForExpense(src.id).then((blobs) => {
+          if (blobs.length === 0) return;
+          const byId = new Map(blobs.map((b) => [b.id, b.dataUrl]));
+          setAttachedReceipts((prev) =>
+            prev.map((r) => {
+              const cachedUrl = byId.get(r.id);
+              return !r.dataUrl && cachedUrl ? { ...r, dataUrl: cachedUrl } : r;
+            })
+          );
+        });
+      }
     } else {
       setTitle('');
       setCategory('food');
-      setExpenseDate('2026-11-11');
+      setExpenseDate(localIsoDate());
       setOriginalCurrency(baseCurr);
       setAmountInput('');
-      setFxRateInput('1.00');
-      setFxStatus('identity');
+      setFxRateInput('');
+      setFxMode('auto');
       setNotes('');
       setTagsInput('');
       setSplitMode('equal');
       setIsMultiPayer(false);
       setAttachedReceipts([]);
       const defaultPayer = targetGroup
-        ? targetGroup.members.find((m) => m.userId === dataset.currentUser.id)?.id ??
-          targetGroup.members[0]?.id ??
+        ? activeRoster.find((m) => 'userId' in m && m.userId === dataset.currentUser.id)?.id ??
+          activeRoster[0]?.id ??
           ''
-        : initAdHoc[0]?.id ?? 'adhoc_arjun';
+        : initAdHoc[0]?.id ?? '';
       setSinglePayerId(defaultPayer);
 
       const payerMap: Record<string, string> = {};
@@ -320,7 +350,15 @@ export function ExpenseEditorModal({
       setIncludedMembers(incMap);
       setMemberInputStrings(strMap);
     }
-  }, [isOpen, initialExpense, defaultGroupId, activeGroup, dataset.groups, dataset.currentUser]);
+  };
+
+  const openKey = isOpen ? `${initialExpenseProp?.id ?? 'new'}|${defaultGroupId ?? ''}` : null;
+  useEffect(() => {
+    if (openKey !== null) initForm(initialExpenseProp);
+  }, [openKey]);
+
+  const liveExpense = initialExpense ? dataset.expenses.find((e) => e.id === initialExpense.id) ?? null : null;
+  const remoteChanged = !!liveExpense && !!initialExpense && liveExpense.hlc !== initialExpense.hlc;
 
   const syncParticipantStateForRoster = (
     roster: Array<{ id: string; memberOrder: number; userId?: string | null }>,
@@ -345,23 +383,16 @@ export function ExpenseEditorModal({
     setIncludedMembers(incMap);
     setMemberInputStrings(strMap);
 
-    if (nextOrigCurrency === nextBaseCurrency) {
-      setFxRateInput('1.00');
-      setFxStatus('identity');
-    } else {
-      const fromInr = dataset.fxRatesToInr[nextOrigCurrency] ?? 1;
-      const toInr = dataset.fxRatesToInr[nextBaseCurrency] ?? 1;
-      const crossRate = fromInr / toInr;
-      setFxRateInput(crossRate.toFixed(crossRate >= 10 ? 2 : 4));
-      setFxStatus(isOnline ? 'live' : 'cached_offline');
-    }
+    setFxRateInput('');
+    setFxMode('auto');
   };
 
   const handleGroupScopeChange = (nextGroupId: string) => {
     setSelectedGroupId(nextGroupId);
     if (nextGroupId === '') {
-      const roster =
-        adHocParticipants.length >= 2 ? adHocParticipants : DEFAULT_ADHOC_PARTICIPANTS;
+      const roster = adHocParticipants.some(isSelfParticipant)
+        ? adHocParticipants
+        : [makeSelfParticipant(dataset.currentUser, knownAdHoc), ...adHocParticipants];
       setAdHocParticipants(roster);
       const nextCurr = originalCurrency || dataset.currentUser.defaultCurrency || 'INR';
       setOriginalCurrency(nextCurr);
@@ -369,7 +400,7 @@ export function ExpenseEditorModal({
         roster.map((p, idx) => ({
           id: p.id,
           memberOrder: idx,
-          userId: p.id === 'adhoc_arjun' ? dataset.currentUser.id : null,
+          userId: isSelfParticipant(p) ? dataset.currentUser.id : null,
         })),
         nextCurr,
         nextCurr
@@ -377,7 +408,7 @@ export function ExpenseEditorModal({
     } else {
       const grp = dataset.groups.find((g) => g.id === nextGroupId && !g.deletedAt) ?? activeGroup;
       setOriginalCurrency(grp.baseCurrency);
-      syncParticipantStateForRoster(grp.members, grp.baseCurrency, grp.baseCurrency);
+      syncParticipantStateForRoster(groupRoster(grp), grp.baseCurrency, grp.baseCurrency);
     }
   };
 
@@ -385,7 +416,7 @@ export function ExpenseEditorModal({
     const trimmedName = contact.displayName.trim();
     if (!trimmedName) return;
     const exists = adHocParticipants.some(
-      (p) => p.id === contact.id || p.displayName.toLowerCase() === trimmedName.toLowerCase()
+      (p) => p.id === contact.id || normalizePersonName(p.displayName) === normalizePersonName(trimmedName)
     );
     if (exists) return;
 
@@ -426,35 +457,27 @@ export function ExpenseEditorModal({
   const handleAddCustomFriend = () => {
     const name = customFriendName.trim();
     if (!name) return;
-    const matchedKnown = KNOWN_ADHOC_CONTACTS.find(
-      (c) => c.displayName.toLowerCase() === name.toLowerCase()
+    const lower = normalizePersonName(name);
+    const known =
+      knownAdHoc.get(lower) ??
+      [...knownAdHoc.values()].find((p) => normalizePersonName(p.displayName) === lower);
+    handleAddAdHocParticipant(
+      known && !isSelfParticipant(known)
+        ? known
+        : { id: newUuid(), displayName: name, invitedEmail: null, upiId: null, avatarInitials: computeInitials(name) }
     );
-    if (matchedKnown) {
-      handleAddAdHocParticipant(matchedKnown);
-    } else {
-      const slug = name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_|_$/g, '');
-      handleAddAdHocParticipant({
-        id: `adhoc_${slug || 'friend'}_${Date.now()}`,
-        displayName: name,
-        invitedEmail: null,
-        upiId: null,
-        avatarInitials: computeInitials(name),
-      });
-    }
     setCustomFriendName('');
   };
 
   const handleRemoveAdHocParticipant = (participantId: string) => {
-    if (adHocParticipants.length <= 2) return;
+    const target = adHocParticipants.find((p) => p.id === participantId);
+    if (!target || isSelfParticipant(target)) return;
     const filtered = adHocParticipants
       .filter((p) => p.id !== participantId)
       .map((p, idx) => ({ ...p, memberOrder: idx }));
     setAdHocParticipants(filtered);
     if (singlePayerId === participantId) {
-      setSinglePayerId(filtered[0]?.id ?? 'adhoc_arjun');
+      setSinglePayerId(filtered[0]?.id ?? '');
     }
     if (splitMode === 'percentage') {
       const activeIds = filtered
@@ -476,55 +499,50 @@ export function ExpenseEditorModal({
 
   const handleCurrencyChange = (nextCurrency: string) => {
     setOriginalCurrency(nextCurrency);
-    const targetBase = selectedGroup ? selectedGroup.baseCurrency : nextCurrency;
-    if (nextCurrency === targetBase) {
-      setFxRateInput('1.00');
-      setFxStatus('identity');
-    } else {
-      const fromInr = dataset.fxRatesToInr[nextCurrency] ?? 1;
-      const toInr = dataset.fxRatesToInr[targetBase] ?? 1;
-      const crossRate = fromInr / toInr;
-      setFxRateInput(crossRate.toFixed(crossRate >= 10 ? 2 : 4));
-      setFxStatus(isOnline ? 'live' : 'cached_offline');
-    }
+    setFxRateInput('');
+    setFxMode('auto');
   };
 
   const originalAmountMinor = useMemo(
-    () => Math.max(0, parseMajorToMinor(amountInput, originalCurrency)),
+    () => Math.max(0, parseMajorToMinor(amountInput, originalCurrency, INPUT_LOCALE)),
     [amountInput, originalCurrency]
   );
 
-  const fxRateScaled = useMemo(() => {
-    if (originalCurrency === effectiveBaseCurrency) return 100000000;
-    return parseFxRateToScaled(fxRateInput);
-  }, [originalCurrency, effectiveBaseCurrency, fxRateInput]);
+  const needsFx = originalCurrency !== effectiveBaseCurrency;
+  const manualRateScaled = parseFxRateToScaled(fxRateInput);
+  const storedFxUsable =
+    fxMode === 'stored' &&
+    !!initialExpense &&
+    initialExpense.fxRateScaled > 0 &&
+    initialExpense.originalCurrency === originalCurrency &&
+    initialExpense.groupCurrency === effectiveBaseCurrency;
+  const autoQuote = needsFx && fxMode === 'auto' ? getFxQuote(originalCurrency, effectiveBaseCurrency) : null;
+  const activeFx: { rateScaled: number; status: FxStatus; rateDate: string } | null = !needsFx
+    ? { rateScaled: 100000000, status: 'identity', rateDate: expenseDate }
+    : fxMode === 'manual'
+      ? manualRateScaled > 0
+        ? { rateScaled: manualRateScaled, status: 'manual', rateDate: expenseDate }
+        : null
+      : storedFxUsable
+        ? { rateScaled: initialExpense.fxRateScaled, status: initialExpense.fxStatus, rateDate: auditNoteRateDate(initialExpense) }
+        : autoQuote
+          ? { rateScaled: autoQuote.rateScaled, status: autoQuote.status, rateDate: autoQuote.rateDate }
+          : null;
+  const fxMissing = needsFx && !activeFx;
 
   const fxConversion = useMemo(
     () =>
-      convertMinorAmountWithFx({
-        originalMinor: originalAmountMinor,
-        fromCurrency: originalCurrency,
-        toCurrency: effectiveBaseCurrency,
-        fxRateScaled,
-        fxStatus:
-          originalCurrency === effectiveBaseCurrency
-            ? 'identity'
-            : fxStatus === 'identity'
-            ? isOnline
-              ? 'live'
-              : 'cached_offline'
-            : fxStatus,
-        dateIso: expenseDate,
-      }),
-    [
-      originalAmountMinor,
-      originalCurrency,
-      effectiveBaseCurrency,
-      fxRateScaled,
-      fxStatus,
-      isOnline,
-      expenseDate,
-    ]
+      activeFx
+        ? convertMinorAmountWithFx({
+            originalMinor: originalAmountMinor,
+            fromCurrency: originalCurrency,
+            toCurrency: effectiveBaseCurrency,
+            fxRateScaled: activeFx.rateScaled,
+            fxStatus: activeFx.status,
+            dateIso: activeFx.rateDate,
+          })
+        : { convertedMinor: 0, fxAuditNote: null },
+    [originalAmountMinor, originalCurrency, effectiveBaseCurrency, activeFx?.rateScaled, activeFx?.status, activeFx?.rateDate]
   );
 
   const totalConvertedMinor = fxConversion.convertedMinor;
@@ -606,7 +624,7 @@ export function ExpenseEditorModal({
     setSplitMode(preset.splitMode);
     const incMap: Record<string, boolean> = {};
     const strMap: Record<string, string> = {};
-    for (const m of selectedGroup.members) {
+    for (const m of groupRoster(selectedGroup)) {
       const rawVal = preset.memberValues[m.id];
       const isInc = rawVal !== undefined && (preset.splitMode === 'adjustment' || rawVal > 0);
       incMap[m.id] = isInc;
@@ -636,9 +654,9 @@ export function ExpenseEditorModal({
       } else if (splitMode === 'equal') {
         rawInputValue = 1;
       } else if (splitMode === 'shares') {
-        rawInputValue = Math.max(0, Math.round(Number(strVal) || 0));
+        rawInputValue = Number(parseLocaleDecimal(strVal, 0) ?? 0n);
       } else if (splitMode === 'percentage') {
-        rawInputValue = Math.max(0, Math.round((Number(strVal) || 0) * 100));
+        rawInputValue = Number(parseLocaleDecimal(strVal, 2) ?? 0n);
       } else {
         rawInputValue = parseMajorToMinor(strVal, effectiveBaseCurrency);
       }
@@ -709,19 +727,26 @@ export function ExpenseEditorModal({
     multiPayerInputs,
   ]);
 
-  const validation = useMemo(
-    () =>
-      validateExpenseInvariants({
-        amountMinor: totalConvertedMinor,
-        splitMode,
-        payers: computedPayers,
-        splits: computedSplits,
-      }),
-    [totalConvertedMinor, splitMode, computedPayers, computedSplits]
-  );
+  const parsedTags = tagsInput
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => (t.startsWith('#') ? t : `#${t}`));
+  const textProblems = expenseTextProblems({ title: title.trim(), notes: notes.trim(), tags: parsedTags });
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const needsMoreParticipants = isDirectSplit && adHocParticipants.length < 2;
+  const validation = useMemo(() => {
+    const result = validateExpenseInvariants({
+      amountMinor: totalConvertedMinor,
+      splitMode,
+      payers: computedPayers,
+      splits: computedSplits,
+    });
+    return needsMoreParticipants || fxMissing || textProblems.length > 0 ? { ...result, valid: false } : result;
+  }, [totalConvertedMinor, splitMode, computedPayers, computedSplits, needsMoreParticipants, fxMissing, textProblems.length]);
 
   const handleAttachSampleReceipt = () => {
-    const draftExpId = initialExpense?.id ?? `exp_${Date.now()}`;
+    const draftExpId = initialExpense?.id ?? newId('exp');
     const sampleReceipt = createSampleWebpReceiptAttachment(
       draftExpId,
       title.trim() || 'Shared Bill Receipt',
@@ -734,7 +759,7 @@ export function ExpenseEditorModal({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const draftExpId = initialExpense?.id ?? `exp_${Date.now()}`;
+    const draftExpId = initialExpense?.id ?? newId('exp');
     const baseName = file.name.replace(/\.[^.]+$/, '') || 'receipt';
     const webpFileName = file.type === 'application/pdf' ? file.name : `${baseName}.webp`;
     const sizeKb = Math.max(1, Math.round(file.size / 1024));
@@ -743,18 +768,23 @@ export function ExpenseEditorModal({
     reader.onload = () => {
       const rawDataUrl = typeof reader.result === 'string' ? reader.result : '';
       const appendAttachment = (finalDataUrl: string, finalMime: string) => {
+        const commaIdx = finalDataUrl.indexOf(',');
+        const b64Len = commaIdx >= 0 ? finalDataUrl.length - commaIdx - 1 : finalDataUrl.length;
+        const postCompressBytes = Math.max(1, Math.floor((b64Len * 3) / 4));
+        const computedSizeKb = Math.max(1, Math.round(postCompressBytes / 1024));
         const attachment: ReceiptAttachment = {
-          id: `rcp_${draftExpId}_${Date.now()}`,
+          id: newId('rcp'),
           expenseId: draftExpId,
           fileName: webpFileName,
           mimeType: finalMime,
-          sizeKb,
+          sizeKb: finalDataUrl ? computedSizeKb : sizeKb,
           uploadedByName: dataset.currentUser.fullName,
           createdAt: new Date().toISOString(),
-          previewNote:
-            'Compressed WebP receipt stored in Local IndexedDB (local_receipt_blobs) & Supabase Storage (wise-spliter-receipts)',
-          storageBucket: 'wise-spliter-receipts',
-          storagePath: `receipts/${draftExpId}.webp`,
+          previewNote: 'Saved privately on this device (0 KB uploaded to cloud)',
+          sha256: sha256Hex(finalDataUrl),
+          localDeviceOnly: true,
+          storageBucket: 'local-device-only',
+          storagePath: `local-device/${draftExpId}.webp`,
           dataUrl: finalDataUrl,
         };
         setAttachedReceipts((prev) => [...prev, attachment]);
@@ -813,12 +843,13 @@ export function ExpenseEditorModal({
   };
 
   const handleSaveExpense = () => {
-    if (!validation.valid) return;
-    const parsedTags = tagsInput
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .map((t) => (t.startsWith('#') ? t : `#${t}`));
+    if (!validation.valid || !activeFx) return;
+
+    const lockedAdHocParticipants = () => {
+      const myId = adHocParticipants.find(isSelfParticipant)?.id ?? null;
+      const isOwner = !initialExpense || initialExpense.createdByMemberId === myId;
+      return lockParticipantUpiIds(adHocParticipants, initialExpense?.adHocParticipants, myId, isOwner);
+    };
 
     const defaultTags = isDirectSplit
       ? ['#direct-split', '#no-group', `#${category}`]
@@ -827,7 +858,7 @@ export function ExpenseEditorModal({
     const payload = {
       id: initialExpense?.id,
       groupId: isDirectSplit ? null : selectedGroup!.id,
-      adHocParticipants: isDirectSplit ? adHocParticipants : undefined,
+      adHocParticipants: isDirectSplit ? lockedAdHocParticipants() : undefined,
       title:
         title.trim() ||
         (isDirectSplit ? 'Direct Non-Group Expense' : 'Shared Group Expense'),
@@ -837,22 +868,25 @@ export function ExpenseEditorModal({
       expenseDate,
       originalCurrency,
       originalAmountMinor,
-      fxRateScaled,
-      fxStatus:
-        originalCurrency === effectiveBaseCurrency
-          ? 'identity'
-          : fxStatus === 'identity'
-          ? isOnline
-            ? 'live'
-            : 'cached_offline'
-          : fxStatus,
+      fxRateScaled: activeFx.rateScaled,
+      fxStatus: activeFx.status,
+      fxRateDate: activeFx.rateDate,
       splitMode,
       payers: computedPayers,
       splits: computedSplits,
       receipts: attachedReceipts,
+      baseHlc: initialExpense?.hlc,
     };
 
-    upsertExpense(payload as unknown as Parameters<typeof upsertExpense>[0]);
+    try {
+      if (!upsertExpense(payload as unknown as Parameters<typeof upsertExpense>[0])) {
+        setSaveError('This bill could not be saved. Check the details above and try again.');
+        return;
+      }
+    } catch {
+      setSaveError('This bill could not be saved. Check the amount and exchange rate, then try again.');
+      return;
+    }
     onClose();
   };
 
@@ -880,15 +914,17 @@ export function ExpenseEditorModal({
   const applyAmountString = (nextVal: string) => {
     setAmountInput(nextVal);
     if (splitMode === 'exact') {
-      const nextOrigMinor = Math.max(0, parseMajorToMinor(nextVal, originalCurrency));
-      const nextConv = convertMinorAmountWithFx({
-        originalMinor: nextOrigMinor,
-        fromCurrency: originalCurrency,
-        toCurrency: effectiveBaseCurrency,
-        fxRateScaled,
-        fxStatus: 'live',
-        dateIso: expenseDate,
-      }).convertedMinor;
+      const nextOrigMinor = Math.max(0, parseMajorToMinor(nextVal, originalCurrency, INPUT_LOCALE));
+      const nextConv = activeFx
+        ? convertMinorAmountWithFx({
+            originalMinor: nextOrigMinor,
+            fromCurrency: originalCurrency,
+            toCurrency: effectiveBaseCurrency,
+            fxRateScaled: activeFx.rateScaled,
+            fxStatus: activeFx.status,
+            dateIso: activeFx.rateDate,
+          }).convertedMinor
+        : 0;
       const eqSplits = calculateSplits({
         totalMinor: nextConv,
         originalTotalMinor: nextOrigMinor,
@@ -914,15 +950,9 @@ export function ExpenseEditorModal({
   };
 
   const handleQuickAddPreset = (incrementMajor: number) => {
-    const currentNumeric = Number(amountInput) || 0;
-    const nextNumeric = currentNumeric + incrementMajor;
-    const formatted =
-      origMeta.decimals === 0
-        ? String(Math.round(nextNumeric))
-        : Number.isInteger(nextNumeric)
-        ? String(nextNumeric)
-        : nextNumeric.toFixed(origMeta.decimals);
-    applyAmountString(formatted);
+    const nextMinor = originalAmountMinor + incrementMajor * Number(getMinorScaleFactor(originalCurrency));
+    const text = toAmountInput(nextMinor, originalCurrency);
+    applyAmountString(/[.,]/.test(text) ? text.replace(/0+$/, '').replace(/[.,]$/, '') : text);
   };
 
   // Splitwise-style live human-readable split summary sentence
@@ -1003,6 +1033,24 @@ export function ExpenseEditorModal({
             </button>
           </div>
 
+          {remoteChanged && liveExpense && (
+            <div
+              data-testid="expense-remote-update-notice"
+              role="status"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-sky-500/30 bg-sky-500/[0.06] px-3.5 py-2.5 text-xs text-slate-700 dark:text-slate-200"
+            >
+              <span>This bill was updated on another device. Your changes are kept until you reload it.</span>
+              <button
+                type="button"
+                data-testid="expense-reload-remote-btn"
+                onClick={() => initForm(liveExpense)}
+                className="min-h-[44px] rounded-xl px-3 py-2 font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-500/10 cursor-pointer"
+              >
+                Reload latest version
+              </button>
+            </div>
+          )}
+
           {/* Group / Scope Selector */}
           <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-slate-900/60 p-3.5">
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
@@ -1049,7 +1097,7 @@ export function ExpenseEditorModal({
               {/* Active Ad-Hoc Participants Pills */}
               <div className="flex flex-wrap items-center gap-2">
                 {adHocParticipants.map((p) => {
-                  const canRemove = adHocParticipants.length > 2;
+                  const canRemove = !isSelfParticipant(p);
                   return (
                     <span
                       key={p.id}
@@ -1059,7 +1107,7 @@ export function ExpenseEditorModal({
                         {p.avatarInitials}
                       </span>
                       <span>{p.displayName}</span>
-                      {p.id === 'adhoc_arjun' && (
+                      {isSelfParticipant(p) && (
                         <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">
                           (You)
                         </span>
@@ -1079,37 +1127,17 @@ export function ExpenseEditorModal({
                 })}
               </div>
 
-              {/* Quick-Add Known Contacts + Custom Friend Input */}
+              {/* Custom Friend Input */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1 border-t border-slate-200/70 dark:border-white/10">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mr-1">
-                    Quick add:
-                  </span>
-                  {KNOWN_ADHOC_CONTACTS.map((c) => {
-                    const alreadyAdded = adHocParticipants.some(
-                      (p) =>
-                        p.id === c.id ||
-                        p.displayName.toLowerCase() === c.displayName.toLowerCase()
-                    );
-                    if (alreadyAdded) return null;
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => handleAddAdHocParticipant(c)}
-                        className="inline-flex items-center gap-1 rounded-lg bg-white dark:bg-slate-800 hover:bg-emerald-500/10 border border-slate-200 dark:border-white/10 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 transition-colors"
-                      >
-                        <Plus className="w-3 h-3 text-[#059669]" weight="bold" />
-                        <span>{c.displayName}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                  Add the friends you are splitting this bill with.
+                </span>
 
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
                     data-testid="adhoc-friend-name-input"
+                    maxLength={LIMITS.personName}
                     value={customFriendName}
                     onChange={(e) => setCustomFriendName(e.target.value)}
                     onKeyDown={(e) => {
@@ -1144,6 +1172,7 @@ export function ExpenseEditorModal({
               <input
                 type="text"
                 data-testid="expense-title-input"
+                maxLength={LIMITS.expenseTitle}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g., Thalassa Cliff Dinner or Blue Tokai Coffee"
@@ -1177,13 +1206,14 @@ export function ExpenseEditorModal({
                 Bill Amount ({originalCurrency})
               </label>
               <input
-                type="number"
-                step="any"
-                min="0"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
                 data-testid="expense-amount-input"
                 value={amountInput}
                 onChange={(e) => applyAmountString(e.target.value)}
-                placeholder="0.00"
+                aria-invalid={amountInput.trim() !== '' && originalAmountMinor <= 0}
+                placeholder={toAmountInput(0, originalCurrency)}
                 className="w-full rounded-xl border border-slate-300 dark:border-white/15 bg-slate-50 dark:bg-slate-900/90 px-3.5 py-2.5 font-mono tabular-nums text-sm font-semibold text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#059669]"
               />
             </div>
@@ -1215,6 +1245,7 @@ export function ExpenseEditorModal({
               </label>
               <input
                 type="date"
+                data-testid="expense-date-input"
                 value={expenseDate}
                 onChange={(e) => setExpenseDate(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 dark:border-white/15 bg-slate-50 dark:bg-slate-900/90 px-3.5 py-2.5 font-mono text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#059669]"
@@ -1304,14 +1335,16 @@ export function ExpenseEditorModal({
                     1 {originalCurrency} =
                   </span>
                   <input
-                    type="number"
-                    step="any"
-                    min="0.0001"
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
                     data-testid="expense-fx-rate-input"
-                    value={fxRateInput}
+                    value={toLocaleDecimalInput(fxMode === 'manual' ? fxRateInput : activeFx ? formatScaledFxRate(activeFx.rateScaled) : '', INPUT_LOCALE)}
+                    placeholder="Enter rate"
+                    aria-invalid={fxMissing}
                     onChange={(e) => {
-                      setFxRateInput(e.target.value);
-                      setFxStatus('manual');
+                      setFxRateInput(toLocaleDecimalInput(e.target.value, INPUT_LOCALE));
+                      setFxMode('manual');
                     }}
                     className="w-28 rounded-lg border border-emerald-500/40 bg-white dark:bg-slate-900 px-2.5 py-1 font-mono tabular-nums text-xs font-semibold text-slate-900 dark:text-slate-100"
                   />
@@ -1321,7 +1354,13 @@ export function ExpenseEditorModal({
                 </div>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-300">
-                <span>{fxConversion.fxAuditNote}</span>
+                {fxMissing ? (
+                  <span data-testid="fx-rate-missing" className="font-semibold text-amber-700 dark:text-amber-300">
+                    No exchange rate is available for {originalCurrency} to {effectiveBaseCurrency}. Enter the rate to save this bill.
+                  </span>
+                ) : (
+                  <span data-testid="fx-audit-note">{fxConversion.fxAuditNote}</span>
+                )}
                 <span className="font-mono tabular-nums font-bold text-emerald-700 dark:text-emerald-300">
                   Converted Total:{' '}
                   <CurrencyAmount
@@ -1346,7 +1385,7 @@ export function ExpenseEditorModal({
                 type="button"
                 data-testid="multi-payer-toggle"
                 onClick={handleToggleMultiPayer}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                className={`min-h-[44px] inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
                   isMultiPayer
                     ? 'bg-[#059669] text-white'
                     : 'bg-slate-200/80 dark:bg-white/10 text-slate-700 dark:text-slate-300 hover:bg-slate-300/70'
@@ -1364,6 +1403,9 @@ export function ExpenseEditorModal({
                     <button
                       key={m.id}
                       type="button"
+                      data-testid={`payer-chip-${m.id}`}
+                      disabled={m.isFormer}
+                      title={m.isFormer ? 'Former member: kept on this bill, cannot be picked as a new payer' : undefined}
                       onClick={() => setSinglePayerId(m.id)}
                       className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all ${
                         selected
@@ -1374,7 +1416,7 @@ export function ExpenseEditorModal({
                       <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/15 text-[10px] font-bold">
                         {m.avatarInitials}
                       </span>
-                      <span>{m.displayName}</span>
+                      <span>{m.displayName}{m.isFormer ? ' (former member)' : ''}</span>
                     </button>
                   );
                 })}
@@ -1392,13 +1434,14 @@ export function ExpenseEditorModal({
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs font-mono text-slate-400">{baseMeta.symbol}</span>
                       <input
-                        type="number"
-                        step="any"
-                        min="0"
+                        type="text"
+                        inputMode="decimal"
+                        autoComplete="off"
                         data-testid={`payer-input-${m.id}`}
-                        value={multiPayerInputs[m.id] ?? '0'}
+                        disabled={m.isFormer}
+                        value={toLocaleDecimalInput(multiPayerInputs[m.id] ?? '0', INPUT_LOCALE)}
                         onChange={(e) =>
-                          setMultiPayerInputs((prev) => ({ ...prev, [m.id]: e.target.value }))
+                          setMultiPayerInputs((prev) => ({ ...prev, [m.id]: toLocaleDecimalInput(e.target.value, INPUT_LOCALE) }))
                         }
                         className="w-24 rounded-lg border border-slate-300 dark:border-white/15 bg-slate-50 dark:bg-slate-900 px-2 py-1 text-right font-mono tabular-nums text-xs text-slate-900 dark:text-slate-100"
                       />
@@ -1492,10 +1535,11 @@ export function ExpenseEditorModal({
                         : 'border-slate-200/50 dark:border-white/5 bg-slate-100/50 dark:bg-slate-900/30 opacity-60'
                     }`}
                   >
-                    <label className="flex items-center gap-2.5 cursor-pointer min-h-[32px]">
+                    <label className="flex items-center gap-2.5 cursor-pointer min-h-[44px]">
                       <input
                         type="checkbox"
                         data-testid={`split-include-${m.id}`}
+                        disabled={m.isFormer}
                         checked={isInc}
                         onChange={(e) =>
                           setIncludedMembers((prev) => ({ ...prev, [m.id]: e.target.checked }))
@@ -1508,6 +1552,11 @@ export function ExpenseEditorModal({
                       <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                         {m.displayName}
                       </span>
+                      {m.isFormer && (
+                        <StatusBadge tone="amber">
+                          <span data-testid={`former-member-chip-${m.id}`}>Former member</span>
+                        </StatusBadge>
+                      )}
                       {hasRotatedRemainder && (
                         <StatusBadge tone="amber">
                           <span>+1 {minorUnitLabel} rotated</span>
@@ -1530,14 +1579,16 @@ export function ExpenseEditorModal({
                             </span>
                           )}
                           <input
-                            type="number"
-                            step="any"
+                            type="text"
+                            inputMode={splitMode === 'adjustment' ? 'text' : 'decimal'}
+                            autoComplete="off"
                             data-testid={`split-input-${m.id}`}
-                            value={memberInputStrings[m.id] ?? ''}
+                            disabled={m.isFormer}
+                            value={toLocaleDecimalInput(memberInputStrings[m.id] ?? '', INPUT_LOCALE)}
                             onChange={(e) =>
                               setMemberInputStrings((prev) => ({
                                 ...prev,
-                                [m.id]: e.target.value,
+                                [m.id]: toLocaleDecimalInput(e.target.value, INPUT_LOCALE),
                               }))
                             }
                             className="w-24 rounded-lg border border-slate-300 dark:border-white/15 bg-slate-50 dark:bg-slate-800 px-2.5 py-1 text-right font-mono tabular-nums text-xs font-semibold text-slate-900 dark:text-slate-100"
@@ -1571,6 +1622,8 @@ export function ExpenseEditorModal({
               </label>
               <input
                 type="text"
+                data-testid="expense-notes-input"
+                maxLength={LIMITS.expenseNotes}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="e.g., Includes tip, drinks, or room upgrade..."
@@ -1583,11 +1636,18 @@ export function ExpenseEditorModal({
               </label>
               <input
                 type="text"
+                data-testid="expense-tags-input"
                 value={tagsInput}
                 onChange={(e) => setTagsInput(e.target.value)}
+                aria-invalid={textProblems.length > 0}
                 placeholder="#dinner, #goa, #villa"
                 className="w-full rounded-xl border border-slate-300 dark:border-white/15 bg-slate-50 dark:bg-slate-900/90 px-3.5 py-2 font-mono text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#059669]"
               />
+              {textProblems.length > 0 && (
+                <p data-testid="expense-text-problems" className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+                  {textProblems.join(' ')}
+                </p>
+              )}
             </div>
           </div>
 
@@ -1605,7 +1665,7 @@ export function ExpenseEditorModal({
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  Saved instantly on your device for offline viewing and backed up when online.
+                  Saved privately on this device (0 KB uploaded to cloud).
                 </p>
               </div>
 
@@ -1658,7 +1718,9 @@ export function ExpenseEditorModal({
                           </span>
                         </div>
                         <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                          Ready for offline viewing &amp; cloud sync
+                          {rcp.dataUrl
+                            ? 'Stored on this device only (0 KB uploaded to cloud)'
+                            : `Stored on ${rcp.uploadedByName}'s device (0 KB uploaded to cloud)`}
                         </div>
                       </div>
                     </div>
@@ -1702,6 +1764,8 @@ export function ExpenseEditorModal({
                     ? 'Enter a bill amount above to calculate shares'
                     : validation.valid
                     ? `100% Reconciled • ${formatMinorToMajor(0, effectiveBaseCurrency)} left - Ready to save`
+                    : needsMoreParticipants
+                    ? 'Add at least one friend to split this bill with'
                     : validation.unallocatedSplitMinor > 0
                     ? `${formatMinorToMajor(validation.unallocatedSplitMinor, effectiveBaseCurrency)} left to assign`
                     : validation.unallocatedSplitMinor < 0
@@ -1760,6 +1824,12 @@ export function ExpenseEditorModal({
               </ul>
             )}
           </div>
+
+          {saveError && (
+            <p data-testid="expense-save-error" role="alert" className="text-xs font-semibold text-rose-700 dark:text-rose-300">
+              {saveError}
+            </p>
+          )}
 
           {/* Modal Footer Actions */}
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-200/80 dark:border-white/10">

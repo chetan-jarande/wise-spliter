@@ -23,6 +23,25 @@
   }
 }
 
+/* Touch targets: at least 44x44px on phones and touch screens, unlayered so it beats compact utilities */
+@media (max-width: 640px), (pointer: coarse) {
+  button,
+  [role='button'],
+  summary,
+  select,
+  input:not([type='checkbox']):not([type='radio']):not([type='hidden']):not([type='range']) {
+    min-height: 44px;
+  }
+  button,
+  [role='button'] {
+    min-width: 44px;
+  }
+  summary {
+    display: flex;
+    align-items: center;
+  }
+}
+
 /* Progressive disclosure details/summary reset */
 details.ws-disclosure > summary {
   list-style: none;

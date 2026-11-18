@@ -31,7 +31,7 @@ const FALLBACK_HELP_GUIDES: HelpGuideSection[] = [
       'See whether friends owe you or you owe them at a glance, split a bill in seconds, or open your 3 most recent groups.',
     whereToFindWhat: [
       'Overall Standing: Plain-English summary of whether you are owed, owe, or are settled up.',
-      '+ Split a Bill: Split a casual 1-on-1 meal (no group needed) or add a bill to any group.',
+      'Split a Bill: Split a casual 1-on-1 meal (no group needed) or add a bill to any group.',
       'Recent Groups (Top 3): Jump straight into your 3 most recently active shared groups.',
       'Direct Splits: 1-on-1 or casual bills split with friends outside any group.',
     ],
@@ -40,7 +40,7 @@ const FALLBACK_HELP_GUIDES: HelpGuideSection[] = [
         stepNumber: 1,
         title: 'Split a Group or 1-on-1 Bill',
         description:
-          "Tap '+ Split a Bill' on Home. Leave scope as 'No Group' for a quick 1-on-1 split, or choose a group.",
+          "Tap 'Split a Bill' on Home. Leave scope as 'No Group' for a quick 1-on-1 split, or choose a group.",
         targetTab: 'home',
         actionLabel: 'Start a Split',
       },
@@ -78,7 +78,7 @@ const FALLBACK_HELP_GUIDES: HelpGuideSection[] = [
         stepNumber: 1,
         title: 'Add a Bill to This Group',
         description:
-          "Tap '+ Add Expense' - this group is pre-selected automatically with Equal, Exact, %, Shares, and +/- modes.",
+          "Tap 'Add Expense' - this group is pre-selected automatically with Equal, Exact, %, Shares, and +/- modes.",
         targetTab: 'groups',
         actionLabel: 'Add Group Bill',
       },
