@@ -5,7 +5,13 @@
  * SECURITY NOTICE: Never import this file from any frontend component, React context, or browser bundle.
  */
 
-export const DEV_DEFAULT_PASSWORD = 'WiseSpliter@2026';
+export const DEV_DEFAULT_PASSWORD = (() => {
+  const value = process.env.DEV_USER_PASSWORD?.trim();
+  if (!value) {
+    throw new Error('[config] Missing required env var DEV_USER_PASSWORD. Set it in .env.development (see .env.example).');
+  }
+  return value;
+})();
 
 export interface DevDemoProfile {
   id: string;
@@ -21,32 +27,32 @@ export interface DevDemoProfile {
 export const DEV_DEMO_PROFILES: readonly DevDemoProfile[] = [
   {
     id: 'usr_arjun_01',
-    email: 'arjun.mehta@gmail.com',
+    email: 'arjun.mehta@example.com',
     password: DEV_DEFAULT_PASSWORD,
     fullName: 'Arjun Mehta',
     avatarInitials: 'AM',
     defaultCurrency: 'INR',
-    upiId: 'arjun.mehta@okicici',
+    upiId: 'arjun.mehta@upi.test',
     roleLabel: 'Primary Dev User (All 4 Groups + Direct Splits)',
   },
   {
     id: 'usr_rohan_02',
-    email: 'rohan.verma@gmail.com',
+    email: 'rohan.verma@example.com',
     password: DEV_DEFAULT_PASSWORD,
     fullName: 'Rohan Verma',
     avatarInitials: 'RV',
     defaultCurrency: 'INR',
-    upiId: 'rohan.verma@okaxis',
+    upiId: 'rohan.verma@upi.test',
     roleLabel: 'Group Collaborator (Goa, Apt 14B, Kuwait - Isolated from Tokyo)',
   },
   {
     id: 'usr_priya_03',
-    email: 'priya.nair@gmail.com',
+    email: 'priya.nair@example.com',
     password: DEV_DEFAULT_PASSWORD,
     fullName: 'Priya Nair',
     avatarInitials: 'PN',
     defaultCurrency: 'INR',
-    upiId: 'priya.nair@oksbi',
+    upiId: 'priya.nair@upi.test',
     roleLabel: 'Group Collaborator (Goa, Tokyo, Kuwait - Isolated from Apt 14B)',
   },
 ] as const;

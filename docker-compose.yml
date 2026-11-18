@@ -20,7 +20,7 @@ services:
     restart: "no"
     environment:
       SUPABASE_URL: http://host.docker.internal:54321
-      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:-sb_secret_N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:?set SUPABASE_SECRET_KEY in .env.development}
       SUPABASE_SCHEMA: ${SUPABASE_SCHEMA:-wise_spliter}
     command:
       - bun
@@ -68,9 +68,14 @@ services:
       - "4174:4174"
     environment:
       API_PORT: 4174
+      API_HOST: 0.0.0.0
+      NODE_ENV: development
       SUPABASE_URL: http://host.docker.internal:54321
-      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:-sb_secret_N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:?set SUPABASE_SECRET_KEY in .env.development}
       SUPABASE_SCHEMA: ${SUPABASE_SCHEMA:-wise_spliter}
+      GRANT_TOKEN_SECRET: ${GRANT_TOKEN_SECRET:?set GRANT_TOKEN_SECRET in .env.development}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY:?set VITE_SUPABASE_PUBLISHABLE_KEY in .env.development}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
     command: ["bun", "run", "src/server/index.ts"]
     depends_on:
       supabase-preflight:
@@ -96,7 +101,7 @@ services:
     volumes:
       - ./supabase/migrations:/migrations:ro
     environment:
-      PGPASSWORD: postgres
+      PGPASSWORD: ${SUPABASE_DB_PASSWORD:?set SUPABASE_DB_PASSWORD in .env.development}
     entrypoint:
       - sh
       - -c
@@ -105,6 +110,6 @@ services:
         for f in /migrations/*.sql; do
           echo "==> applying $$f"
           psql -v ON_ERROR_STOP=1 -1 \
-            -h host.docker.internal -p 54322 -U postgres -d postgres -f "$$f"
+            -h host.docker.internal -p ${SUPABASE_DB_PORT:-54322} -U postgres -d postgres -f "$$f"
         done
         echo "==> all wise_spliter migrations applied"

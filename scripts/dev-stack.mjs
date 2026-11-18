@@ -29,8 +29,6 @@ function spawnService(label, cmd, args, extraEnv = {}) {
       ...process.env,
       APP_PORT,
       API_PORT,
-      VITE_API_BASE_URL:
-        process.env.VITE_API_BASE_URL || `http://127.0.0.1:${API_PORT}`,
       ...extraEnv,
     },
   });

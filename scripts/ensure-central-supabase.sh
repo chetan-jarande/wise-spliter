@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SUPABASE_DIR="${SUPABASE_DIR:-/home/chetan/projects/my-scripts/setup/dependencies}"
+SUPABASE_DIR="${SUPABASE_DIR:?set SUPABASE_DIR in .env.development}"
 
 cd "$SUPABASE_DIR"
 
 if npx supabase status >/dev/null 2>&1; then
   echo "[supabase-ensure] Centralized Supabase stack is already running."
   docker exec supabase_db_dependencies psql -U postgres -d postgres -c \
-    "CREATE SCHEMA IF NOT EXISTS wise_spliter; GRANT USAGE ON SCHEMA wise_spliter TO anon, authenticated, service_role; NOTIFY pgrst, 'reload schema';" >/dev/null 2>&1 || true
+    "CREATE SCHEMA IF NOT EXISTS wise_spliter; GRANT USAGE ON SCHEMA wise_spliter TO service_role; NOTIFY pgrst, 'reload schema';" >/dev/null 2>&1 || true
   exit 0
 fi
 
@@ -21,7 +21,7 @@ echo "[supabase-ensure] Starting centralized Supabase stack in $SUPABASE_DIR..."
   for _ in $(seq 1 60); do
     if docker inspect -f '{{.State.Running}}' supabase_db_dependencies 2>/dev/null | grep -q true; then
       docker exec supabase_db_dependencies psql -U postgres -d postgres -c \
-        "CREATE SCHEMA IF NOT EXISTS wise_spliter; GRANT USAGE ON SCHEMA wise_spliter TO anon, authenticated, service_role; NOTIFY pgrst, 'reload schema';" >/dev/null 2>&1 && break || true
+        "CREATE SCHEMA IF NOT EXISTS wise_spliter; GRANT USAGE ON SCHEMA wise_spliter TO service_role; NOTIFY pgrst, 'reload schema';" >/dev/null 2>&1 && break || true
     fi
     sleep 1
   done

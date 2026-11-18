@@ -1,0 +1,32 @@
+# syntax=docker/dockerfile:1
+#
+# Wise-Spliter Backend API Service Container (`Dockerfile.api`)
+# Lightweight stateless Bun image for Pyrite Cloud / Cloud Run / Fly.io deployment.
+
+FROM oven/bun:1.2-debian AS deps
+WORKDIR /app
+
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production
+
+FROM oven/bun:1.2-debian AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production \
+    API_HOST=0.0.0.0 \
+    API_PORT=4174 \
+    SUPABASE_SCHEMA=wise_spliter
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json ./package.json
+COPY src/types ./src/types
+COPY src/data ./src/data
+COPY src/domain ./src/domain
+COPY src/server ./src/server
+
+EXPOSE 4174
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD bun -e "fetch('http://127.0.0.1:'+(process.env.API_PORT||4174)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["bun", "run", "src/server/index.ts"]

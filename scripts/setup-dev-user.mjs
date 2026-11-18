@@ -20,14 +20,15 @@ import {
   SUPABASE_SCHEMA,
   SUPABASE_URL,
   getSupabaseAdmin,
-  syncDatasetToSupabase,
+  requireEnv,
+  resetDevQuotas,
+  seedDevDataset,
 } from '../src/server/supabaseAdmin';
 
-const PUBLISHABLE_KEY = (
-  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  process.env.VITE_SUPABASE_ANON_KEY ||
-  'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH'
-).trim();
+const PUBLISHABLE_KEY =
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ||
+  process.env.VITE_SUPABASE_ANON_KEY?.trim() ||
+  requireEnv('VITE_SUPABASE_PUBLISHABLE_KEY');
 
 const APP_PORT = process.env.APP_PORT || '4173';
 const API_PORT = process.env.API_PORT || '4174';
@@ -64,8 +65,9 @@ async function main() {
       (u) => (u.email || '').toLowerCase() === targetEmail
     );
 
+    let authUserId = existingAuthUser?.id ?? null;
     if (!existingAuthUser) {
-      const { error: createErr } = await supabase.auth.admin.createUser({
+      const { data: created, error: createErr } = await supabase.auth.admin.createUser({
         email: profile.email,
         password: profile.password,
         email_confirm: true,
@@ -79,6 +81,7 @@ async function main() {
           `Failed creating Supabase Auth user ${profile.email}: ${createErr.message}`
         );
       }
+      authUserId = created.user.id;
       console.log(
         `[setup-dev-user] Created Supabase Auth user: ${profile.email} (${profile.id})`
       );
@@ -107,27 +110,20 @@ async function main() {
     const hlc = `${Date.now().toString(16).padStart(12, '0')}-0001-${profile.id}`;
     profileRows.push({
       id: profile.id,
-      email: profile.email,
+      auth_user_id: authUserId,
+      email: profile.email.toLowerCase(),
       full_name: profile.fullName,
       avatar_initials: profile.avatarInitials,
       avatar_url: null,
       default_currency: profile.defaultCurrency,
       upi_id: profile.upiId,
-      google_connected: true,
+      google_connected: false,
       updated_at: nowIso,
       hlc,
     });
   }
 
-  // 3. Seed full mock ledger dataset (groups, members, expenses, revisions, settlements, receipts, activity)
-  const syncResult = await syncDatasetToSupabase(initialMockData);
-  if (!syncResult.ok) {
-    throw new Error(
-      `Failed seeding dataset to ${SUPABASE_SCHEMA}: ${syncResult.error}`
-    );
-  }
-
-  // Upsert all 3 profiles into wise_spliter.profiles so every collaborator profile is present
+  // 3. Profiles first (bound to auth.users), then the mock ledger owned by the demo profile
   const { error: profileUpsertError } = await supabase
     .from('profiles')
     .upsert(profileRows, { onConflict: 'id' });
@@ -137,6 +133,12 @@ async function main() {
       `Failed upserting ${SUPABASE_SCHEMA}.profiles: ${profileUpsertError.message}`
     );
   }
+
+  // Seeding (an upsert) and every test or e2e run count against the dev profiles' lifetime quotas.
+  const devIds = DEV_DEMO_PROFILES.map((p) => p.id);
+  await resetDevQuotas(devIds);
+  await seedDevDataset(initialMockData);
+  await resetDevQuotas(devIds);
 
   console.log(
     `[setup-dev-user] Seeded ${initialMockData.groups.length} groups, ${initialMockData.expenses.length} expenses, ${initialMockData.settlements.length} settlements, and ${profileRows.length} profiles into ${SUPABASE_SCHEMA}.*`
@@ -165,11 +167,7 @@ async function main() {
     );
   }
 
-  const backendToken = issueSessionToken({
-    userId: primaryProfile.id,
-    email: primaryProfile.email,
-    fullName: primaryProfile.fullName,
-  });
+  const backendToken = issueSessionToken({ userId: primaryProfile.id, tokenVersion: 0 });
 
   if (!backendToken) {
     throw new Error('Failed to issue verified backend session token');
@@ -198,7 +196,7 @@ async function main() {
     console.log(
       '  ' +
         p.email.padEnd(26) +
-        p.password.padEnd(20) +
+        '$DEV_USER_PASSWORD'.padEnd(20) +
         p.upiId.padEnd(24) +
         p.roleLabel
     );
