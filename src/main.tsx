@@ -3,12 +3,17 @@ import ReactDOM from 'react-dom/client';
 import './index.css';
 import { LedgerProvider } from './state/LedgerContext';
 import { App } from './App';
+import { isNativeCapacitorApp } from './utils/native-platform';
 
 const isDevEnv = Boolean(
   (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV
 );
 
-if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+if (
+  typeof window !== 'undefined' &&
+  'serviceWorker' in navigator &&
+  !isNativeCapacitorApp()
+) {
   window.addEventListener('load', () => {
     if (isDevEnv) {
       navigator.serviceWorker

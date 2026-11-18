@@ -1,7 +1,11 @@
-const CACHE_NAME = 'wise-spliter-offline-v2';
+const CACHE_NAME = 'wise-spliter-offline-v4';
 const PRECACHE_URLS = [
   '/',
   '/index.html',
+  '/favicon.svg',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  '/icons/icon-maskable-512.png',
   '/manifest.webmanifest',
   '/mock-ledger-data.json',
 ];
