@@ -1,1079 +1,414 @@
 /**
- * Wise-Spliter Backend API Service (`node:http`)
- * Runs on API_PORT (default 4174) with zero external framework dependencies.
- * Bridges the frontend sync engine to the centralized Supabase `wise_spliter` schema
- * with HMAC/JWT authentication (HTTP 401), strict user & group-membership isolation (HTTP 403),
- * CORS allowlisting, security headers, and per-IP rate limiting (HTTP 429).
+ * Wise-Spliter Backend API (`node:http`, API_PORT 4174). Authenticates callers with HMAC session
+ * tokens and forwards every read and write to the wise_spliter RPCs with the verified actor id;
+ * the database decides tenant access. Fails closed (503) when the database is unreachable.
  */
 
-import { createServer, IncomingMessage, ServerResponse } from 'node:http';
-import { createClient } from '@supabase/supabase-js';
-import initialMockData from '../data/mock-ledger-data.json';
-import { validateExpenseInvariants } from '../domain/splits/split-calculator';
-import { MockLedgerDataset, UserProfile } from '../types/ledger';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createClient, type User } from '@supabase/supabase-js';
+import type { SyncPushResult } from '../types/sync-contract';
+import { SYNC_PULL_MAX_LIMIT, SYNC_PUSH_MAX_MUTATIONS } from '../types/sync-contract';
 import {
   DEMO_SANDBOX_USER,
+  assertNumericEnv,
   assertProductionSecretsConfigured,
-  authorizeDatasetSyncForUser,
-  authorizeMutationsForUser,
-  authorizeReceiptUploadForUser,
   buildSecurityHeaders,
+  envNum,
   checkAuthLoginRateLimit,
+  checkJoinRateLimit,
   checkRateLimit,
   clearAuthLoginFailures,
-  extractBearerOrSessionToken,
-  filterDatasetForUser,
-  isDemoSandboxUser,
+  isDemoEnabled,
   isOriginAllowed,
-  isUserMemberOfGroup,
-  isUserParticipantInStandaloneExpense,
   issueSessionToken,
   recordAuthLoginFailure,
   serializeClearSessionCookie,
   serializeSessionCookie,
   validateCsrfAndOrigin,
   verifyRequestAuth,
+  type AuthResult,
 } from './securityAndAuth';
 import {
+  PushBusy,
+  DbForbidden,
+  DbUnavailable,
   SUPABASE_SCHEMA,
   SUPABASE_URL,
-  callPullChangesRpc,
-  callPushMutationsRpc,
+  bumpTokenVersion,
   checkSupabaseSchemaHealth,
-  claimPendingGroupMembershipsForEmail,
-  fetchDatasetFromSupabase,
-  fetchExistingDbEntityOwnership,
-  fetchExistingDbGroups,
+  claimMembers,
+  deleteAccount,
+  getProfileById,
   getSupabaseAdmin,
-  resolveDemoSandboxProfile,
-  syncDatasetToSupabase,
-  uploadReceiptToSupabaseStorage,
-  upsertGoogleProfileAndClaimMembers,
+  joinGroup,
+  pullChanges,
+  pushMutations,
+  requireEnv,
+  resolveProfileForAuthUser,
+  type SessionProfile,
 } from './supabaseAdmin';
+import { validateMutation, type ValidatedMutation } from './syncRows';
 
 assertProductionSecretsConfigured();
+assertNumericEnv();
+
+/**
+ * With GoTrue auto-confirm on, anyone can register a password account on someone else's email and
+ * later inherit it when the owner signs in with Google. Production refuses to start in that mode
+ * and re-checks every 10 minutes; the password and Google routes fail closed if it flips on.
+ */
+let confirmationCheck: { ok: boolean; at: number } | null = null;
+export async function assertEmailConfirmationRequired(): Promise<void> {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/settings`, { headers: { apikey: SUPABASE_PUBLISHABLE_KEY } });
+  const settings = (await res.json()) as { mailer_autoconfirm?: unknown };
+  const ok = res.ok && settings.mailer_autoconfirm === false;
+  confirmationCheck = { ok, at: Date.now() };
+  if (!ok) {
+    throw new Error('[security] FATAL: production requires Supabase Auth email confirmation (mailer_autoconfirm must be false).');
+  }
+}
+
+async function requireEmailConfirmationInProduction(): Promise<void> {
+  if (process.env.NODE_ENV !== 'production') return;
+  if (!confirmationCheck || Date.now() - confirmationCheck.at > 10 * 60_000) {
+    await assertEmailConfirmationRequired().catch(() => undefined);
+  }
+  if (!confirmationCheck?.ok) throw new HttpError(503, 'Sign-in is disabled until email confirmation is enforced');
+}
+
+export function resetEmailConfirmationCacheForTests(): void {
+  confirmationCheck = null;
+}
 
 export const API_PORT = Number(process.env.API_PORT || 4174);
 export const API_HOST = (process.env.API_HOST || '127.0.0.1').trim();
-const MAX_JSON_BODY_BYTES = Math.max(
-  1024,
-  Number(process.env.MAX_JSON_BODY_BYTES || 8 * 1024 * 1024)
-);
+export const MAX_JSON_BODY_BYTES = Math.max(1024, envNum('MAX_JSON_BODY_BYTES', 256 * 1024));
 
-const SUPABASE_PUBLISHABLE_KEY = (
-  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  process.env.VITE_SUPABASE_ANON_KEY ||
-  'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH'
-).trim();
+const SUPABASE_PUBLISHABLE_KEY =
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ||
+  process.env.VITE_SUPABASE_ANON_KEY?.trim() ||
+  requireEnv('VITE_SUPABASE_PUBLISHABLE_KEY');
 
-export class PayloadTooLargeError extends Error {
-  public readonly statusCode = 413 as const;
-  constructor(maxBytes: number) {
-    super(`Payload too large: maximum allowed request body is ${maxBytes} bytes`);
-    this.name = 'PayloadTooLargeError';
+class HttpError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
   }
 }
 
-function getRequestOrigin(req: IncomingMessage): string | undefined {
-  const origin = req.headers['origin'];
-  if (typeof origin === 'string') return origin;
-  if (Array.isArray(origin)) return origin[0];
-  return undefined;
-}
-
-function sendJson(
-  req: IncomingMessage,
-  res: ServerResponse,
-  statusCode: number,
-  payload: Record<string, unknown>,
-  extraHeaders?: Record<string, string>
-): void {
-  const body = JSON.stringify(payload);
-  const securityHeaders = buildSecurityHeaders(getRequestOrigin(req));
-  res.writeHead(statusCode, {
+function sendJson(req: IncomingMessage, res: ServerResponse, status: number, payload: unknown, extra?: Record<string, string>): void {
+  res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
-    ...(statusCode === 413 ? { Connection: 'close' } : {}),
-    ...securityHeaders,
-    ...(extraHeaders || {}),
+    ...(status === 413 ? { Connection: 'close' } : {}),
+    ...buildSecurityHeaders(req.headers['origin'] as string | undefined),
+    ...(extra ?? {}),
   });
-  res.end(body, () => {
-    if (statusCode === 413 && !req.complete) {
-      req.destroy();
-    }
+  res.end(JSON.stringify(payload), () => {
+    if (status === 413 && !req.complete) req.destroy();
   });
 }
 
-async function readJsonBody<T>(
-  req: IncomingMessage,
-  maxBytes: number = MAX_JSON_BODY_BYTES
-): Promise<T> {
-  const declaredLenHeader = req.headers['content-length'];
-  const declaredLen =
-    typeof declaredLenHeader === 'string' ? Number(declaredLenHeader) : NaN;
-  if (Number.isFinite(declaredLen) && declaredLen > maxBytes) {
+async function readJsonBody(req: IncomingMessage, maxBytes = MAX_JSON_BODY_BYTES): Promise<Record<string, unknown>> {
+  const declared = Number(req.headers['content-length']);
+  if (Number.isFinite(declared) && declared > maxBytes) {
     req.pause();
-    throw new PayloadTooLargeError(maxBytes);
+    throw new HttpError(413, `Payload too large: maximum request body is ${maxBytes} bytes`);
   }
-
-  return new Promise<T>((resolve, reject) => {
+  const text = await new Promise<string>((resolve, reject) => {
     const chunks: Buffer[] = [];
-    let totalBytes = 0;
-    let settled = false;
-
-    req.on('data', (chunk: Buffer | string) => {
-      if (settled) return;
-      const buf = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
-      totalBytes += buf.length;
-      if (totalBytes > maxBytes) {
-        settled = true;
-        chunks.length = 0;
+    let total = 0;
+    let done = false;
+    req.on('data', (chunk: Buffer) => {
+      if (done) return;
+      total += chunk.length;
+      if (total > maxBytes) {
+        done = true;
         req.pause();
-        reject(new PayloadTooLargeError(maxBytes));
+        reject(new HttpError(413, `Payload too large: maximum request body is ${maxBytes} bytes`));
         return;
       }
-      chunks.push(buf);
+      chunks.push(chunk);
     });
-    req.on('end', () => {
-      if (settled) return;
-      settled = true;
-      try {
-        const text = Buffer.concat(chunks).toString('utf8');
-        resolve((text ? JSON.parse(text) : {}) as T);
-      } catch (err) {
-        reject(err);
-      }
-    });
-    req.on('error', (err) => {
-      if (settled) return;
-      settled = true;
-      reject(err);
-    });
+    req.on('end', () => !done && ((done = true), resolve(Buffer.concat(chunks).toString('utf8'))));
+    req.on('error', (err) => !done && ((done = true), reject(err)));
   });
+  if (!text) return {};
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+  } catch {
+    // fall through
+  }
+  throw new HttpError(400, 'Request body must be a JSON object');
 }
 
-function handleBodyError(
-  req: IncomingMessage,
-  res: ServerResponse,
-  err: unknown,
-  fallbackMessage: string
-): void {
-  if (err instanceof PayloadTooLargeError) {
-    sendJson(req, res, 413, {
-      ok: false,
-      error: err.message,
-    });
-    return;
-  }
-  sendJson(req, res, 400, {
-    ok: false,
-    error: err instanceof Error ? err.message : fallbackMessage,
-  });
+function sessionResponse(req: IncomingMessage, res: ServerResponse, s: SessionProfile, authMethod: string, extra: object = {}): void {
+  const token = issueSessionToken({ userId: s.profile.id, tokenVersion: s.tokenVersion });
+  sendJson(req, res, 200, { ok: true, authMethod, token, profile: s.profile, ...extra }, { 'Set-Cookie': serializeSessionCookie(token) });
 }
 
-function validateDatasetFinancialInvariants(dataset: MockLedgerDataset): {
-  valid: boolean;
-  violation?: string;
-} {
-  if (!dataset || !Array.isArray(dataset.expenses)) {
-    return {
-      valid: false,
-      violation: 'Invalid dataset payload: missing expenses array',
-    };
-  }
-
-  for (const exp of dataset.expenses) {
-    if (exp.deletedAt) continue;
-    const payerSum = (exp.payers ?? []).reduce(
-      (acc, p) => acc + p.paidMinor,
-      0
-    );
-    const splitSum = (exp.splits ?? [])
-      .filter((s) => s.included)
-      .reduce((acc, s) => acc + s.owedMinor, 0);
-
-    if (payerSum !== exp.amountMinor || splitSum !== exp.amountMinor) {
-      return {
-        valid: false,
-        violation: `Financial invariant failed on expense "${exp.title}" (${exp.id}): amountMinor=${exp.amountMinor}, payerSum=${payerSum}, splitSum=${splitSum}`,
-      };
-    }
-
-    const domainCheck = validateExpenseInvariants({
-      amountMinor: exp.amountMinor,
-      splitMode: exp.splitMode,
-      payers: exp.payers ?? [],
-      splits: exp.splits ?? [],
-    });
-    if (!domainCheck.valid) {
-      return {
-        valid: false,
-        violation: `Financial invariant failed on expense "${exp.title}" (${exp.id}): ${domainCheck.errors.join('; ')}`,
-      };
-    }
-  }
-
-  return { valid: true };
+async function requireAuth(req: IncomingMessage): Promise<Extract<AuthResult, { authenticated: true }>> {
+  const auth = await verifyRequestAuth(req);
+  if (!auth.authenticated) throw new HttpError(auth.status, auth.error);
+  return auth;
 }
 
-export async function handleApiRequest(
-  req: IncomingMessage,
-  res: ServerResponse
-): Promise<void> {
-  const reqOrigin = getRequestOrigin(req);
-  const securityHeaders = buildSecurityHeaders(reqOrigin);
+const isGoogleUser = (u: User): boolean => {
+  const app = (u.app_metadata ?? {}) as { provider?: unknown; providers?: unknown };
+  return app.provider === 'google' || (Array.isArray(app.providers) && app.providers.includes('google'));
+};
 
-  if (req.method === 'OPTIONS') {
-    if (reqOrigin && !isOriginAllowed(reqOrigin)) {
-      sendJson(req, res, 403, {
-        ok: false,
-        error: 'Forbidden: Disallowed CORS preflight origin',
-      });
-      return;
-    }
-    res.writeHead(204, securityHeaders);
-    res.end();
-    return;
+function sessionUsedOAuth(accessToken: string): boolean {
+  try {
+    const claims = JSON.parse(Buffer.from(accessToken.split('.')[1] ?? '', 'base64url').toString('utf8')) as { amr?: unknown };
+    return Array.isArray(claims.amr) && claims.amr.some((m) => (m as { method?: unknown })?.method === 'oauth');
+  } catch {
+    return false;
   }
+}
 
-  const csrfCheck = validateCsrfAndOrigin(req);
-  if (!csrfCheck.allowed) {
-    sendJson(req, res, csrfCheck.status, {
-      ok: false,
-      error: csrfCheck.error,
-    });
-    return;
-  }
+function displayNameOf(u: User): string | undefined {
+  const meta = (u.user_metadata ?? {}) as Record<string, unknown>;
+  const name = meta.full_name ?? meta.name;
+  return typeof name === 'string' ? name : undefined;
+}
 
-  const rateLimit = checkRateLimit(req);
-  if (!rateLimit.allowed) {
-    sendJson(
-      req,
-      res,
-      429,
-      {
-        ok: false,
-        error: 'Rate limit exceeded. Please retry later.',
-        retryAfterSec: rateLimit.retryAfterSec ?? 60,
-      },
-      {
-        'Retry-After': String(rateLimit.retryAfterSec ?? 60),
-      }
-    );
-    return;
-  }
+type Handler = (req: IncomingMessage, res: ServerResponse, url: URL) => Promise<void>;
 
-  const reqUrl = new URL(req.url || '/', `http://127.0.0.1:${API_PORT}`);
 
-  if (req.method === 'GET' && reqUrl.pathname === '/api/health') {
+const routes: Record<string, Handler> = {
+  'GET /api/health': async (req, res) => {
     const health = await checkSupabaseSchemaHealth();
-    sendJson(req, res, 200, {
-      ok: true,
-      service: 'wise-spliter-api',
-      schema: SUPABASE_SCHEMA,
-      authEnforced: true,
-      userIsolationEnforced: true,
-      supabaseReachable: health.reachable,
-      schemaHealth: health.reachable
-        ? { ok: true, schema: SUPABASE_SCHEMA }
-        : null,
-      timestamp: new Date().toISOString(),
+    sendJson(req, res, 200, { ok: true, service: 'wise-spliter-api', schema: SUPABASE_SCHEMA, supabaseReachable: health.reachable, timestamp: new Date().toISOString() });
+  },
+
+  // Server-side demo sessions exist only outside production; the production client demos offline.
+  'POST /api/auth/demo': async (req, res) => {
+    if (!isDemoEnabled()) throw new HttpError(404, 'Demo sandbox is offline-only in production');
+    const body = await readJsonBody(req, 16 * 1024);
+    for (const [k, v] of [['userId', DEMO_SANDBOX_USER.userId], ['email', DEMO_SANDBOX_USER.email]] as const) {
+      if (typeof body[k] === 'string' && (body[k] as string).trim() && (body[k] as string).trim().toLowerCase() !== v) {
+        throw new HttpError(403, 'Forbidden: the demo login only issues sessions for the demo profile');
+      }
+    }
+    const demo = await getProfileById(DEMO_SANDBOX_USER.userId);
+    if (!demo) throw new HttpError(503, 'Demo profile is not seeded (run make setup-dev)');
+    sessionResponse(req, res, demo, 'demo');
+  },
+
+  'POST /api/auth/google': async (req, res) => {
+    const body = await readJsonBody(req, 16 * 1024);
+    const accessToken = typeof body.accessToken === 'string' ? body.accessToken.trim() : '';
+    if (!accessToken) throw new HttpError(401, 'Missing Google access token');
+    await requireEmailConfirmationInProduction();
+    const { data, error } = await getSupabaseAdmin().auth.getUser(accessToken);
+    const user = data?.user;
+    // GoTrue verified the token above; its amr says how this session was authenticated. A session
+    // from a password sign-in must not pass as Google, even once the account has a Google identity.
+    if (error || !user?.email || !user.email_confirmed_at || !isGoogleUser(user) || !sessionUsedOAuth(accessToken)) {
+      throw new HttpError(401, 'Invalid, unverified, or non-Google access token');
+    }
+    const session = await resolveProfileForAuthUser({ authUid: user.id, email: user.email, fullName: displayNameOf(user), create: true });
+    if (!session) throw new HttpError(401, 'This Google account is linked to a different profile');
+    const claimedGroupCount = await claimMembers(session.profile.id);
+    sessionResponse(req, res, session, 'google', { claimedGroupCount });
+  },
+
+  'POST /api/auth/login': async (req, res) => {
+    const body = await readJsonBody(req, 16 * 1024);
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    const limit = checkAuthLoginRateLimit(req, email);
+    if (!limit.allowed) {
+      sendJson(req, res, 429, { ok: false, error: 'Too many failed login attempts. Please wait before trying again.', retryAfterSec: limit.retryAfterSec }, { 'Retry-After': String(limit.retryAfterSec ?? 900) });
+      return;
+    }
+    // Count the attempt before awaiting GoTrue, so a concurrent burst cannot all pass the check;
+    // a successful sign-in clears the (account, IP) counter.
+    recordAuthLoginFailure(req, email);
+    const reject = (): never => {
+      throw new HttpError(401, 'Invalid email or password');
+    };
+    if (!email || !password || password.length > 256) return reject();
+    await requireEmailConfirmationInProduction();
+
+    const authClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     });
-    return;
-  }
+    const { data, error } = await authClient.auth.signInWithPassword({ email, password });
+    const user = data?.user;
+    if (error || !user?.email || !user.email_confirmed_at) return reject();
+    // Only accounts that already have a wise_spliter profile; users of other apps in the project are not accepted.
+    // A Google-linked account never signs in by password: a password set by whoever pre-registered
+    // that email (before the owner used Google) must not open the owner's ledger.
+    const session = await resolveProfileForAuthUser({ authUid: user!.id, email: user!.email!, create: false });
+    if (!session || session.profile.googleConnected || isGoogleUser(user!)) return reject();
+    clearAuthLoginFailures(req, email);
+    await claimMembers(session!.profile.id);
+    sessionResponse(req, res, session!, 'password');
+  },
 
-  if (req.method === 'POST' && reqUrl.pathname === '/api/auth/demo') {
+  // Revokes every token of the user (token_version bump) and clears the cookie.
+  'POST /api/auth/logout': async (req, res) => {
+    const auth = await verifyRequestAuth(req);
+    if (!auth.authenticated && auth.status === 503) throw new HttpError(503, 'Could not revoke the session; try again');
+    if (auth.authenticated) await bumpTokenVersion(auth.session.profile.id, auth.session.tokenVersion);
+    sendJson(req, res, 200, { ok: true }, { 'Set-Cookie': serializeClearSessionCookie() });
+  },
+
+  // Sliding renewal: a valid, unrevoked token gets a fresh 12 h token with the same original
+  // sign-in time; after the absolute lifetime (SESSION_MAX_LIFETIME_DAYS) a real sign-in is required.
+  'POST /api/auth/session': async (req, res) => {
+    const auth = await requireAuth(req);
+    let token: string;
     try {
-      const body = await readJsonBody<{
-        userId?: string;
-        email?: string;
-      }>(req, 16 * 1024);
+      token = issueSessionToken({ userId: auth.session.profile.id, tokenVersion: auth.session.tokenVersion, authTime: auth.payload.aat });
+    } catch {
+      throw new HttpError(401, 'Session expired; sign in again');
+    }
+    sendJson(req, res, 200, { ok: true, authMethod: 'session', token, profile: auth.session.profile }, { 'Set-Cookie': serializeSessionCookie(token) });
+  },
 
-      if (
-        (typeof body.userId === 'string' &&
-          body.userId.trim().length > 0 &&
-          body.userId.trim() !== DEMO_SANDBOX_USER.userId) ||
-        (typeof body.email === 'string' &&
-          body.email.trim().length > 0 &&
-          body.email.trim().toLowerCase() !== DEMO_SANDBOX_USER.email)
-      ) {
-        sendJson(req, res, 403, {
-          ok: false,
-          error:
-            'Forbidden: Demo sandbox login only issues sessions for the designated demo profile',
-        });
-        return;
-      }
+  'GET /api/ledger/pull': async (req, res, url) => {
+    const auth = await requireAuth(req);
+    const cursor = url.searchParams.get('cursor') ?? '0';
+    const groupId = url.searchParams.get('groupId');
+    const expenseId = url.searchParams.get('expenseId');
+    for (const v of [groupId, expenseId]) {
+      if (v !== null && !/^[A-Za-z0-9_-]{1,80}$/.test(v)) throw new HttpError(400, 'invalid groupId or expenseId');
+    }
+    if (groupId !== null && expenseId !== null) throw new HttpError(400, 'pass groupId or expenseId, not both');
+    const limitRaw = url.searchParams.get('limit') ?? String(SYNC_PULL_MAX_LIMIT);
+    if (!/^\d{1,18}$/.test(cursor)) throw new HttpError(400, 'cursor must be a non-negative integer string');
+    if (!/^\d{1,9}$/.test(limitRaw) || Number(limitRaw) < 1) throw new HttpError(400, 'limit must be a positive integer');
+    const limit = Math.min(Number(limitRaw), SYNC_PULL_MAX_LIMIT);
+    sendJson(req, res, 200, await pullChanges(auth.session.profile.id, cursor, limit, { groupId, expenseId }));
+  },
 
-      const demoProfile = await resolveDemoSandboxProfile();
-      const token = issueSessionToken({
-        userId: demoProfile.id,
-        email: demoProfile.email,
-        fullName: demoProfile.fullName,
-        authMethod: 'demo',
-      });
-
-      const fallback = JSON.parse(
-        JSON.stringify(initialMockData)
-      ) as MockLedgerDataset;
-      const dbResult = await fetchDatasetFromSupabase(fallback);
-      const scopedDataset = filterDatasetForUser(
-        {
-          ...dbResult.dataset,
-          currentUser: demoProfile,
-        },
-        {
-          userId: demoProfile.id,
-          email: demoProfile.email,
-        }
-      );
-
-      sendJson(
-        req,
-        res,
-        200,
-        {
-          ok: true,
-          authMethod: 'demo',
-          token,
-          profile: demoProfile,
-          dataset: scopedDataset,
-        },
-        {
-          'Set-Cookie': serializeSessionCookie(token),
-        }
-      );
-      return;
+  'POST /api/ledger/push': async (req, res) => {
+    const auth = await requireAuth(req);
+    const body = await readJsonBody(req);
+    const raw = body.mutations;
+    if (!Array.isArray(raw) || raw.length > SYNC_PUSH_MAX_MUTATIONS) {
+      throw new HttpError(400, `mutations must be an array of at most ${SYNC_PUSH_MAX_MUTATIONS}`);
+    }
+    // One push in flight per account is enforced in the database (per-actor try-lock), so it
+    // holds across API replicas; a busy account gets 429 and retries.
+    try {
+      sendJson(req, res, 200, { results: await applyMutations(auth.session.profile.id, raw) });
     } catch (err) {
-      handleBodyError(req, res, err, 'Invalid demo login request');
+      if (err instanceof PushBusy) throw new HttpError(429, 'Another push for this account is still running');
+      throw err;
+    }
+  },
+
+  // Join by invite code (40-bit server codes): rate limited per account and IP, plus a per-account
+  // daily failed-code cap in the database. The client then backfills the group with ?groupId=.
+  'POST /api/groups/join': async (req, res) => {
+    const auth = await requireAuth(req);
+    const limit = checkJoinRateLimit(req, auth.session.profile.id);
+    if (!limit.allowed) {
+      sendJson(req, res, 429, { ok: false, error: 'Too many join attempts. Please wait before trying again.', retryAfterSec: limit.retryAfterSec }, { 'Retry-After': String(limit.retryAfterSec ?? 600) });
       return;
     }
-  }
-
-  if (req.method === 'POST' && reqUrl.pathname === '/api/auth/google') {
-    try {
-      const body = await readJsonBody<{
-        accessToken?: string;
-      }>(req, 64 * 1024);
-
-      const rawAccessToken =
-        typeof body.accessToken === 'string' && body.accessToken.trim()
-          ? body.accessToken.trim()
-          : extractBearerOrSessionToken(req) || '';
-
-      if (!rawAccessToken) {
-        sendJson(req, res, 401, {
-          ok: false,
-          error: 'Authentication required: missing Supabase Google OAuth accessToken',
-        });
-        return;
-      }
-
-      const { data: userRes, error: userErr } =
-        await getSupabaseAdmin().auth.getUser(rawAccessToken);
-      if (userErr || !userRes?.user?.id || !userRes.user.email) {
-        sendJson(req, res, 401, {
-          ok: false,
-          error: 'Invalid or expired Google OAuth access token',
-        });
-        return;
-      }
-
-      const meta = (userRes.user.user_metadata ?? {}) as Record<string, unknown>;
-      const fullName =
-        typeof meta.full_name === 'string'
-          ? meta.full_name
-          : typeof meta.name === 'string'
-            ? meta.name
-            : undefined;
-      const avatarUrl =
-        typeof meta.avatar_url === 'string' ? meta.avatar_url : null;
-
-      const { profile: verifiedProfile, claimedGroupCount } =
-        await upsertGoogleProfileAndClaimMembers({
-          authUid: userRes.user.id,
-          email: userRes.user.email,
-          fullName,
-          avatarUrl,
-        });
-
-      const token = issueSessionToken({
-        userId: verifiedProfile.id,
-        email: verifiedProfile.email,
-        fullName: verifiedProfile.fullName,
-        authMethod: 'google',
-      });
-
-      const fallback = JSON.parse(
-        JSON.stringify(initialMockData)
-      ) as MockLedgerDataset;
-      const dbResult = await fetchDatasetFromSupabase(fallback);
-      const scopedDataset = filterDatasetForUser(
-        {
-          ...dbResult.dataset,
-          currentUser: verifiedProfile,
-        },
-        {
-          userId: verifiedProfile.id,
-          email: verifiedProfile.email,
-        }
-      );
-
-      sendJson(
-        req,
-        res,
-        200,
-        {
-          ok: true,
-          authMethod: 'google',
-          token,
-          profile: verifiedProfile,
-          dataset: scopedDataset,
-          claimedGroupCount,
-        },
-        {
-          'Set-Cookie': serializeSessionCookie(token),
-        }
-      );
-      return;
-    } catch (err) {
-      handleBodyError(req, res, err, 'Invalid Google OAuth exchange request');
+    const body = await readJsonBody(req, 4 * 1024);
+    const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : '';
+    if (!/^WS-[0-9A-F]{10}$/.test(code)) throw new HttpError(400, 'Invalid invite code');
+    const r = await joinGroup(auth.session.profile.id, code);
+    if (r.error === 'locked') {
+      const now = new Date();
+      const retryAfterSec = Math.max(1, Math.ceil((Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1) - now.getTime()) / 1000));
+      sendJson(req, res, 429, { ok: false, error: 'Too many wrong invite codes today. Try again tomorrow.', retryAfterSec }, { 'Retry-After': String(retryAfterSec) });
       return;
     }
-  }
+    if (r.error === 'removed_by_admin') throw new HttpError(403, 'An admin removed you from this group; ask them to add you back');
+    if (r.error !== undefined) throw new HttpError(r.error === 'group_full' ? 409 : 404, r.error === 'group_full' ? 'This group is full' : 'No group has this invite code');
+    sendJson(req, res, 200, { ok: true, groupId: r.groupId, memberId: r.memberId, status: r.status });
+  },
 
-  if (req.method === 'POST' && reqUrl.pathname === '/api/auth/logout') {
-    sendJson(
-      req,
-      res,
-      200,
-      { ok: true },
+  // Receipt pointer only (the image stays on-device); same authorization as a push.
+  'POST /api/receipts/upload': async (req, res) => {
+    const auth = await requireAuth(req);
+    const body = await readJsonBody(req);
+    const { dataUrl: _blob, hlc, id, ...meta } = body;
+    const [result] = await applyMutations(auth.session.profile.id, [
       {
-        'Set-Cookie': serializeClearSessionCookie(),
-      }
-    );
-    return;
-  }
-
-  if (req.method === 'POST' && reqUrl.pathname === '/api/auth/login') {
-    try {
-      const body = await readJsonBody<{
-        email?: string;
-        password?: string;
-      }>(req, 32 * 1024);
-
-      const email =
-        typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
-      const password =
-        typeof body.password === 'string' ? body.password : '';
-
-      const loginLimit = checkAuthLoginRateLimit(req, email);
-      if (!loginLimit.allowed) {
-        sendJson(
-          req,
-          res,
-          429,
-          {
-            ok: false,
-            error:
-              'Too many failed login attempts. Please wait before trying again.',
-            retryAfterSec: loginLimit.retryAfterSec ?? 900,
-          },
-          {
-            'Retry-After': String(loginLimit.retryAfterSec ?? 900),
-          }
-        );
-        return;
-      }
-
-      if (!email || !password) {
-        recordAuthLoginFailure(req, email);
-        sendJson(req, res, 401, {
-          ok: false,
-          error: 'Invalid email or password',
-        });
-        return;
-      }
-
-      const authClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-        db: { schema: SUPABASE_SCHEMA as 'wise_spliter' },
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-          detectSessionInUrl: false,
-        },
-      });
-
-      const { data: authData, error: authError } =
-        await authClient.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-      if (authError || !authData?.user) {
-        recordAuthLoginFailure(req, email);
-        sendJson(req, res, 401, {
-          ok: false,
-          error: 'Invalid email or password',
-        });
-        return;
-      }
-
-      const { data: profileRow, error: profileError } = await getSupabaseAdmin()
-        .from('profiles')
-        .select(
-          'id, email, full_name, avatar_initials, default_currency, upi_id, google_connected'
-        )
-        .ilike('email', email)
-        .maybeSingle();
-
-      if (profileError || !profileRow) {
-        recordAuthLoginFailure(req, email);
-        sendJson(req, res, 401, {
-          ok: false,
-          error: 'Invalid email or password',
-        });
-        return;
-      }
-
-      clearAuthLoginFailures(req, email);
-
-      const typedProfile = profileRow as {
-        id: string;
-        email: string;
-        full_name: string;
-        avatar_initials: string;
-        default_currency: string | null;
-        upi_id: string | null;
-        google_connected: boolean | null;
-      };
-
-      const verifiedProfile: UserProfile = {
-        id: String(typedProfile.id),
-        email: String(typedProfile.email).toLowerCase(),
-        fullName: String(typedProfile.full_name),
-        avatarInitials: String(typedProfile.avatar_initials),
-        defaultCurrency: String(typedProfile.default_currency || 'INR'),
-        upiId: String(typedProfile.upi_id || ''),
-        googleConnected: Boolean(typedProfile.google_connected ?? true),
-        supabaseSchema: SUPABASE_SCHEMA,
-        syncState: 'synced',
-        lastSyncedAt: new Date().toISOString(),
-      };
-
-      await claimPendingGroupMembershipsForEmail(
-        verifiedProfile.id,
-        verifiedProfile.email
-      );
-
-      const token = issueSessionToken({
-        userId: verifiedProfile.id,
-        email: verifiedProfile.email,
-        fullName: verifiedProfile.fullName,
-        authMethod: 'password',
-      });
-
-      const fallback = JSON.parse(
-        JSON.stringify(initialMockData)
-      ) as MockLedgerDataset;
-      const dbResult = await fetchDatasetFromSupabase(fallback);
-      const scopedDataset = filterDatasetForUser(
-        {
-          ...dbResult.dataset,
-          currentUser: verifiedProfile,
-        },
-        {
-          userId: verifiedProfile.id,
-          email: verifiedProfile.email,
-        }
-      );
-
-      sendJson(
-        req,
-        res,
-        200,
-        {
-          ok: true,
-          authMethod: 'password',
-          token,
-          profile: verifiedProfile,
-          dataset: scopedDataset,
-        },
-        {
-          'Set-Cookie': serializeSessionCookie(token),
-        }
-      );
-      return;
-    } catch (err) {
-      if (err instanceof PayloadTooLargeError) {
-        sendJson(req, res, 413, { ok: false, error: err.message });
-        return;
-      }
-      sendJson(req, res, 401, {
-        ok: false,
-        error: 'Invalid email or password',
-      });
-      return;
-    }
-  }
-
-  if (req.method === 'POST' && reqUrl.pathname === '/api/auth/session') {
-    try {
-      const body = await readJsonBody<{
-        userId?: string;
-        email?: string;
-        fullName?: string;
-      }>(req, 32 * 1024);
-
-      const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
-      const email =
-        typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
-      const fullName =
-        typeof body.fullName === 'string' && body.fullName.trim()
-          ? body.fullName.trim()
-          : undefined;
-
-      if (!userId || !email) {
-        sendJson(req, res, 400, {
-          ok: false,
-          error: 'Both non-empty `userId` and `email` are required',
-        });
-        return;
-      }
-
-      if (isDemoSandboxUser({ userId, email })) {
-        const token = issueSessionToken({
-          userId: DEMO_SANDBOX_USER.userId,
-          email: DEMO_SANDBOX_USER.email,
-          fullName: fullName || DEMO_SANDBOX_USER.fullName,
-          authMethod: 'demo',
-        });
-        sendJson(
-          req,
-          res,
-          200,
-          {
-            ok: true,
-            authMethod: 'demo',
-            token,
-            user: {
-              userId: DEMO_SANDBOX_USER.userId,
-              email: DEMO_SANDBOX_USER.email,
-              fullName: fullName || DEMO_SANDBOX_USER.fullName,
-            },
-          },
-          {
-            'Set-Cookie': serializeSessionCookie(token),
-          }
-        );
-        return;
-      }
-
-      // Non-demo session requests MUST present a verified session cookie or Supabase Auth JWT matching the requested user
-      const auth = await verifyRequestAuth(req);
-      if (
-        !auth.authenticated ||
-        auth.user.email.toLowerCase() !== email ||
-        auth.user.userId !== userId
-      ) {
-        sendJson(req, res, 401, {
-          ok: false,
-          error:
-            'Unauthorized: Cannot mint session token for non-demo account without verified login or Google OAuth JWT',
-        });
-        return;
-      }
-
-      const token = issueSessionToken({
-        userId,
-        email,
-        fullName,
-        authMethod: auth.user.authMethod ?? 'session',
-      });
-      sendJson(
-        req,
-        res,
-        200,
-        {
-          ok: true,
-          authMethod: auth.user.authMethod ?? 'session',
-          token,
-          user: {
-            userId,
-            email,
-            ...(fullName ? { fullName } : {}),
-          },
-        },
-        {
-          'Set-Cookie': serializeSessionCookie(token),
-        }
-      );
-      return;
-    } catch (err) {
-      handleBodyError(req, res, err, 'Invalid session request payload');
-      return;
-    }
-  }
-
-  if (req.method === 'GET' && reqUrl.pathname === '/api/ledger/bootstrap') {
-    const auth = await verifyRequestAuth(req);
-    if (!auth.authenticated) {
-      sendJson(req, res, auth.status, {
-        ok: false,
-        error: auth.error,
-      });
-      return;
-    }
-
-    const fallback = JSON.parse(
-      JSON.stringify(initialMockData)
-    ) as MockLedgerDataset;
-    const result = await fetchDatasetFromSupabase(fallback);
-    const scopedDataset = filterDatasetForUser(result.dataset, auth.user);
-
-    sendJson(req, res, 200, {
-      ok: true,
-      source: result.source,
-      schema: SUPABASE_SCHEMA,
-      dataset: scopedDataset,
-    });
-    return;
-  }
-
-  if (req.method === 'POST' && reqUrl.pathname === '/api/ledger/sync') {
-    const auth = await verifyRequestAuth(req);
-    if (!auth.authenticated) {
-      sendJson(req, res, auth.status, {
-        ok: false,
-        error: auth.error,
-      });
-      return;
-    }
-
-    try {
-      const body = await readJsonBody<{ dataset?: MockLedgerDataset }>(req);
-      const dataset = body.dataset;
-      if (!dataset) {
-        sendJson(req, res, 400, {
-          ok: false,
-          error: 'Missing `dataset` in request body',
-        });
-        return;
-      }
-
-      const [existingDbGroups, existingDbEntities] = await Promise.all([
-        fetchExistingDbGroups(),
-        fetchExistingDbEntityOwnership(),
-      ]);
-      const authz = authorizeDatasetSyncForUser(
-        dataset,
-        existingDbGroups,
-        auth.user,
-        existingDbEntities
-      );
-      if (!authz.authorized) {
-        sendJson(req, res, authz.status ?? 403, {
-          ok: false,
-          error: authz.error ?? 'Forbidden',
-        });
-        return;
-      }
-
-      const invariantCheck = validateDatasetFinancialInvariants(dataset);
-      if (!invariantCheck.valid) {
-        sendJson(req, res, 422, {
-          ok: false,
-          error: invariantCheck.violation,
-        });
-        return;
-      }
-
-      const syncRes = await syncDatasetToSupabase(dataset);
-      sendJson(req, res, 200, {
-        ok: true,
-        schema: SUPABASE_SCHEMA,
-        persistedToSupabase: syncRes.ok,
-        ...(syncRes.error ? { supabaseWarning: syncRes.error } : {}),
-        syncedGroups: dataset.groups.length,
-        syncedExpenses: dataset.expenses.length,
-        syncedSettlements: dataset.settlements.length,
-        syncedAt: new Date().toISOString(),
-      });
-      return;
-    } catch (err) {
-      handleBodyError(req, res, err, 'Invalid JSON payload');
-      return;
-    }
-  }
-
-  if (req.method === 'POST' && reqUrl.pathname === '/api/receipts/upload') {
-    const auth = await verifyRequestAuth(req);
-    if (!auth.authenticated) {
-      sendJson(req, res, auth.status, {
-        ok: false,
-        error: auth.error,
-      });
-      return;
-    }
-
-    try {
-      const body = await readJsonBody<{
-        id?: unknown;
-        expenseId?: unknown;
-        groupId?: unknown;
-        userId?: unknown;
-        fileName?: unknown;
-        mimeType?: unknown;
-        sizeKb?: unknown;
-        uploadedByName?: unknown;
-        previewNote?: unknown;
-        dataUrl?: unknown;
-        hlc?: unknown;
-      }>(req);
-
-      const [existingDbGroups, existingDbEntities] = await Promise.all([
-        fetchExistingDbGroups(),
-        fetchExistingDbEntityOwnership(),
-      ]);
-
-      const authz = authorizeReceiptUploadForUser(
-        body,
-        existingDbGroups,
-        existingDbEntities,
-        auth.user
-      );
-      if (!authz.authorized) {
-        sendJson(req, res, authz.status, {
-          ok: false,
-          error: authz.error,
-        });
-        return;
-      }
-
-      const { receiptId, expenseId, groupId, mimeType } = authz.sanitized;
-      const uploadRes = await uploadReceiptToSupabaseStorage({
-        id: receiptId,
-        expenseId,
-        groupId,
-        actorUserId: auth.user.userId,
-        fileName:
-          typeof body.fileName === 'string' && body.fileName.trim()
-            ? body.fileName.trim()
-            : 'receipt.webp',
-        mimeType,
-        sizeKb: Number(body.sizeKb ?? 18),
-        uploadedByName:
-          typeof body.uploadedByName === 'string' && body.uploadedByName.trim()
-            ? body.uploadedByName.trim()
-            : auth.user.email,
-        previewNote:
-          typeof body.previewNote === 'string' && body.previewNote.trim()
-            ? body.previewNote.trim()
-            : 'Compressed receipt image',
-        dataUrl: typeof body.dataUrl === 'string' ? body.dataUrl : '',
-        hlc:
-          typeof body.hlc === 'string' && body.hlc.trim()
-            ? body.hlc.trim()
-            : `${Date.now().toString(16).padStart(12, '0')}-0001-${auth.user.userId}`,
-      });
-
-      sendJson(req, res, 200, {
-        ok: true,
-        bucket: 'wise-spliter-receipts',
-        storagePath: uploadRes.storagePath,
-        receiptId: uploadRes.receiptId,
-        storageUploaded: uploadRes.storageUploaded,
-        metadataPersisted: uploadRes.metadataPersisted,
-      });
-      return;
-    } catch (err) {
-      handleBodyError(req, res, err, 'Invalid receipt upload payload');
-      return;
-    }
-  }
-
-  if (req.method === 'GET' && reqUrl.pathname === '/api/ledger/pull-changes') {
-    const auth = await verifyRequestAuth(req);
-    if (!auth.authenticated) {
-      sendJson(req, res, auth.status, {
-        ok: false,
-        error: auth.error,
-      });
-      return;
-    }
-
-    const sinceSeq = Number(reqUrl.searchParams.get('sinceSeq') || '0');
-    const safeSinceSeq = Number.isFinite(sinceSeq)
-      ? Math.max(0, Math.floor(sinceSeq))
-      : 0;
-    const [rawResult, existingDbGroups] = await Promise.all([
-      callPullChangesRpc(safeSinceSeq),
-      fetchExistingDbGroups(),
+        entity: 'receipt_pointer',
+        id,
+        op: 'upsert',
+        hlc: typeof hlc === 'string' ? hlc : `${Date.now().toString(16).padStart(12, '0')}-0000-${auth.session.profile.id}`,
+        data: meta,
+      },
     ]);
-
-    const normUserId = auth.user.userId.trim();
-    const normEmail = auth.user.email.trim().toLowerCase();
-    const authorizedGroupIds = new Set(
-      existingDbGroups
-        .filter(
-          (g) =>
-            g.created_by?.trim() === normUserId ||
-            isUserMemberOfGroup(g.members ?? [], auth.user)
-        )
-        .map((g) => g.id)
-    );
-
-    const rawGroups = Array.isArray(rawResult.groups)
-      ? (rawResult.groups as Array<Record<string, unknown>>)
-      : [];
-    const rawExpenses = Array.isArray(rawResult.expenses)
-      ? (rawResult.expenses as Array<Record<string, unknown>>)
-      : [];
-    const rawSettlements = Array.isArray(rawResult.settlements)
-      ? (rawResult.settlements as Array<Record<string, unknown>>)
-      : [];
-    const rawRevisions = Array.isArray(rawResult.expense_revisions)
-      ? (rawResult.expense_revisions as Array<Record<string, unknown>>)
-      : [];
-    const rawActivity = Array.isArray(rawResult.group_activity_log)
-      ? (rawResult.group_activity_log as Array<Record<string, unknown>>)
-      : [];
-
-    const filteredGroups = rawGroups.filter(
-      (g) => typeof g.id === 'string' && authorizedGroupIds.has(g.id)
-    );
-
-    const standaloneSelfIds = new Set<string>([normUserId]);
-    const filteredExpenses = rawExpenses.filter((e) => {
-      const grpId = (e.group_id ?? e.groupId ?? null) as string | null;
-      if (grpId) {
-        return authorizedGroupIds.has(grpId);
-      }
-      const adHoc = (e.ad_hoc_participants ?? e.adHocParticipants ?? []) as Array<{
-        id?: string;
-        invitedEmail?: string | null;
-        invited_email?: string | null;
-      }>;
-      const createdBy = (e.created_by_member_id ??
-        e.createdByMemberId ??
-        null) as string | null;
-      const allowed = isUserParticipantInStandaloneExpense(
-        adHoc,
-        auth.user,
-        createdBy
-      );
-      if (allowed && Array.isArray(adHoc)) {
-        for (const p of adHoc) {
-          const pEmail = (p.invitedEmail ?? p.invited_email ?? '')
-            .trim()
-            .toLowerCase();
-          const pId = p.id?.trim() ?? '';
-          if (pId && (pEmail === normEmail || pId === normUserId)) {
-            standaloneSelfIds.add(pId);
-          }
-        }
-      }
-      return allowed;
+    const status = result!.status === 'applied' || result!.status === 'stale' ? 200 : result!.status === 'forbidden' ? 403 : 400;
+    sendJson(req, res, status, {
+      ok: status === 200,
+      bucket: 'local-device-only',
+      localDeviceOnly: true,
+      storageUploaded: false,
+      receiptId: result!.id,
+      metadataPersisted: result!.status === 'applied',
+      ...(status === 200 ? {} : { error: result!.reason ?? result!.status }),
     });
-    const authorizedExpenseIds = new Set(
-      filteredExpenses
-        .map((e) => (typeof e.id === 'string' ? e.id : ''))
-        .filter(Boolean)
-    );
+  },
 
-    const filteredSettlements = rawSettlements.filter((s) => {
-      const grpId = (s.group_id ?? s.groupId ?? null) as string | null;
-      if (grpId) {
-        return authorizedGroupIds.has(grpId);
-      }
-      const fromId = String(s.from_member_id ?? s.fromMemberId ?? '');
-      const toId = String(s.to_member_id ?? s.toMemberId ?? '');
-      return standaloneSelfIds.has(fromId) || standaloneSelfIds.has(toId);
-    });
+  // Deletes the wise_spliter profile and personal data; auth.users is shared with another app and kept.
+  'POST /api/account/delete': async (req, res) => {
+    const auth = await requireAuth(req);
+    await deleteAccount(auth.session.profile.id);
+    res.writeHead(204, { ...buildSecurityHeaders(req.headers['origin'] as string | undefined), 'Set-Cookie': serializeClearSessionCookie() });
+    res.end();
+  },
+};
 
-    const filteredRevisions = rawRevisions.filter((r) => {
-      const grpId = (r.group_id ?? r.groupId ?? null) as string | null;
-      if (grpId) {
-        return authorizedGroupIds.has(grpId);
-      }
-      const expId = String(r.expense_id ?? r.expenseId ?? '');
-      return authorizedExpenseIds.has(expId);
-    });
-
-    const filteredActivity = rawActivity.filter((a) => {
-      const grpId = (a.group_id ?? a.groupId ?? null) as string | null;
-      if (grpId) {
-        return authorizedGroupIds.has(grpId);
-      }
-      const entityId = String(a.entity_id ?? a.entityId ?? '');
-      const actorId = String(a.actor_member_id ?? a.actorMemberId ?? '');
-      return (
-        authorizedExpenseIds.has(entityId) || standaloneSelfIds.has(actorId)
-      );
-    });
-
-    sendJson(req, res, 200, {
-      ok: true,
-      schema: SUPABASE_SCHEMA,
-      since_seq: safeSinceSeq,
-      groups: filteredGroups,
-      expenses: filteredExpenses,
-      settlements: filteredSettlements,
-      expense_revisions: filteredRevisions,
-      group_activity_log: filteredActivity,
-    });
-    return;
-  }
-
-  if (req.method === 'POST' && reqUrl.pathname === '/api/ledger/push-mutations') {
-    const auth = await verifyRequestAuth(req);
-    if (!auth.authenticated) {
-      sendJson(req, res, auth.status, {
-        ok: false,
-        error: auth.error,
-      });
-      return;
-    }
-
-    try {
-      const body = await readJsonBody<{ ops?: unknown } | unknown[]>(req);
-      const ops = Array.isArray(body)
-        ? body
-        : body && typeof body === 'object' && 'ops' in body
-          ? (body.ops as unknown[])
-          : [];
-
-      const [existingDbGroups, existingDbEntities] = await Promise.all([
-        fetchExistingDbGroups(),
-        fetchExistingDbEntityOwnership(),
-      ]);
-
-      const authz = authorizeMutationsForUser(
-        ops,
-        existingDbGroups,
-        existingDbEntities,
-        auth.user
-      );
-      if (!authz.authorized) {
-        sendJson(req, res, authz.status ?? 403, {
-          ok: false,
-          error: authz.error ?? 'Forbidden',
-        });
-        return;
-      }
-
-      const result = await callPushMutationsRpc(ops);
-      sendJson(req, res, 200, result);
-      return;
-    } catch (err) {
-      handleBodyError(req, res, err, 'Invalid mutations payload');
-      return;
-    }
-  }
-
-  sendJson(req, res, 404, {
-    ok: false,
-    error: `Route not found: ${req.method} ${reqUrl.pathname}`,
+async function applyMutations(actor: string, raw: unknown[]): Promise<SyncPushResult[]> {
+  const results: SyncPushResult[] = new Array(raw.length);
+  const valid: Array<{ i: number; m: ValidatedMutation }> = [];
+  raw.forEach((item, i) => {
+    const v = validateMutation(item);
+    if (v.ok) valid.push({ i, m: v.m });
+    else results[i] = { id: v.id, entity: v.entity as SyncPushResult['entity'], status: 'invalid', reason: v.reason };
   });
+  const applied = await pushMutations(actor, valid.map((v) => v.m));
+  const byKey = new Map(applied.map((r) => [`${r.entity}:${r.id}`, r]));
+  for (const { i, m } of valid) {
+    results[i] = byKey.get(`${m.entity}:${m.id}`) ?? { id: m.id, entity: m.entity, status: 'invalid', reason: 'not processed' };
+  }
+  return results;
+}
+
+export async function handleApiRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  try {
+    const origin = req.headers['origin'];
+    if (req.method === 'OPTIONS') {
+      if (typeof origin === 'string' && !isOriginAllowed(origin)) throw new HttpError(403, 'Forbidden: disallowed CORS preflight origin');
+      res.writeHead(204, buildSecurityHeaders(origin));
+      res.end();
+      return;
+    }
+    const csrf = validateCsrfAndOrigin(req);
+    if (!csrf.allowed) throw new HttpError(csrf.status, csrf.error);
+    const limit = checkRateLimit(req);
+    if (!limit.allowed) {
+      sendJson(req, res, 429, { ok: false, error: 'Rate limit exceeded. Please retry later.', retryAfterSec: limit.retryAfterSec }, { 'Retry-After': String(limit.retryAfterSec ?? 60) });
+      return;
+    }
+    const url = new URL(req.url || '/', 'http://api.local');
+    const handler = routes[`${req.method} ${url.pathname}`];
+    if (!handler) throw new HttpError(404, 'Route not found');
+    await handler(req, res, url);
+  } catch (err) {
+    if (res.headersSent) return;
+    if (err instanceof HttpError) {
+      sendJson(req, res, err.status, { ok: false, error: err.message });
+    } else if (err instanceof DbForbidden) {
+      sendJson(req, res, 403, { ok: false, error: 'Forbidden' });
+    } else if (err instanceof DbUnavailable) {
+      sendJson(req, res, 503, { ok: false, error: 'Service temporarily unavailable' });
+    } else {
+      console.error('[wise-spliter-api] unhandled error:', err);
+      sendJson(req, res, 500, { ok: false, error: 'Internal server error' });
+    }
+  }
 }
 
 export const apiServer = createServer((req, res) => {
@@ -1081,17 +416,18 @@ export const apiServer = createServer((req, res) => {
 });
 
 apiServer.on('error', (err: NodeJS.ErrnoException) => {
-  if (err.code === 'EADDRINUSE') {
-    // Allow importing apiServer in test suites when port is already bound
-    return;
-  }
+  if (err.code === 'EADDRINUSE') return;
   console.error('[wise-spliter-api] Server error:', err);
 });
 
 if (!process.env.VITEST && process.env.WISE_SPLITER_NO_AUTO_LISTEN !== '1') {
+  if (process.env.NODE_ENV === 'production') {
+    await assertEmailConfirmationRequired().catch((err: unknown) => {
+      console.error(err instanceof Error ? err.message : err);
+      process.exit(1);
+    });
+  }
   apiServer.listen(API_PORT, API_HOST, () => {
-    console.log(
-      `[wise-spliter-api] Listening on http://${API_HOST}:${API_PORT} (schema: ${SUPABASE_SCHEMA})`
-    );
+    console.log(`[wise-spliter-api] Listening on http://${API_HOST}:${API_PORT} (schema: ${SUPABASE_SCHEMA})`);
   });
 }
