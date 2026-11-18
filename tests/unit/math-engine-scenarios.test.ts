@@ -7,8 +7,13 @@ import {
   convertMinorAmountWithFx,
   divRoundHalfAwayFromZero,
   formatMinorToMajor,
+  formatScaledFxRate,
+  fxCrossRateScaled,
   getCurrency,
+  localeUsesDecimalComma,
   parseFxRateToScaled,
+  parseLocaleDecimal,
+  toLocaleDecimalInput,
   parseMajorToMinor,
   parseMajorToMinorStrict,
   tryParseMajorToMinorBigInt,
@@ -27,10 +32,11 @@ import {
   computeGroupNetBalances,
   computeRawPairwiseTransfers,
   explainMemberBalance,
+  pickableMembers,
   simplifyGroupDebts,
 } from '../../src/domain/ledger/ledger-engine';
+import { buildPayeeUpiLink } from '../../src/utils/upi-link';
 import {
-  buildUpiPaymentUri,
   exportGroupToCsv,
   exportGroupToExcelBuffer,
   generateWhatsAppGroupSummary,
@@ -54,7 +60,7 @@ function makeMembers(count: number, groupId = 'grp_test'): GroupMember[] {
     invitedEmail: `member${idx}@example.com`,
     displayName: `Member ${idx}`,
     avatarInitials: `M${idx}`,
-    upiId: `member${idx}@okicici`,
+    upiId: `member${idx}@upi.test`,
     role: idx === 0 ? 'admin' : 'member',
     memberOrder: idx,
     joinedAt: '2026-11-01T00:00:00Z',
@@ -220,7 +226,8 @@ describe('Suite 1: Minor-Unit Parsing, Formatting & BigInt FX Conversion (curren
     // Normalized uppercase currency catalog lookup on previously mixed-case extra codes
     expect(SUPPORTED_CURRENCIES['BOV']).toBeDefined();
     expect(getCurrency('bov').name).toBe('Bolivian Mvdol');
-    expect(getCurrency('ZWGOLD').symbol).toBe('ZiG');
+    expect(getCurrency('ZWG').symbol).toBe('ZiG');
+    expect(SUPPORTED_CURRENCIES['ZWGOLD']).toBeUndefined();
   });
 
   it('executes overflow-free BigInt FX conversions across 0, 2, and 3 decimal currencies and negative amounts', () => {
@@ -1024,46 +1031,20 @@ describe('Suite 4: Portability Engine Security & Edge Cases (portability-engine.
       expect(paid - owed).toBe(expectedNet);
     }
 
-    // UPI URI formatting across currencies and negative guard
+    // UPI links: INR only, positive amounts only
     expect(
-      buildUpiPaymentUri({
-        payeeUpiId: 'arjun@okicici',
+      buildPayeeUpiLink({
+        payeeUpiId: 'arjun@upi.test',
         payeeName: 'Arjun Mehta',
-        amountMinor: 125050,
+        amountMinor: 125050n,
         currency: ' inr ',
         note: 'Dinner settle',
       })
-    ).toBe('upi://pay?pa=arjun%40okicici&pn=Arjun%20Mehta&am=1250.50&cu=INR&tn=Dinner%20settle');
-
-    expect(
-      buildUpiPaymentUri({
-        payeeUpiId: 'arjun@okicici',
-        payeeName: 'Arjun',
-        amountMinor: 28351,
-        currency: 'JPY',
-        note: 'Rail',
-      })
-    ).toContain('am=28351&cu=JPY');
-
-    expect(
-      buildUpiPaymentUri({
-        payeeUpiId: 'arjun@okicici',
-        payeeName: 'Arjun',
-        amountMinor: 25500,
-        currency: 'KWD',
-        note: 'Souk',
-      })
-    ).toContain('am=25.500&cu=KWD');
-
-    expect(
-      buildUpiPaymentUri({
-        payeeUpiId: 'arjun@okicici',
-        payeeName: 'Arjun',
-        amountMinor: -5000,
-        currency: 'INR',
-        note: 'Guard',
-      })
-    ).toContain('am=0.00&cu=INR');
+    ).toBe('upi://pay?pa=arjun%40upi.test&pn=Arjun%20Mehta&am=1250.50&cu=INR&tn=Dinner%20settle');
+    const upiBase = { payeeUpiId: 'arjun@upi.test', payeeName: 'Arjun', note: 'x' };
+    expect(buildPayeeUpiLink({ ...upiBase, amountMinor: 28351n, currency: 'JPY' })).toBeNull();
+    expect(buildPayeeUpiLink({ ...upiBase, amountMinor: 25500n, currency: 'KWD' })).toBeNull();
+    expect(buildPayeeUpiLink({ ...upiBase, amountMinor: -5000n, currency: 'INR' })).toBeNull();
 
     // WhatsApp summary settled zero formatting for JPY (0-decimal)
     const waJpy = generateWhatsAppGroupSummary({
@@ -1572,3 +1553,304 @@ describe('Suite 5: Multi-Step Ledger Scenario & fast-check Property-Based Fuzz S
     );
   });
 });
+
+describe('Suite 6: Money and FX hardening (locale parsing, real rates, no 1:1 fallback, edge cases)', () => {
+  const trio = makeMembers(3);
+  const ids = trio.map((m) => m.id);
+  const equalInputs = (included = [true, true, true]): SplitParticipantInput[] =>
+    ids.map((memberId, i) => ({ memberId, memberOrder: i, included: included[i]!, rawInputValue: 1 }));
+  const sumOwed = (splits: ExpenseItem['splits']) =>
+    splits.filter((s) => s.included).reduce((a, s) => a + BigInt(s.owedMinor), 0n);
+
+  it('parses amounts locale-aware: "12,50" is never 1,250.00', () => {
+    expect(tryParseMajorToMinorBigInt('12,50', 'EUR').ok).toBe(false);
+    expect(parseMajorToMinor('12,50', 'EUR', 'en-US')).toBe(0);
+    expect(parseMajorToMinor('12,50', 'EUR', 'de-DE')).toBe(1250);
+    expect(parseMajorToMinor('1.234,56', 'EUR', 'de-DE')).toBe(123456);
+    expect(parseMajorToMinor('€ 1.234,56', 'EUR', 'de-DE')).toBe(123456);
+    expect(parseMajorToMinor('12.50', 'EUR', 'de-DE')).toBe(0);
+    expect(parseMajorToMinor('1\u202f234,56', 'EUR', 'fr-FR')).toBe(123456);
+    expect(parseMajorToMinor('12 50', 'EUR', 'fr-FR')).toBe(0);
+    expect(parseMajorToMinor('1,234.56', 'USD', 'en-US')).toBe(123456);
+    expect(parseMajorToMinor('1,00,000', 'INR', 'en-IN')).toBe(10000000);
+    expect(parseMajorToMinor('1,2345', 'INR', 'en-IN')).toBe(0);
+    expect(parseMajorToMinor('12,5', 'KWD', 'de-DE')).toBe(12500);
+    expect(parseMajorToMinor('12,5', 'JPY', 'de-DE')).toBe(13);
+    expect(localeUsesDecimalComma('de-DE')).toBe(true);
+    expect(localeUsesDecimalComma('en-IN')).toBe(false);
+    expect(localeUsesDecimalComma('not a locale!!')).toBe(false);
+  });
+
+  it('offers only ISO 4217 three-letter codes', () => {
+    const codes = Object.keys(SUPPORTED_CURRENCIES);
+    expect(codes.every((c) => /^[A-Z]{3}$/.test(c))).toBe(true);
+    for (const bad of ['SOMALILAND', 'ABKHAZ', 'ARTSAKH', 'COOKISLANDS', 'NIUE', 'PITCAIRN', 'SAHRAWI', 'SPL', 'PRB', 'KID', 'TVD', 'FOK', 'IMP', 'JEP', 'GGP']) {
+      expect(SUPPORTED_CURRENCIES[bad], bad).toBeUndefined();
+    }
+    expect(codes.length).toBeGreaterThanOrEqual(160);
+  });
+
+  it('derives BigInt cross rates from a common base with half-away-from-zero rounding to 1e-8', () => {
+    expect(fxCrossRateScaled('1', '104.15')).toBe(10_415_000_000);
+    expect(fxCrossRateScaled('104.15', '1')).toBe(960_154);
+    expect(fxCrossRateScaled('28496', '104.15')).toBe(365_490);
+    expect(fxCrossRateScaled('0.34304', '177.06')).toBe(51_614_972_015);
+    expect(fxCrossRateScaled('0', '1')).toBeNull();
+    expect(fxCrossRateScaled('abc', '1')).toBeNull();
+    expect(fxCrossRateScaled('1', '-2')).toBeNull();
+    expect(fxCrossRateScaled('100000000000', '0.0001')).toBeNull();
+    expect(fxCrossRateScaled('0.000001', '100000000')).toBeNull();
+  });
+
+  it('never falls back to a 1:1 rate', () => {
+    for (const bad of ['', 'abc', '0', '-1', 0, -2, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(parseFxRateToScaled(bad)).toBe(0);
+    }
+    expect(() => convertForeignToBaseMinor(1_000_000n, 'VND', 'INR', 0)).toThrow(RangeError);
+    expect(() =>
+      convertMinorAmountWithFx({ originalMinor: 1_000_000, fromCurrency: 'VND', toCurrency: 'INR', fxRateScaled: 0, fxStatus: 'manual', dateIso: '2026-11-16' })
+    ).toThrow(RangeError);
+    expect(convertForeignToBaseMinor(500n, 'INR', 'INR', 0)).toBe(500n);
+    expect(formatScaledFxRate(365_489)).toBe('0.00365489');
+    expect(formatScaledFxRate(9_120_000_000)).toBe('91.20');
+    expect(formatScaledFxRate(0)).toBe('');
+
+    const exp = makeExpense({ id: 'nofx', amountMinor: 900, payers: [{ memberId: ids[0]!, paidMinor: 900 }], splits: calculateSplits({ totalMinor: 900, originalTotalMinor: 900, splitMode: 'equal', rotationSeed: 0, participants: equalInputs() }) });
+    expect(() => redenominateExpenseCurrency({ expense: exp, newCurrency: 'VND', mode: 'reconvert' })).toThrow(RangeError);
+    expect(redenominateExpenseCurrency({ expense: exp, newCurrency: 'USD', mode: 'relabel' }).amountMinor).toBe(900);
+  });
+
+  it('cross-group INR totals skip currencies without a known rate instead of counting them 1:1', () => {
+    const grp: GroupRecord = {
+      ...mockGroupShell('grp_vnd', 'XYZ'),
+      members: makeMembers(2, 'grp_vnd').map((m, i) => (i === 0 ? { ...m, invitedEmail: 'me@example.com' } : m)),
+    };
+    const [me, friend] = grp.members as [GroupMember, GroupMember];
+    const e = makeExpense({ id: 'xyz1', groupId: grp.id, currency: 'XYZ', amountMinor: 1000, payers: [{ memberId: me.id, paidMinor: 1000 }], splits: [
+      { memberId: me.id, included: true, owedMinor: 500, originalOwedMinor: 500, rawInputValue: 1, remainderMinor: 0 },
+      { memberId: friend.id, included: true, owedMinor: 500, originalOwedMinor: 500, rawInputValue: 1, remainderMinor: 0 },
+    ] });
+    const summary = computeCrossGroupFriendsSummary('me@example.com', [grp], [e], [], { INR: 1 });
+    expect(summary[0]!.netByCurrencyMinor).toEqual({ XYZ: 500 });
+    expect(summary[0]!.netInInrMinor).toBe(0);
+  });
+
+  it('conserves sum(payers) == amount == sum(splits) after FX conversion for any rate across 0/2/3 decimals', () => {
+    const codes = ['JPY', 'INR', 'KWD', 'VND', 'BHD', 'USD'];
+    fc.assert(
+      fc.property(
+        fc.constantFrom(...codes),
+        fc.constantFrom(...codes),
+        fc.bigInt({ min: 1n, max: 10_000_000_000n }),
+        fc.integer({ min: 1, max: 1_000_000_000_000 }),
+        fc.array(fc.integer({ min: 0, max: 1_000_000 }), { minLength: 1, maxLength: 4 }),
+        fc.integer({ min: -50, max: 50 }),
+        (from, to, origMinor, rateScaled, payerWeights, seed) => {
+          if (from === to) return;
+          const converted = convertForeignToBaseMinor(origMinor, from, to, rateScaled);
+          if (converted <= 0n || converted > BigInt(Number.MAX_SAFE_INTEGER)) return;
+          const weights = payerWeights.some((w) => w > 0) ? payerWeights : payerWeights.map(() => 1);
+          const origTotal = weights.reduce((a, b) => a + b, 0);
+          const payers = reconcileMultiPayerFxContributions({
+            payers: weights.map((w, i) => ({ memberId: ids[i % 3]! + '_' + i, originalPaidMinor: w })),
+            originalCurrency: from,
+            groupCurrency: to,
+            fxRateScaled: rateScaled,
+            targetAmountMinor: Number(converted),
+            rotationSeed: seed,
+          }).payers;
+          const splits = calculateSplits({ totalMinor: Number(converted), originalTotalMinor: origTotal, splitMode: 'equal', rotationSeed: seed, participants: equalInputs() });
+          expect(payers.reduce((a, p) => a + BigInt(p.paidMinor), 0n)).toBe(converted);
+          expect(sumOwed(splits)).toBe(converted);
+        }
+      ),
+      { numRuns: 400 }
+    );
+  });
+
+  it('reconverts a whole group with one rate, conserving every bill and keeping group net at 0n', () => {
+    const members = makeMembers(4);
+    const mk = (id: string, amount: number, seed: number, payers: Array<{ memberId: string; paidMinor: number }>) =>
+      makeExpense({ id, amountMinor: amount, rotationSeed: seed, payers, splits: calculateSplits({ totalMinor: amount, originalTotalMinor: amount, splitMode: 'equal', rotationSeed: seed, participants: members.map((m, i) => ({ memberId: m.id, memberOrder: i, included: i !== 3 || seed % 2 === 0, rawInputValue: 1 })) }) });
+    const expenses = [
+      mk('g1', 100001, 0, [{ memberId: members[0]!.id, paidMinor: 100001 }]),
+      mk('g2', 5555, 1, [{ memberId: members[1]!.id, paidMinor: 3333 }, { memberId: members[2]!.id, paidMinor: 2222 }]),
+      mk('g3', 1, 2, [{ memberId: members[3]!.id, paidMinor: 1 }]),
+    ];
+    const settlement = mockSettlement('s1', members[1]!.id, members[0]!.id, 1001);
+    const rate = fxCrossRateScaled('104.15', '0.34304')!;
+    const converted = expenses.map((e) => redenominateExpenseCurrency({ expense: e, newCurrency: 'KWD', mode: 'reconvert', fxRateScaled: rate, fxStatus: 'live', fxRateDate: '2026-11-16' }));
+    const stl = redenominateSettlementCurrency({ settlement, newCurrency: 'KWD', mode: 'reconvert', fxRateScaled: rate });
+    for (const e of converted) {
+      expect(e.groupCurrency).toBe('KWD');
+      expect(e.payers.reduce((a, p) => a + p.paidMinor, 0)).toBe(e.amountMinor);
+      expect(e.splits.filter((s) => s.included).reduce((a, s) => a + s.owedMinor, 0)).toBe(e.amountMinor);
+      expect(validateExpenseInvariants({ amountMinor: e.amountMinor, splitMode: e.splitMode, payers: e.payers, splits: e.splits }).valid).toBe(true);
+    }
+    expect(converted[0]!.fxAuditNote).toContain('(live rate, 2026-11-16)');
+    expect(converted[0]!.fxStatus).toBe('live');
+    const net = computeGroupNetBalances(converted, [stl], members);
+    expect([...net.values()].reduce((a, v) => a + BigInt(v), 0n)).toBe(0n);
+  });
+
+  it('splits 0/2/3 decimal totals with indivisible remainders rotating fairly', () => {
+    for (const [code, total] of [['JPY', 100], ['INR', 10000], ['KWD', 1000]] as const) {
+      const perMember = new Map<string, number>();
+      for (let seed = 0; seed < 3; seed++) {
+        const splits = calculateSplits({ totalMinor: total, originalTotalMinor: total, splitMode: 'equal', rotationSeed: seed, participants: equalInputs() });
+        expect(sumOwed(splits), code).toBe(BigInt(total));
+        expect(splits.filter((s) => s.remainderMinor === 1).length).toBe(1);
+        for (const s of splits) perMember.set(s.memberId, (perMember.get(s.memberId) ?? 0) + s.owedMinor);
+      }
+      expect(new Set(perMember.values()).size, code).toBe(1);
+    }
+  });
+
+  it('accepts amounts up to 2^53-1 minor units and rejects anything larger', () => {
+    const max = Number.MAX_SAFE_INTEGER;
+    const splits = calculateSplits({ totalMinor: max, originalTotalMinor: max, splitMode: 'equal', rotationSeed: 7, participants: equalInputs() });
+    expect(sumOwed(splits)).toBe(BigInt(max));
+    expect(validateExpenseInvariants({ amountMinor: max, splitMode: 'equal', payers: [{ memberId: ids[0]!, paidMinor: max, originalPaidMinor: max }], splits }).valid).toBe(true);
+    const tooBig = validateExpenseInvariants({ amountMinor: max + 1, splitMode: 'equal', payers: [{ memberId: ids[0]!, paidMinor: max + 1, originalPaidMinor: max + 1 }], splits });
+    expect(tooBig.valid).toBe(false);
+    expect(tooBig.errors.join(' ')).toMatch(/too large/i);
+    expect(parseMajorToMinor('90071992547409.91', 'INR')).toBe(max);
+    expect(parseMajorToMinor('90071992547409.92', 'INR')).toBe(0);
+  });
+
+  it('rejects zero and negative totals, bad percentages, unbalanced exact splits and negative adjustments with clear messages', () => {
+    const payer = (paid: number) => [{ memberId: ids[0]!, paidMinor: paid, originalPaidMinor: paid }];
+    const run = (amount: number, mode: SplitMode, raw: number[], paid = amount) =>
+      validateExpenseInvariants({
+        amountMinor: amount,
+        splitMode: mode,
+        payers: payer(paid),
+        splits: calculateSplits({ totalMinor: amount, originalTotalMinor: amount, splitMode: mode, rotationSeed: 0, participants: ids.map((memberId, i) => ({ memberId, memberOrder: i, included: true, rawInputValue: raw[i]! })) }),
+      });
+    expect(run(0, 'equal', [1, 1, 1]).errors).toContain('Total bill amount must be greater than zero.');
+    expect(run(-100, 'equal', [1, 1, 1]).valid).toBe(false);
+    expect(run(1000, 'percentage', [5000, 4000, 0]).errors).toContain('Percentage shares must add up to 100.00% (currently 90.00%).');
+    expect(run(1000, 'percentage', [5000, 4000, 1000]).valid).toBe(true);
+    const exact = run(1000, 'exact', [300, 300, 0]);
+    expect(exact.valid).toBe(false);
+    expect(exact.unallocatedSplitMinor).toBe(400);
+    expect(exact.errors).toContain('Participant split shares must reconcile 100% with the total bill.');
+    const shares = run(300, 'shares', [2, 0, 1]);
+    expect(shares.valid).toBe(true);
+    expect(calculateSplits({ totalMinor: 300, originalTotalMinor: 300, splitMode: 'shares', rotationSeed: 0, participants: ids.map((memberId, i) => ({ memberId, memberOrder: i, included: true, rawInputValue: [2, 0, 1][i]! })) }).map((s) => s.owedMinor)).toEqual([200, 0, 100]);
+    expect(run(300, 'shares', [0, 0, 0]).errors).toContain('Total share weights must be greater than zero.');
+    expect(run(100, 'adjustment', [150, -100, 0]).errors).toContain('No participant share can be negative after adjustment.');
+  });
+
+  it('rejects a currency symbol or code that does not match the bill currency', () => {
+    expect(tryParseMajorToMinorBigInt('$5', 'INR').ok).toBe(false);
+    expect(tryParseMajorToMinorBigInt('5 $', 'INR').ok).toBe(false);
+    expect(tryParseMajorToMinorBigInt('USD 5', 'INR').ok).toBe(false);
+    expect(tryParseMajorToMinorBigInt('5 USD', 'INR').ok).toBe(false);
+    expect(tryParseMajorToMinorBigInt('€5', 'INR').error).toMatch(/does not match INR/);
+    expect(parseMajorToMinor('$5', 'INR')).toBe(0);
+    expect(parseMajorToMinor('$5', 'USD')).toBe(500);
+    expect(parseMajorToMinor('₹5', 'INR')).toBe(500);
+    expect(parseMajorToMinor('5 INR', 'INR')).toBe(500);
+    expect(parseMajorToMinor('-₹5', 'INR')).toBe(-500);
+    for (const code of ['CAD', 'AUD', 'NZD', 'SGD', 'HKD', 'USD', 'MXN']) {
+      expect(parseMajorToMinor('$5', code), code).toBe(500);
+      expect(parseMajorToMinor('5 $', code), code).toBe(500);
+    }
+    expect(parseMajorToMinor('C$5', 'CAD')).toBe(500);
+    expect(parseMajorToMinor('C$5', 'AUD')).toBe(0);
+    expect(parseMajorToMinor('$5', 'EUR')).toBe(0);
+  });
+
+  it('parses percents, shares and rates locale-aware without float', () => {
+    expect(parseLocaleDecimal('33,33', 2, 'de-DE')).toBe(3333n);
+    expect(parseLocaleDecimal('33.33', 2, 'en-IN')).toBe(3333n);
+    expect(parseLocaleDecimal('33,33', 2, 'en-IN')).toBeNull();
+    expect(parseLocaleDecimal('2', 0)).toBe(2n);
+    expect(parseLocaleDecimal('-1', 2)).toBeNull();
+    expect(parseLocaleDecimal('', 2)).toBeNull();
+    expect(parseFxRateToScaled('1,085', 'de-DE')).toBe(108_500_000);
+    expect(parseFxRateToScaled('0,0118', 'de-DE')).toBe(1_180_000);
+    expect(parseFxRateToScaled('25,350', 'en-IN')).toBe(2_535_000_000_000);
+    expect(parseFxRateToScaled('0,0118', 'en-IN')).toBe(0);
+    expect(toLocaleDecimalInput('1234.50', 'de-DE')).toBe('1234,50');
+    expect(toLocaleDecimalInput('1234.50', 'en-IN')).toBe('1234.50');
+  });
+
+  it('never treats identity as a rate between different currencies, and prints small rates with 8 decimals', () => {
+    expect(() =>
+      convertMinorAmountWithFx({ originalMinor: 1_000_000, fromCurrency: 'VND', toCurrency: 'INR', fxRateScaled: 100000000, fxStatus: 'identity', dateIso: '2026-11-16' })
+    ).toThrow(RangeError);
+    expect(convertMinorAmountWithFx({ originalMinor: 500, fromCurrency: 'INR', toCurrency: 'INR', fxRateScaled: 100000000, fxStatus: 'identity', dateIso: '2026-11-16' }).convertedMinor).toBe(500);
+    const irr = convertMinorAmountWithFx({ originalMinor: 1_000_000_00, fromCurrency: 'IRR', toCurrency: 'KWD', fxRateScaled: 731, fxStatus: 'live', dateIso: '2026-11-16' });
+    expect(irr.fxAuditNote).toContain('1 IRR = 0.00000731 KWD (live rate, 2026-11-16)');
+    const eur = convertMinorAmountWithFx({ originalMinor: 100, fromCurrency: 'EUR', toCurrency: 'INR', fxRateScaled: 9_120_000_000, fxStatus: 'manual', dateIso: '2026-11-16' });
+    expect(eur.fxAuditNote).toContain('1 EUR = 91.20 INR (manual rate');
+  });
+
+  it('offers former members only on bills that already include them', () => {
+    const roster = makeMembers(3).map((m, i) => (i === 2 ? { ...m, removedAt: '2026-11-15T00:00:00Z' } : m));
+    expect(pickableMembers(roster).map((m) => m.id)).toEqual(['mem_00', 'mem_01']);
+    expect(pickableMembers(roster, ['mem_02', 'mem_00']).map((m) => m.id)).toEqual(['mem_00', 'mem_01', 'mem_02']);
+    expect(pickableMembers(roster, ['someone_else']).map((m) => m.id)).toEqual(['mem_00', 'mem_01']);
+  });
+
+  it('supports a payer who is not part of the split (excluded row or no row) and multiple payers', () => {
+    const fourth = makeMembers(4);
+    const splits = calculateSplits({ totalMinor: 900, originalTotalMinor: 900, splitMode: 'equal', rotationSeed: 0, participants: fourth.map((m, i) => ({ memberId: m.id, memberOrder: i, included: i < 3, rawInputValue: 1 })) });
+    const outsider = [{ memberId: fourth[3]!.id, paidMinor: 900, originalPaidMinor: 900 }];
+    expect(validateExpenseInvariants({ amountMinor: 900, splitMode: 'equal', payers: outsider, splits }).valid).toBe(true);
+    const net = computeGroupNetBalances([makeExpense({ id: 'out', amountMinor: 900, payers: outsider, splits })], [], fourth);
+    expect(net.get(fourth[3]!.id)).toBe(900);
+    expect([...net.values()].reduce((a, v) => a + v, 0)).toBe(0);
+
+    const onlyOwers = splits.filter((sp) => sp.included);
+    expect(validateExpenseInvariants({ amountMinor: 900, splitMode: 'equal', payers: outsider, splits: onlyOwers }).valid).toBe(true);
+    const netNoRow = computeGroupNetBalances([makeExpense({ id: 'out2', amountMinor: 900, payers: outsider, splits: onlyOwers })], [], fourth);
+    expect(netNoRow.get(fourth[3]!.id)).toBe(900);
+    expect([...netNoRow.values()]).toEqual([-300, -300, -300, 900]);
+
+    const two = [{ memberId: fourth[0]!.id, paidMinor: 600, originalPaidMinor: 600 }, { memberId: fourth[1]!.id, paidMinor: 300, originalPaidMinor: 300 }];
+    expect(validateExpenseInvariants({ amountMinor: 900, splitMode: 'equal', payers: two, splits }).valid).toBe(true);
+    const short = validateExpenseInvariants({ amountMinor: 900, splitMode: 'equal', payers: two.slice(0, 1), splits });
+    expect(short.errors).toContain('Payer contributions must equal 100% of the total bill.');
+  });
+});
+
+function mockGroupShell(id: string, baseCurrency: string): GroupRecord {
+  return {
+    id,
+    name: `Group ${id}`,
+    description: '',
+    category: 'trip',
+    baseCurrency,
+    simplifyDebts: false,
+    defaultSplitConfig: null,
+    members: [],
+    expenseSeq: 0,
+    inviteCode: 'TEST',
+    createdAt: '2026-11-01T00:00:00Z',
+    updatedAt: '2026-11-01T00:00:00Z',
+    deletedAt: null,
+    hlc: '019a73e4c200-0001-usr_00',
+  };
+}
+
+function mockSettlement(id: string, fromMemberId: string, toMemberId: string, amountMinor: number): SettlementItem {
+  return {
+    id,
+    groupId: 'grp_test',
+    batchSettlementId: null,
+    fromMemberId,
+    toMemberId,
+    amountMinor,
+    currency: 'INR',
+    paymentMethod: 'cash',
+    paymentReference: null,
+    notes: '',
+    settledDate: '2026-11-12',
+    createdAt: '2026-11-12T00:00:00Z',
+    deletedAt: null,
+    hlc: '019a73e4c200-0002-usr_00',
+  };
+}
