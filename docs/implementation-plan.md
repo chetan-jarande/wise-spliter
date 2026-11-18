@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build **Wise-Spliter Phase 1**—a 100% free, local-first, multi-platform (Desktop, iOS, Android, Web) expense-splitting application with Settl's integer subunit precision and rotating remainders, plus Splitwise's Google OAuth multi-user collaboration, transparent group activity history, atomic offline conflict resolution, and full data portability.
+**Goal:** Build **Wise-Spliter Phase 1**, a 100% free, local-first, multi-platform (Desktop, iOS, Android, Web) expense-splitting application with Settl's integer subunit precision and rotating remainders, plus Splitwise's Google OAuth multi-user collaboration, transparent group activity history, atomic offline conflict resolution, and full data portability.
 
-**Architecture:** A single-codebase TypeScript 5.8 + React 19 + Vite 6 application backed by a pure, zero-dependency Financial & Graph Domain Engine (`src/domain/`), an ACID local IndexedDB database (`Dexie.js` in `src/storage/local-db.ts` including `local_receipt_blobs` for offline WebP receipts and `syncOutbox` FIFO queue) that serves 100% of reads/writes offline, a Backend API Gatekeeper (`src/server/index.ts` & `src/server/supabaseAdmin.ts` on `:4174`), and an asynchronous Sync Engine (`src/sync-engine/supabase-sync.ts`) that synchronizes mutations and receipt uploads with the centralized local/cloud Supabase stack (`SUPABASE_DIR = /home/chetan/projects/my-scripts/setup/dependencies`, schema `wise_spliter`, private Storage bucket `wise-spliter-receipts`). Packaged with an Offline Service Worker (`public/sw.js`) and PWA manifest (`public/manifest.webmanifest`).
+**Architecture:** A single-codebase TypeScript 5.8 + React 19 + Vite 6 application backed by a pure, zero-dependency Financial & Graph Domain Engine (`src/domain/`), an ACID local IndexedDB database (`Dexie.js` in `src/storage/local-db.ts` including `local_receipt_blobs` for offline WebP receipts and `syncOutbox` FIFO queue) that serves 100% of reads/writes offline, a Backend API Gatekeeper (`src/server/index.ts` & `src/server/supabaseAdmin.ts` on `:4174`), and an asynchronous Sync Engine (`src/sync-engine/supabase-sync.ts`) that synchronizes mutations and receipt uploads with the centralized local/cloud Supabase stack (`$SUPABASE_DIR` from `.env.development`, schema `wise_spliter`, private Storage bucket `wise-spliter-receipts`). Packaged with an Offline Service Worker (`public/sw.js`) and PWA manifest (`public/manifest.webmanifest`).
 
 **Tech Stack:** TypeScript 5.8 (`strict: true`, `noUncheckedIndexedAccess: true`), Vite 6, React 19, Tailwind CSS, `@phosphor-icons/react`, Dexie.js 4, Node/Bun Backend API Gatekeeper (`:4174`), Supabase PostgreSQL 17 & PostgREST (`wise_spliter` schema + RPCs `schema_health`, `push_mutations`, `pull_changes` + private bucket `wise-spliter-receipts`), Multi-Sheet `.xlsx` & `.pdf` exporters, RFC-4180 `.csv`, Splitwise CSV/JSON importer, Web Crypto API (`AES-256-GCM`), Vitest, `fast-check`, and Playwright.
 
@@ -18,7 +18,7 @@
 ## Global Constraints
 
 * **Zero Floating-Point Money Math:** All monetary amounts, shares, adjustments, and balances MUST be represented as `bigint` / exact integer minor units (`paise`, `cents`, `fils`, `yen`). Never use floating-point division for currency allocation.
-* **170+ ISO-4217 Currencies (0, 2, and 3 Decimals):** Must support 0-decimal (`JPY`, `KRW`, `VND`), 2-decimal (`INR`, `USD`, `EUR`, `GBP`), and 3-decimal (`KWD`, `BHD`, `OMR`, `JOD`, `TND`) currencies natively.
+* **160+ ISO-4217 Currencies (0, 2, and 3 Decimals):** Must support 0-decimal (`JPY`, `KRW`, `VND`), 2-decimal (`INR`, `USD`, `EUR`, `GBP`), and 3-decimal (`KWD`, `BHD`, `OMR`, `JOD`, `TND`) currencies natively.
 * **Stateless Deterministic Rotating Remainder (Frozen on Save):** Leftover minor units (`0 <= r < k`) rotate across group members deterministically using `rotation_seed = group.expense_seq` and are frozen in `expense.splits` on save so deleting or editing another bill never shifts historical paise.
 * **Modular Quick-Add (`ExpenseEditorModal`) & Minimalist Home Dashboard (`<= 3` Recent Groups):** The Home Dashboard (`HomeDashboardPage.tsx`) displays at most `<= 3` recently accessed/updated groups via `last_accessed_at` (`GREATEST(last_accessed_at, updated_at) DESC`). `ExpenseEditorModal` supports both `group_id = null` direct non-group splits with `ad_hoc_participants` and group-preselected splits when opened inside a group.
 * **Progressive Group Workspace & Interactive Help (`HelpGuideModal` + `ContextualPageGuideBanner`):** Group workspaces (`GroupsLedgerPage.tsx`) progressively reveal concise balance insights, member roster management, and automatic next-step guidance alongside skippable page banners (`ContextualPageGuideBanner`) and an interactive `HelpGuideModal`.
@@ -28,7 +28,7 @@
 * **Isolated Per-Group Simplification + Atomic Multi-Group Friend Settle Up:** Multi-person graph debt simplification (`Bitmask DP` for $n \le 16$, greedy fallback for $n > 16$) runs strictly within each group; settling up from the Friends tab generates a shared `batch_settlement_id` posting offsetting settlements into each shared group atomically.
 * **Whole-Expense Atomic Revisions + Conflict Diff Banner:** Never auto-merge partial fields of concurrent financial edits on the same expense. Track `base_revision_id` and `hlc`; if a concurrent offline edit occurs, store both snapshots in `expense_revisions`, mark `has_unresolved_conflict = true`, and allow 1-tap resolution (`[Keep Mine]` / `[Keep Theirs]`).
 * **Transparent Group Activity & Update History (`group_activity_log`):** Every mutation in a group must record a human-readable and structured diff entry in `group_activity_log` visible to all group members.
-* **Centralized Supabase (`SUPABASE_DIR = /home/chetan/projects/my-scripts/setup/dependencies`) & Isolated Schema (`wise_spliter`):** All cloud tables, views, triggers, RPCs (`wise_spliter.schema_health`, `wise_spliter.push_mutations`, `wise_spliter.pull_changes`), and RLS policies reside in `CREATE SCHEMA wise_spliter;`, never `public`, mediated by the Backend API Gatekeeper (`src/server/index.ts` on `:4174`).
+* **Centralized Supabase (`$SUPABASE_DIR` from `.env.development`) & Isolated Schema (`wise_spliter`):** All cloud tables, views, triggers, RPCs (`wise_spliter.schema_health`, `wise_spliter.push_mutations`, `wise_spliter.pull_changes`), and RLS policies reside in `CREATE SCHEMA wise_spliter;`, never `public`, mediated by the Backend API Gatekeeper (`src/server/index.ts` on `:4174`).
 
 ---
 
@@ -36,10 +36,10 @@
 
 | Milestone | Scope & Key Deliverables | Status |
 | :--- | :--- | :--- |
-| **Milestone 1 (Tasks 1–4)** | **Core Financial Math, 5 Split Modes, Bitmask-DP Simplifier & HLC Revision Engine (`src/domain/`)** — 170+ ISO-4217 currencies (`0, 2, 3` decimals), stateless rotating remainder, Bitmask-DP minimum-transfer solver, "Explain This Balance" lineage, and HLC revision diffing verified by Vitest + `fast-check` property tests. | ✅ **Completed** |
-| **Milestone 2 (Tasks 5–6)** | **Local Offline DB (`Dexie.js`), Centralized Supabase (`wise_spliter`), Backend API Gatekeeper (`:4174`) & Receipt Attachment Pipeline (`src/storage/`, `src/server/`, `src/sync-engine/`, `supabase/`)** — Dexie `wise_spliter_local_db` + `syncOutbox` + `local_receipt_blobs`, `0001_wise_spliter_schema.sql` (`schema_health`, `push_mutations`, `pull_changes`), Backend API Gatekeeper (`src/server/index.ts`), and `POST /api/receipts/upload` $\to$ `wise-spliter-receipts` (`{group_id_or_direct}/{expense_id}/{receipt_id}.webp`). | ✅ **Completed** |
-| **Milestone 3 (Task 7)** | **Portability Suite, UPI Deep-Links, WhatsApp Summary, Multi-Sheet `.xlsx` & `.pdf` Exports & AES-256-GCM Backups (`src/portability/`)** — Splitwise CSV/JSON importer, RFC-4180 `.csv`, Multi-Sheet `.xlsx` & `.pdf` statements, NPCI `upi://pay` deep-links + QR modal, WhatsApp summary generator, and Web Crypto `AES-256-GCM` `.wisesplit` archives. | ✅ **Completed** |
-| **Milestone 4 (Task 8)** | **Minimalist Home Dashboard (`<= 3` Recent Groups), Modular `ExpenseEditorModal`, Progressive Group Workspace, `HelpGuideModal` + `ContextualPageGuideBanner`, Offline Service Worker (`public/sw.js`) & Playwright E2E Suite (`src/ui/`, `tests/e2e/`)** — Complete responsive UI across Desktop and Mobile with live Playwright E2E verification. | ✅ **Completed** |
+| **Milestone 1 (Tasks 1 to 4)** | **Core Financial Math, 5 Split Modes, Bitmask-DP Simplifier & HLC Revision Engine (`src/domain/`)**: 160+ ISO-4217 currencies (`0, 2, 3` decimals), stateless rotating remainder, Bitmask-DP minimum-transfer solver, "Explain This Balance" lineage, and HLC revision diffing verified by Vitest + `fast-check` property tests. | ✅ **Completed** |
+| **Milestone 2 (Tasks 5 to 6)** | **Local Offline DB (`Dexie.js`), Centralized Supabase (`wise_spliter`), Backend API Gatekeeper (`:4174`) & Receipt Attachment Pipeline (`src/storage/`, `src/server/`, `src/sync-engine/`, `supabase/`)**: Dexie `wise_spliter_local_db` + `syncOutbox` + `local_receipt_blobs`, `0001_wise_spliter_schema.sql` (`schema_health`, `push_mutations`, `pull_changes`), Backend API Gatekeeper (`src/server/index.ts`), and `POST /api/receipts/upload` $\to$ `wise-spliter-receipts` (`{group_id_or_direct}/{expense_id}/{receipt_id}.webp`). | ✅ **Completed** |
+| **Milestone 3 (Task 7)** | **Portability Suite, UPI Deep-Links, WhatsApp Summary, Multi-Sheet `.xlsx` & `.pdf` Exports & AES-256-GCM Backups (`src/portability/`)**: Splitwise CSV/JSON importer, RFC-4180 `.csv`, Multi-Sheet `.xlsx` & `.pdf` statements, NPCI `upi://pay` deep-links + QR modal, WhatsApp summary generator, and Web Crypto `AES-256-GCM` `.wisesplit` archives. | ✅ **Completed** |
+| **Milestone 4 (Task 8)** | **Minimalist Home Dashboard (`<= 3` Recent Groups), Modular `ExpenseEditorModal`, Progressive Group Workspace, `HelpGuideModal` + `ContextualPageGuideBanner`, Offline Service Worker (`public/sw.js`) & Playwright E2E Suite (`src/ui/`, `tests/e2e/`)**: Complete responsive UI across Desktop and Mobile with live Playwright E2E verification. | ✅ **Completed** |
 
 ---
 
@@ -77,7 +77,7 @@ import { formatMinorToMajor, parseMajorToMinor } from '../../src/domain/money/mi
 import { convertMinorAmountWithFx, parseFxRateToScaled } from '../../src/domain/money/fx-converter';
 
 describe('ISO-4217 Currencies & Minor-Unit BigInt Math', () => {
-  it('supports 170+ currencies across 0, 2, and 3 decimal exponents', () => {
+  it('supports 160+ currencies across 0, 2, and 3 decimal exponents', () => {
     expect(Object.keys(SUPPORTED_CURRENCIES).length).toBeGreaterThanOrEqual(170);
     expect(getCurrency('JPY').decimals).toBe(0);
     expect(getCurrency('INR').decimals).toBe(2);
@@ -137,23 +137,23 @@ function parseMajorToMajorRoundtrip(val: string, code: string): string {
 
 - [x] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/chetan/projects/wise-spliter && bun test tests/unit/money.test.ts`
+Run: `bun test tests/unit/money.test.ts`
 Expected: FAIL with module not found `../../src/domain/money/currencies`.
 
 - [x] **Step 3: Implement `currencies.ts`, `minor-units.ts`, and `fx-converter.ts`**
 
-Implement the 170+ ISO-4217 currency registry (`0 | 2 | 3` decimals), exact string-based `parseMajorToMinor` / `formatMinorToMajor` using `bigint` arithmetic (no `parseFloat`), and `convertMinorAmountWithFx` with half-away-from-zero integer rounding and Splitwise-style FX audit note generation.
+Implement the 160+ ISO-4217 currency registry (`0 | 2 | 3` decimals), exact string-based `parseMajorToMinor` / `formatMinorToMajor` using `bigint` arithmetic (no `parseFloat`), and `convertMinorAmountWithFx` with half-away-from-zero integer rounding and Splitwise-style FX audit note generation.
 
 - [x] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/chetan/projects/wise-spliter && bun test tests/unit/money.test.ts`
+Run: `bun test tests/unit/money.test.ts`
 Expected: PASS (all unit and property tests green).
 
 - [x] **Step 5: Commit**
 
 ```bash
 git add package.json tsconfig.json vite.config.ts src/domain/money/ tests/unit/money.test.ts
-git commit -m "feat(money): add ISO-4217 170+ currency minor-unit BigInt engine and FX converter"
+git commit -m "feat(money): add ISO-4217 160+ currency minor-unit BigInt engine and FX converter"
 ```
 
 ---
@@ -327,7 +327,7 @@ describe('5 Split Modes & Stateless Deterministic Rotating Remainder', () => {
 
 - [x] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/chetan/projects/wise-spliter && bun test tests/unit/splits.test.ts`
+Run: `bun test tests/unit/splits.test.ts`
 Expected: FAIL with module not found `../../src/domain/splits/split-calculator`.
 
 - [x] **Step 3: Implement `rotating-remainder.ts`, `split-calculator.ts`, and `invariant-validator.ts`**
@@ -336,7 +336,7 @@ Implement Hamilton's Largest Remainder method with deterministic rotation tie-br
 
 - [x] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/chetan/projects/wise-spliter && bun test tests/unit/splits.test.ts`
+Run: `bun test tests/unit/splits.test.ts`
 Expected: PASS.
 
 - [x] **Step 5: Commit**
@@ -558,7 +558,7 @@ describe('Group Ledger, Bitmask-DP Simplifier & Explain Balance', () => {
 
 - [x] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/chetan/projects/wise-spliter && bun test tests/unit/ledger.test.ts`
+Run: `bun test tests/unit/ledger.test.ts`
 Expected: FAIL with module not found.
 
 - [x] **Step 3: Implement `group-balances.ts`, `debt-simplifier.ts`, `explain-balance.ts`, and `cross-group-ledger.ts`**
@@ -567,7 +567,7 @@ Implement the exact balance conservation formulas, Bitmask-DP zero-sum subset pa
 
 - [x] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/chetan/projects/wise-spliter && bun test tests/unit/ledger.test.ts`
+Run: `bun test tests/unit/ledger.test.ts`
 Expected: PASS.
 
 - [x] **Step 5: Commit**
@@ -682,7 +682,7 @@ describe('HLC, Revision Diff & Atomic Offline Conflict Resolver', () => {
 
 - [x] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/chetan/projects/wise-spliter && bun test tests/unit/sync-conflict.test.ts`
+Run: `bun test tests/unit/sync-conflict.test.ts`
 Expected: FAIL with module not found.
 
 - [x] **Step 3: Implement `hlc.ts`, `revision-diff.ts`, and `atomic-conflict-resolver.ts`**
@@ -691,7 +691,7 @@ Implement the 48-bit-ms + 16-bit-counter HLC clock, structured field diff builde
 
 - [x] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/chetan/projects/wise-spliter && bun test tests/unit/sync-conflict.test.ts`
+Run: `bun test tests/unit/sync-conflict.test.ts`
 Expected: PASS.
 
 - [x] **Step 5: Commit**
@@ -716,7 +716,7 @@ git commit -m "feat(sync): implement HLC clock, expense revision diff generator,
 - Consumes: `src/domain/money/*`, `src/domain/splits/*`, `src/domain/ledger/*`, `src/domain/sync/*`
 - Produces:
   - `WiseSpliterLocalDatabase` (Dexie IndexedDB `wise_spliter_local_db` with `groups`, `expenses`, `expenseRevisions`, `settlements`, `groupActivityLog`, `syncOutbox`, `local_receipt_blobs` for offline compressed WebP receipt images, and `kvStore`)
-  - Centralized Supabase migration (`SUPABASE_DIR = /home/chetan/projects/my-scripts/setup/dependencies`) creating isolated `wise_spliter` schema, `receipt_attachments` table, private Storage bucket `wise-spliter-receipts`, and RPC functions `wise_spliter.schema_health`, `wise_spliter.push_mutations`, and `wise_spliter.pull_changes`
+  - Centralized Supabase migration (`$SUPABASE_DIR` from `.env.development`) creating isolated `wise_spliter` schema, `receipt_attachments` table, private Storage bucket `wise-spliter-receipts`, and RPC functions `wise_spliter.schema_health`, `wise_spliter.push_mutations`, and `wise_spliter.pull_changes`
   - `LedgerRepository` / `LedgerContext`:
     - `createGroup(...)`, `updateGroupCurrency(groupId, newCurrency, mode: 'relabel' | 'reconvert', fxRateScaled?)`, `softDeleteGroup(groupId)`, `restoreGroup(groupId)`
     - `addGroupMember(...)`, `claimMemberByEmailOrInvite(email, userId)`
@@ -741,7 +741,7 @@ describe('Local Offline Dexie Repository & Group Activity Audit Trail', () => {
     const db = createLocalDb(`test-db-${ crypto.randomUUID() }`);
     repo = new LedgerRepository(db, {
       userId: 'u_chetan',
-      email: 'chetan@gmail.com',
+      email: 'chetan@example.com',
       fullName: 'Chetan',
       nodeId: 'node_chetan',
     });
@@ -759,8 +759,8 @@ describe('Local Offline Dexie Repository & Group Activity Audit Trail', () => {
     const rahulMember = await repo.addGroupMember({
       groupId: group.id,
       displayName: 'Rahul',
-      invitedEmail: 'rahul@gmail.com',
-      upiId: 'rahul@okaxis',
+      invitedEmail: 'rahul@example.com',
+      upiId: 'rahul@upi.test',
     });
     expect(rahulMember.userId).toBeNull();
 
@@ -806,8 +806,8 @@ describe('Local Offline Dexie Repository & Group Activity Audit Trail', () => {
     const activity = await repo.getGroupActivityLog(group.id);
     expect(activity.some((a) => a.action === 'expense_updated' && a.summaryText.includes('₹5,000.00 → ₹6,000.00'))).toBe(true);
 
-    // Simulate Rahul signing in with Google (rahul@gmail.com) -> auto-claims his member record
-    const claimedCount = await repo.claimUnclaimedMembershipsByEmail('rahul@gmail.com', 'u_rahul');
+    // Simulate Rahul signing in with Google (rahul@example.com) -> auto-claims his member record
+    const claimedCount = await repo.claimUnclaimedMembershipsByEmail('rahul@example.com', 'u_rahul');
     expect(claimedCount).toBe(1);
     const updatedRahul = await repo.getGroupMember(rahulMember.id);
     expect(updatedRahul?.userId).toBe('u_rahul');
@@ -842,7 +842,7 @@ describe('Local Offline Dexie Repository & Group Activity Audit Trail', () => {
 
 - [x] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/chetan/projects/wise-spliter && bun test tests/unit/local-repository.test.ts`
+Run: `bun test tests/unit/local-repository.test.ts`
 Expected: FAIL with module not found.
 
 - [x] **Step 3: Create `0001_wise_spliter_schema.sql`, `local-db.ts`, and `ledger-repository.ts`**
@@ -851,7 +851,7 @@ Write the complete Supabase SQL migration for `wise_spliter` schema (including R
 
 - [x] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/chetan/projects/wise-spliter && bun test tests/unit/local-repository.test.ts`
+Run: `bun test tests/unit/local-repository.test.ts`
 Expected: PASS.
 
 - [x] **Step 5: Commit**
@@ -895,7 +895,7 @@ describe('Multi-Device Offline Sync Engine (wise_spliter schema)', () => {
     const dbChetan = createLocalDb(`chetan-${ crypto.randomUUID() }`);
     const repoChetan = new LedgerRepository(dbChetan, {
       userId: 'u_chetan',
-      email: 'chetan@gmail.com',
+      email: 'chetan@example.com',
       fullName: 'Chetan',
       nodeId: 'node_c',
     });
@@ -905,7 +905,7 @@ describe('Multi-Device Offline Sync Engine (wise_spliter schema)', () => {
     const dbRahul = createLocalDb(`rahul-${ crypto.randomUUID() }`);
     const repoRahul = new LedgerRepository(dbRahul, {
       userId: 'u_rahul',
-      email: 'rahul@gmail.com',
+      email: 'rahul@example.com',
       fullName: 'Rahul',
       nodeId: 'node_r',
     });
@@ -914,7 +914,7 @@ describe('Multi-Device Offline Sync Engine (wise_spliter schema)', () => {
 
     // 1. Chetan creates group & adds Rahul by email, then syncs to cloud
     const group = await repoChetan.createGroup({ name: 'Euro Trip', category: 'trip', baseCurrency: 'INR', simplifyDebts: true });
-    const rahulMember = await repoChetan.addGroupMember({ groupId: group.id, displayName: 'Rahul', invitedEmail: 'rahul@gmail.com' });
+    const rahulMember = await repoChetan.addGroupMember({ groupId: group.id, displayName: 'Rahul', invitedEmail: 'rahul@example.com' });
     const chetanMember = await repoChetan.getMyMemberInGroup(group.id);
     const sharedExpense = await repoChetan.createExpense({
       groupId: group.id,
@@ -990,7 +990,7 @@ describe('Multi-Device Offline Sync Engine (wise_spliter schema)', () => {
 
 - [x] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/chetan/projects/wise-spliter && bun test tests/unit/sync-manager.test.ts`
+Run: `bun test tests/unit/sync-manager.test.ts`
 Expected: FAIL with module not found.
 
 - [x] **Step 3: Implement `src/server/index.ts`, `src/server/supabaseAdmin.ts`, and `src/sync-engine/supabase-sync.ts`**
@@ -999,7 +999,7 @@ Implement the Backend API Gatekeeper on `:4174`, `POST /api/receipts/upload` to 
 
 - [x] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/chetan/projects/wise-spliter && bun test tests/unit/sync-manager.test.ts`
+Run: `bun test tests/unit/sync-manager.test.ts`
 Expected: PASS.
 
 - [x] **Step 5: Commit**
@@ -1011,7 +1011,7 @@ git commit -m "feat(sync-engine): implement offline outbox sync manager and Supa
 
 ---
 
-### Task 7: Portability Suite — Splitwise CSV/JSON Importer, Multi-Sheet `.xlsx` & `.pdf` Exporters, CSV, UPI Links, WhatsApp Summary & Encrypted Backups (✅ Completed)
+### Task 7: Portability Suite: Splitwise CSV/JSON Importer, Multi-Sheet `.xlsx` & `.pdf` Exporters, CSV, UPI Links, WhatsApp Summary & Encrypted Backups (✅ Completed)
 
 **Files:**
 - Create: `wise-spliter/src/portability/portability-engine.ts`
@@ -1044,14 +1044,14 @@ import { decryptBackupPayload, encryptBackupPayload } from '../../src/portabilit
 describe('Portability, UPI Deep-Links, WhatsApp Summary & AES-256-GCM Backup', () => {
   it('builds a valid NPCI upi://pay deep link with pre-filled amount and receiver', () => {
     const uri = buildUpiPaymentUri({
-      payeeUpiId: 'rahul@okicici',
+      payeeUpiId: 'rahul@upi.test',
       payeeName: 'Rahul Sharma',
       amountMinor: 125050n,
       currency: 'INR',
       note: 'Goa Trip Settlement',
     });
     expect(uri).toBe(
-      'upi://pay?pa=rahul%40okicici&pn=Rahul%20Sharma&am=1250.50&cu=INR&tn=Goa%20Trip%20Settlement'
+      'upi://pay?pa=rahul%40upi.test&pn=Rahul%20Sharma&am=1250.50&cu=INR&tn=Goa%20Trip%20Settlement'
     );
   });
 
@@ -1118,7 +1118,7 @@ describe('Portability, UPI Deep-Links, WhatsApp Summary & AES-256-GCM Backup', (
 
 - [x] **Step 2: Run test to verify it fails**
 
-Run: `cd /home/chetan/projects/wise-spliter && bun test tests/unit/portability.test.ts`
+Run: `bun test tests/unit/portability.test.ts`
 Expected: FAIL with module not found.
 
 - [x] **Step 3: Implement `portability-engine.ts` (`upi-links`, `whatsapp-summary`, `splitwise-importer`, Multi-Sheet `.xlsx` / `.pdf` / `.csv` `exporters`, and `encrypted-backup`)**
@@ -1127,7 +1127,7 @@ Implement all five portability capabilities with zero external server dependenci
 
 - [x] **Step 4: Run test to verify it passes**
 
-Run: `cd /home/chetan/projects/wise-spliter && bun test tests/unit/portability.test.ts`
+Run: `bun test tests/unit/portability.test.ts`
 Expected: PASS.
 
 - [x] **Step 5: Commit**
@@ -1192,13 +1192,13 @@ test.describe('Wise-Spliter Phase 1 End-to-End Verification', () => {
     // 2. Add two friends (Rahul and Priya)
     await page.getByTestId('add-member-btn').click();
     await page.getByTestId('member-name-input').fill('Rahul');
-    await page.getByTestId('member-email-input').fill('rahul@gmail.com');
-    await page.getByTestId('member-upi-input').fill('rahul@okaxis');
+    await page.getByTestId('member-email-input').fill('rahul@example.com');
+    await page.getByTestId('member-upi-input').fill('rahul@upi.test');
     await page.getByTestId('save-member-btn').click();
 
     await page.getByTestId('add-member-btn').click();
     await page.getByTestId('member-name-input').fill('Priya');
-    await page.getByTestId('member-email-input').fill('priya@gmail.com');
+    await page.getByTestId('member-email-input').fill('priya@example.com');
     await page.getByTestId('save-member-btn').click();
 
     // 3. Log a ₹100.00 Equal Split expense across 3 members -> rotating remainder assigns ₹33.34, ₹33.33, ₹33.33
@@ -1224,7 +1224,7 @@ test.describe('Wise-Spliter Phase 1 End-to-End Verification', () => {
 
 - [x] **Step 2: Run E2E test to verify it fails before UI is built**
 
-Run: `cd /home/chetan/projects/wise-spliter && bunx playwright test`
+Run: `bunx playwright test`
 Expected: FAIL (application entry point not yet created).
 
 - [x] **Step 3: Build the responsive React 19 UI components, Offline Service Worker (`public/sw.js`), PWA manifest, and Capacitor config**
@@ -1233,7 +1233,7 @@ Implement `index.html`, `public/sw.js`, `src/main.tsx`, `src/App.tsx`, and all U
 
 - [x] **Step 4: Run unit tests, property tests, production build, and Playwright E2E tests**
 
-Run: `cd /home/chetan/projects/wise-spliter && bun test && bun run build && bunx playwright test`
+Run: `bun test && bun run build && bunx playwright test`
 Expected: PASS (100% unit, property, build, and E2E checks green).
 
 - [x] **Step 5: Commit**

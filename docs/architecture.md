@@ -1,390 +1,225 @@
-# Wise-Spliter: System Architecture & Topology
+# Wise-Spliter: System Architecture
 
-**Related Specifications:**
+Describes the code as it is now. Details live in the linked specs:
+
 * [Feature Requirements](./feature-requiremrnts.md)
-* [Technical Architecture & Financial Algorithms](./technical-spec.md)
-* [Database Schema, Offline Sync & Security Specification (`wise_spliter`)](./database-and-sync-spec.md)
-* [Engineering & Coding Standards](./coding-standards.md)
+* [Technical Spec and Financial Algorithms](./technical-spec.md)
+* [Database Schema and Sync Spec](./database-and-sync-spec.md) (authoritative for the sync protocol and RPC rules)
+* [Database Capacity and Free-Tier Ceilings](./database-capacity.md)
+* [P2P Receipt Mesh Plan](./p2p-receipt-mesh-plan.md) (planned, not implemented)
+* [Cloudflare Worker Migration](./tasks/Cloudflare-Worker.md) (planned)
+* [Coding Standards](./coding-standards.md)
 
 ---
 
-## 1. Top-Level Architecture Overview (5 Core Layers)
+## 1. Summary
 
-Wise-Spliter is engineered as a 5-layer local-first, mathematically deterministic, multi-platform financial ledger. Every layer has strict boundaries and responsibilities:
-
-### Layer 1: Multi-Platform Client UI & Offline Service Worker (`src/ui/`, `src/App.tsx`, `public/sw.js`)
-* **Minimalist Home Dashboard (`HomeDashboardPage.tsx`):** Displays at most `<= 3` recently accessed or updated active groups (`GREATEST(last_accessed_at, updated_at) DESC`), personal net balance telemetry (`Net`, `Owed to you`, `You owe`), recent direct non-group splits, and a 1-tap **Quick Add Expense** workflow (`ExpenseEditorModal`) that supports both **Direct Non-Group Splits (`group_id = null` with `ad_hoc_participants`)** and **Group-Preselected Bills**.
-* **Progressive Group Workspace (`GroupsLedgerPage.tsx`):** Presents a clean group header with concise balance insights, member roster management (instant add by Name + optional Gmail/UPI ID), interactive **Explain This Balance** lineage drawers (`ExplainBalanceModal`), and automatic contextual step-by-step guidance (`HelpGuideModal` + `ContextualPageGuideBanner`).
-* **Activity, Revision & Trash Vault (`ActivityAndTrashPage.tsx`):** Exposes the group-wide chronological audit feed (`group_activity_log`), per-expense immutable edit history (`expense_revisions`) with field-level before/after diffs, 1-tap conflict resolution banners (`[Keep Local Version]` / `[Accept Remote Version]`), and soft-deleted bill recovery (`deleted_at IS NOT NULL`).
-* **Friends Cross-Group & UPI/WhatsApp Settle Studio (`FriendsAndSettlePage.tsx`):** Aggregates pairwise net balances across all shared groups plus standalone direct splits, generates standard NPCI `upi://pay` deep-links and scannable Desktop UPI QR codes, formats copyable WhatsApp settlement summaries, and executes atomic multi-group batch settlements (`batch_settlement_id`).
-* **Analytics & Global Search (`AnalyticsAndSearchPage.tsx`):** Provides multi-parameter filtering (query, group, category, split mode, conflict flag) alongside category distribution breakdowns and monthly cashflow velocity.
-* **Portability & Encrypted Backup Vault (`PortabilityAndSyncPage.tsx`):** Delivers 1-click Splitwise CSV and JSON migration imports, RFC-4180 CSV ledger exports, multi-sheet `.xlsx` workbooks, printable `.pdf` statements, and **Web Crypto (`PBKDF2-SHA256` + `AES-256-GCM`)** `.wisesplit` encrypted backup archives.
-* **Sign-In, Demo Sandbox & Google OAuth Modal (`DevAuthModal.tsx`):** Opened from the header user pill (`header-user-pill`), offering a 1-tap isolated Demo Sandbox (`demo-profile-login-btn` -> `POST /api/auth/demo`), real Supabase Google OAuth 2.0 browser redirect (`dev-google-oauth-btn` -> GoTrue -> `LedgerContext` `onAuthStateChange` -> `POST /api/auth/google`), and backend-verified email/password sign-in (`POST /api/auth/login`) without importing `dev-profiles.ts` or bundling any credentials.
-* **Offline Service Worker (`public/sw.js` & `src/main.tsx`):** Caches the production application shell (`wise-spliter-offline-v2`) in `PROD` builds for 100% offline flight/remote operation while automatically unregistering Service Workers and clearing stale caches during local Vite `DEV` sessions.
-
-### Layer 2: Pure Financial & Graph Domain Engine (`src/domain/`)
-* **Zero-Float Minor-Unit Money Math (`src/domain/money/`):** Supports 170+ ISO-4217 currencies across `0`, `2`, and `3` decimal exponents (`JPY = 0`, `INR/USD/EUR = 2`, `KWD/BHD/OMR = 3`). All parsing, formatting, and foreign-exchange conversions (`fx_rate_scaled = round(rate * 10^8)`) operate exclusively on `BigInt` and integer minor units.
-* **5 Split Modes & Stateless Deterministic Rotating Remainder (`src/domain/splits/`):** Implements `equal`, `exact`, `percentage` (10,000 basis points), `shares` (Hamilton's Largest Remainder Rule), and `adjustment` (`+/-` minor units). Leftover sub-units (`T mod k`) rotate deterministically using the frozen `rotation_seed = group.expense_seq` at creation time so historical paise/cents never shift when other expenses are edited or deleted.
-* **Bitmask-DP Minimum-Transfer Debt Simplifier & Provenance (`src/domain/ledger/`):** Enforces the zero-sum group conservation law ($\sum_{m} \text{Net}(m) \equiv 0\text{n}$). Supports both raw bilateral pairwise debts (`simplify_debts = false`, computed via Sequential Margin-Conserving Hamilton Largest Remainder over intra-bill net surpluses/deficits) and exact **Prefix-Zero-Sum Bitmask Dynamic Programming ($O(n \cdot 2^n)$ BigInt for $n \le 16$, greedy max-creditor/max-debtor fallback for $n > 16$)** to find the mathematically minimum number of settlement transfers ($n - p$ where $p$ is the maximum count of disjoint zero-sum subsets), paired with full **Explain This Balance** equation lineage.
-
-### Layer 3: Local-First IndexedDB & Outbox Engine (`src/storage/local-db.ts`, `src/state/LedgerContext.tsx`)
-* **Dexie.js Local Mirror (`WiseSpliterLocalDatabase`):** Mirrors `groups`, `expenses`, `expenseRevisions`, `settlements`, `groupActivityLog`, `receipt_attachments`, `local_receipt_blobs`, `sync_cursors`, and `kvStore` inside browser `IndexedDB` (`wise_spliter_local_db`), with an automatic in-memory fallback for restricted headless contexts.
-* **Offline Receipt Blob Store (`local_receipt_blobs`):** Compressed WebP receipt images are stored immediately in the Dexie.js IndexedDB table `local_receipt_blobs` so receipts render and work 100% offline during flights and trips before cloud synchronization.
-* **Sub-Millisecond Offline Reads/Writes & `syncOutbox` FIFO Queue:** Every user action commits immediately to the local state and `IndexedDB` in `< 1ms` and appends an ordered mutation record (`id`, `entityType`, `action`, `payloadJson`, `createdAt`, `hlc`) to `syncOutbox`. Whether the user is on an airplane or flaky travel Wi-Fi, the app remains 100% interactive and flushes `syncOutbox` and pending `local_receipt_blobs` to the Backend API when connectivity is available.
-
-### Layer 4: Backend API & Sync Gatekeeper Service (`src/server/index.ts`, `src/server/supabaseAdmin.ts` & `src/server/securityAndAuth.ts` on Port `4174`, Proxied at `/api/*`)
-This layer explicitly governs **"Why we have a Backend API and Who Updates the Database"**:
-* **Official `@supabase/supabase-js` Client/Server Pattern (Modeled on `merry-tools`):**
-  * **Server Admin Singleton (`src/server/supabaseAdmin.ts`):** Uses `createClient(SUPABASE_URL, SUPABASE_SECRET_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }, db: { schema: SUPABASE_SCHEMA } })` from `@supabase/supabase-js` so all server-side queries, RPC calls (`schema_health`, `pull_changes`, `push_mutations`), and Storage uploads (`wise-spliter-receipts`) target the `wise_spliter` schema cleanly.
-  * **Browser Sync Client (`src/sync-engine/supabase-sync.ts`):** Uses `createClient(VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, { db: { schema: 'wise_spliter' }, auth: { persistSession: true, autoRefreshToken: true } })` for Google OAuth (`signInWithOAuth`) and session token management, paired with `.env.example` / `.env.development` / `.env.production` environment separation.
-* **Strict Secret Isolation:** The browser client **NEVER** holds or receives `SUPABASE_SECRET_KEY` (`service_role`). All privileged credentials remain strictly inside the Node/Bun Backend API process (`src/server/`).
-* **Authentication (`HTTP 401`), Demo Sandbox (`POST /api/auth/demo`), Google OAuth Exchange (`POST /api/auth/google`), Email Login (`POST /api/auth/login`) & Multi-Tenant Isolation (`HTTP 403` IDOR Protection in `src/server/securityAndAuth.ts`):**
-  * **1-Tap Demo Sandbox Login (`POST /api/auth/demo` -> `HTTP 200`):** Issues an isolated demo session (`authMethod: 'demo'`) strictly for the single designated Demo Sandbox Profile (`usr_arjun_01` / `arjun.mehta@gmail.com`) and sets an `HttpOnly; SameSite=Lax; Path=/api` `ws_session` cookie.
-  * **Verified Google OAuth Exchange (`POST /api/auth/google` -> `HTTP 200` / `HTTP 401`):** Verifies the caller's Supabase OAuth `accessToken` server-side via `getSupabaseAdmin().auth.getUser(accessToken)`, upserts `wise_spliter.profiles`, automatically claims matching `invited_email` rows in `wise_spliter.group_members`, and issues a signed HMAC session token + `HttpOnly` cookie.
-  * **Backend-Validated Login (`POST /api/auth/login` -> `HTTP 200` / `HTTP 401` / `HTTP 429`):** Accepts `{ email, password }` from `DevAuthModal` (guarded by brute-force rate limiting), verifies credentials against Supabase Auth (`signInWithPassword`) and `wise_spliter.profiles`, issues a signed HMAC-SHA256 session token + `HttpOnly` cookie (`POST /api/auth/logout` clears it), and returns the user's isolated dataset via `filterDatasetForUser`. `POST /api/auth/session` rejects any unauthenticated non-demo token minting attempt with `HTTP 401`.
-  * **Authentication (`verifyRequestAuth` -> `HTTP 401`):** Protects `/api/ledger/bootstrap`, `/api/ledger/sync`, `/api/ledger/pull-changes`, `/api/ledger/push-mutations`, and `/api/receipts/upload` via `HttpOnly` `ws_session` cookie (web), `Authorization: Bearer` HMAC session token (native Capacitor/Tauri), or Supabase Auth JWT.
-  * **User-Level, Active-Membership & Entity-PK Isolation (`authorizeDatasetSyncForUser`, `authorizeMutationsForUser`, `authorizeReceiptUploadForUser` & `filterDatasetForUser` -> `HTTP 403`):** Scopes all reads and delta pulls solely to groups where the caller is an active member (`removed_at IS NULL`) and standalone expenses (`groupId === null`) where `adHocParticipants` contains the caller. Blocks cross-user profile impersonation, group hijacking, cross-tenant PK overwrites across `expenses`/`settlements`/`group_members`/`revisions`/`activity`/`receipts`, soft-removed member access, and Storage path traversal (`../`) with `HTTP 400`/`HTTP 403`.
-  * **Network Binding, CSRF/Origin Enforcement, Payload Caps (`HTTP 413`) & Rate Limiting (`HTTP 429`):** Binds to `127.0.0.1:4174` by default, enforces `ALLOWED_ORIGINS` + `Origin`/`Sec-Fetch-Site` CSRF validation (`HTTP 403` on untrusted cross-site origins, while supporting `capacitor://localhost` & `tauri://localhost`), caps request body sizes (`HTTP 413`), enforces production secret fail-fast checks, and gates `X-Forwarded-For` behind `TRUST_PROXY=true`.
-* **Mathematical Invariant Gatekeeper:** Before any expense or settlement mutation touches PostgreSQL, the Backend API validates hard financial invariants:
-  $$\sum_{p \in \text{payers}} p.\text{paid\_minor} == \text{amount\_minor} == \sum_{s \in \text{splits}, s.\text{included}} s.\text{owed\_minor}$$
-  Payloads that violate conservation laws or have invalid split parameters are rejected with `HTTP 400` / `HTTP 422` before reaching the database.
-* **Atomic Conflict Resolution & HLC Ordering:** The Backend API compares incoming `base_revision_id` and monotonic **Hybrid Logical Clock (`hlc`)** timestamps against the current persisted row (and invokes `wise_spliter.push_mutations` / `wise_spliter.pull_changes`). Concurrent offline edits on the same expense are never silently overwritten; both snapshots are preserved in `expense_revisions`, `has_unresolved_conflict = true` is flagged, and a structured audit entry is appended to `group_activity_log`.
-* **Receipt Image Upload Gatekeeper (`POST /api/receipts/upload` on `:4174`):** Accepts compressed WebP receipt attachments flushed from `local_receipt_blobs`, uploads them using server-side credentials to the private **Supabase Storage bucket `wise-spliter-receipts`** at path `{group_id_or_direct}/{expense_id}/{receipt_id}.webp`, and records structured attachment metadata in `wise_spliter.receipt_attachments` and `wise_spliter.expenses.receipts`.
-* **Initial Ledger Seeding & PostgREST Profile Binding:** When the `wise_spliter` schema is empty on first boot, the Backend API automatically seeds the baseline reference dataset. All database reads, writes, and RPC calls execute atomically through `src/server/supabaseAdmin.ts` against Supabase PostgREST using explicit schema profile headers:
-  * `Accept-Profile: wise_spliter`
-  * `Content-Profile: wise_spliter`
-
-### Layer 5: Centralized Local & Cloud Supabase Stack (`SUPABASE_DIR = /home/chetan/projects/my-scripts/setup/dependencies`, Schema `wise_spliter`)
-* **Shared Local Supabase Infrastructure:** Connects to the centralized local Supabase stack running at `/home/chetan/projects/my-scripts/setup/dependencies` (or hosted Supabase in cloud deployments), comprising **PostgreSQL 17** (`127.0.0.1:54322`), **PostgREST Data API** (`127.0.0.1:54321`), **GoTrue Auth**, **Supabase Storage**, and **Supabase Studio** (`127.0.0.1:54323`).
-* **Dedicated Schema Isolation (`CREATE SCHEMA wise_spliter;`):** All tables (`profiles`, `groups`, `group_members`, `expenses`, `expense_revisions`, `settlements`, `group_activity_log`, `receipt_attachments`, `comments`, `fx_rates_cache`, `applied_sync_ops`), indexes, sequences, RLS policies, and RPC functions reside exclusively inside the `wise_spliter` schema (`supabase/migrations/0001_wise_spliter_schema.sql`). Zero application tables pollute `public`, and `REVOKE ALL ON SCHEMA wise_spliter FROM PUBLIC, anon;` guarantees strict tenant and role isolation.
-* **Schema RPC Functions (`wise_spliter` — Strictly `service_role`-Only via `0002_wise_spliter_security_hardening.sql`):**
-  * `EXECUTE` is revoked from `PUBLIC`, `anon`, and `authenticated` (with runtime `current_user IN ('service_role', 'postgres')` enforcement), while `FORCE ROW LEVEL SECURITY` + `wise_spliter.is_group_member` policies guard all 8 tables and `storage.objects` (`wise-spliter-receipts`).
-  * `wise_spliter.schema_health()`: Verifies schema readiness for the Backend API Gatekeeper.
-  * `wise_spliter.push_mutations(p_ops JSONB)`: Applies batched offline outbox mutations idempotently (`applied_sync_ops`), enforcing financial conservation invariants and HLC conflict branching inside PostgreSQL.
-  * `wise_spliter.pull_changes(p_since_seq BIGINT)`: Streams incremental delta changes (`server_seq > p_since_seq`) to the Backend API Gatekeeper, which filters every entity through tenant membership before returning to the caller.
-* **Private Receipt Storage Bucket (`wise-spliter-receipts`):** Stores compressed WebP receipt images in a private Supabase Storage bucket under `{group_id_or_direct}/{expense_id}/{receipt_id}.webp`, backed by structured metadata in `wise_spliter.receipt_attachments` and `wise_spliter.expenses.receipts`.
+* **One client codebase:** React 19 + Vite 6 + Tailwind v4 SPA in `src/`. The same `dist/` bundle is served on the web (PWA) and wrapped by Capacitor 8 for Android. iOS and desktop shells are not set up yet (Section 3).
+* **Local first:** the full ledger lives on the device (React state, with IndexedDB via Dexie 4 as the source of truth). Every change is diffed into a per-entity outbox and synced in the background.
+* **Thin backend, no framework:** `src/server/index.ts` is a plain `node:http` server (a route map of 10 handlers) started with `bun run`. It authenticates the caller, validates payloads and forwards to Postgres RPCs. It holds no state besides per-process rate-limit maps.
+* **Authorization lives in Postgres:** schema `wise_spliter` in a Supabase project that is shared with another app. `anon` and `authenticated` have no privileges, RLS is deny-all, and only five `SECURITY DEFINER` RPCs (callable by `service_role` only) read or write tenant data.
+* **Receipts never leave the device:** only a SHA-256 pointer row is synced.
 
 ---
 
-## 1.1 Receipt Image & Bill Attachment Architecture
-
-Wise-Spliter implements a dual-stage offline-first receipt pipeline so users can attach bill photos anywhere (including offline on flights or remote trips) without blocking expense creation:
-
-1. **Offline / Local Device (`local_receipt_blobs` in Dexie.js IndexedDB):**
-   * When a user attaches a receipt image or camera photo in `ExpenseEditorModal`, the client compresses and transcodes the image to **WebP** and writes the binary blob immediately into the Dexie.js IndexedDB table `local_receipt_blobs` (`{ id, expenseId, groupIdOrDirect, fileName, mimeType: 'image/webp', sizeBytes, blobData, uploadStatus: 'pending_upload', createdAt, hlc }`).
-   * The local expense record (`expenses.receipts`) and `receipt_attachments` table reference the local blob immediately so receipt previews work **100% offline**.
-2. **Online / Centralized & Cloud Supabase (`POST /api/receipts/upload` $\to$ `wise-spliter-receipts`):**
-   * When online, the sync engine uploads pending blobs via the Backend API Service (`POST /api/receipts/upload` on port `:4174`).
-   * The Backend API writes the WebP object to the private **Supabase Storage bucket `wise-spliter-receipts`** at the deterministic path:
-     `{group_id_or_direct}/{expense_id}/{receipt_id}.webp`
-     (where `{group_id_or_direct}` is the `group_id` UUID/slug for group bills or `'direct'` when `group_id IS NULL`).
-   * Structured metadata (`id`, `group_id`, `expense_id`, `storage_path`, `file_name`, `mime_type`, `size_bytes`, `uploaded_by`, `created_at`, `hlc`) is recorded in `wise_spliter.receipt_attachments` and mirrored in `wise_spliter.expenses.receipts`.
-
----
-
-## 2. Architecture & Data-Flow Diagrams
-
-### Diagram 1: System & Deployment Topology (`flowchart TB`)
+## 2. Topology
 
 ```mermaid
 flowchart TB
-  subgraph ClientLayer["Layer 1-3: Multi-Platform Client Browser / PWA (:4173)"]
-    UI["Layer 1: React 19 UI Views + Offline Service Worker (public/sw.js)\n(Home Top-3 & Quick-Add ExpenseEditorModal, Groups, Activity/Revisions,\nFriends UPI/WhatsApp Settle, Analytics, Portability, HelpGuideModal)"]
-    Domain["Layer 2: Pure Financial & Graph Domain Engine\n(170+ ISO-4217 Currencies, BigInt Minor Units,\n5 Split Modes, Rotating Remainder, Bitmask-DP Simplifier)"]
-    LocalDB["Layer 3: Local-First Storage & State\n(LedgerContext + Dexie.js IndexedDB Mirror\n+ local_receipt_blobs WebP Cache + FIFO syncOutbox Queue)"]
-
-    UI -->|"User Actions & Queries"| Domain
-    Domain -->|"Validated Entities & Balances"| LocalDB
-    LocalDB -->|"<1ms Reactive State"| UI
+  subgraph Client["Client: one React bundle (dist/)"]
+    UI["UI: src/ui, src/App.tsx"]
+    Domain["Pure domain: src/domain (BigInt money, splits, debt simplifier)"]
+    State["LedgerContext: whole dataset in React state"]
+    Store["Device storage: Dexie wise_spliter_local_db (tables, syncOutbox, localReceiptBlobs, kvStore)"]
+    Sync["Sync engine: src/sync-engine (HLC, outbox push, cursor pull, session tokens)"]
+    UI --> Domain
+    UI --> State
+    State --> Store
+    State --> Sync
+    Sync --> Store
   end
 
-  subgraph NetworkBridge["Vite Dev Proxy / Docker Bridge Network"]
-    Proxy["HTTP Proxy (/api/* -> :4174)"]
+  subgraph Shells["Delivery"]
+    Web["Web / PWA: sw.js + manifest"]
+    Android["Android: Capacitor 8 WebView (https://localhost)"]
+    Later["iOS, desktop: not set up"]
   end
 
-  subgraph ServerLayer["Layer 4: Backend API & Sync Gatekeeper (:4174)"]
-    API["Backend API Service (src/server/index.ts)\n- Enforces Payers == Amount == Splits Invariants\n- Resolves base_revision_id + HLC Conflicts\n- Handles POST /api/receipts/upload (WebP Blobs)\n- Seeds Initial Ledger State When Empty"]
-    Admin["Supabase Admin Adapter (src/server/supabaseAdmin.ts)\n- Holds SUPABASE_SECRET_KEY (service_role) Server-Only\n- Binds Accept-Profile & Content-Profile: wise_spliter"]
-
-    API --> Admin
+  subgraph API["Backend API: src/server (node:http on Bun, :4174)"]
+    Gate["CORS/CSRF, rate limit, body cap, HMAC session check"]
+    Valid["syncRows.ts: field and money validation"]
+    Admin["supabaseAdmin.ts: service-role client"]
+    Gate --> Valid --> Admin
   end
 
-  subgraph SupabaseLayer["Layer 5: Centralized Supabase Stack (SUPABASE_DIR)"]
-    Kong["Supabase API Gateway / PostgREST (:54321)\n/rest/v1/* & RPCs: schema_health, push_mutations, pull_changes"]
-    Storage["Supabase Private Storage Bucket\nwise-spliter-receipts\n({group_id_or_direct}/{expense_id}/{receipt_id}.webp)"]
-    GoTrue["GoTrue Auth Service\n(Google OAuth & JWT Verification)"]
-    Studio["Supabase Studio (:54323)"]
-    PG[("PostgreSQL 17 (:54322)\n Isolated Schema: wise_spliter\n(profiles, groups, group_members, expenses,\nexpense_revisions, settlements, group_activity_log,\nreceipt_attachments)")]
-
-    Kong --> PG
-    Storage --> PG
-    GoTrue --> PG
-    Studio --> PG
+  subgraph Supabase["Supabase project (shared with another app)"]
+    GoTrue["GoTrue Auth: Google OAuth, email/password"]
+    PostgREST["PostgREST"]
+    PG[("Postgres schema wise_spliter: deny-all RLS, SECURITY DEFINER RPCs")]
+    PostgREST --> PG
   end
 
-  LocalDB <-->|"REST JSON, Outbox Flush & Receipt Upload (/api/ledger/*, /api/receipts/upload)"| Proxy
-  Proxy <--> API
-  Admin <-->|"HTTPS / PostgREST + SUPABASE_SECRET_KEY"| Kong
-  Admin <-->|"Private Bucket Upload"| Storage
+  Shells --- Client
+  Sync -->|"HTTPS /api/* (cookie on web, Bearer on native)"| Gate
+  UI -->|"Google OAuth redirect (publishable key)"| GoTrue
+  Admin -->|"rpc() + profile lookups, SUPABASE_SECRET_KEY"| PostgREST
+  Admin -->|"getUser, signInWithPassword, settings"| GoTrue
 ```
 
----
-
-### Diagram 2: Write, Offline Outbox Queue, Invariant Validation & Conflict Resolution Flow (`sequenceDiagram`)
-
-```mermaid
-sequenceDiagram
-  autonumber
-  actor User as User (Mobile / Desktop)
-  participant UI as Layer 1: Client UI
-  participant Domain as Layer 2: Domain Engine
-  participant Dexie as Layer 3: Dexie IndexedDB & syncOutbox
-  participant API as Layer 4: Backend API (:4174)
-  participant PG as Layer 5: Supabase PostgREST (wise_spliter)
-
-  Note over User,PG: Scenario A: Group Expense or Direct Non-Group Split (group_id = null)
-  User->>UI: Submit Quick-Add Expense (Group Bill OR Direct Split with ad_hoc_participants)
-  UI->>Domain: parseMajorToMinor() + calculateExpenseSplits(mode, rotationSeed)
-  Domain->>Domain: validateExpenseInvariants(amountMinor, payers, splits)
-  Domain-->>UI: Deterministic Splits + Frozen Remainder + HLC Timestamp
-
-  UI->>Dexie: Commit Expense + Revision Snapshot + Activity Item (<1ms ACID Transaction)
-  Dexie->>Dexie: Enqueue Mutation in FIFO syncOutbox (op_id, base_revision_id, hlc)
-  Dexie-->>UI: Instant Optimistic UI Update (Works 100% Offline)
-
-  alt Device is Offline (Flight / Remote Travel)
-    Note over Dexie: Mutations accumulate safely in IndexedDB syncOutbox
-  else Device is Online / Reconnects
-    Dexie->>API: POST /api/expenses or POST /api/sync/flush (Outbox Payload)
-    API->>API: Verify Invariants: sum(payers) == amount_minor == sum(splits)
-
-    alt Invariant Check Fails
-      API-->>Dexie: HTTP 400 Bad Request (Rejected before touching DB)
-    else Invariant Check Passes
-      API->>PG: GET /rest/v1/expenses?id=eq.{id} (Accept-Profile: wise_spliter)
-      PG-->>API: Current Persisted Expense Row (or Empty)
-
-      alt New Expense OR base_revision_id == current_revision_id
-        API->>PG: UPSERT wise_spliter.expenses (group_id or NULL + ad_hoc_participants)
-        API->>PG: INSERT wise_spliter.expense_revisions (action='created'|'updated')
-        API->>PG: INSERT wise_spliter.group_activity_log (summary_text, diff_badges)
-        PG-->>API: 201 Created / 200 OK
-        API-->>Dexie: Ack Sync Success -> Clear op_id from syncOutbox
-      else Concurrent Offline Edit Detected (base_revision_id != current_revision_id)
-        API->>API: Compare Incoming HLC vs Persisted HLC (Zero Silent Field Mixing)
-        API->>PG: INSERT wise_spliter.expense_revisions (Preserve Both Complete Snapshots)
-        API->>PG: UPDATE wise_spliter.expenses SET has_unresolved_conflict=true, conflict_revision_id={branch_id}
-        API->>PG: INSERT wise_spliter.group_activity_log (action='expense_conflict_flagged')
-        PG-->>API: 200 OK (Conflict Recorded Atomically)
-        API-->>Dexie: Return Updated Dataset with Conflict State
-        Dexie-->>UI: Surface 1-Tap Conflict Resolution Banner ([Keep Mine] / [Accept Remote])
-      end
-    end
-  end
-```
+In local dev, Vite (`:4173`) proxies `/api` to the API (`:4174`), so the browser sees one origin.
 
 ---
 
-### Diagram 3: `wise_spliter` Database Schema Entity-Relationship Model (`erDiagram`)
+## 3. Platform Matrix
 
-```mermaid
-erDiagram
-  PROFILES {
-    text id PK
-    text email UK
-    text full_name
-    text avatar_initials
-    text default_currency
-    text upi_id
-    boolean google_connected
-    timestamptz created_at
-    timestamptz updated_at
-    text hlc
-    bigint server_seq
-  }
-
-  GROUPS {
-    text id PK
-    text name
-    text description
-    text category
-    text base_currency
-    boolean simplify_debts
-    jsonb default_split_config
-    integer expense_seq
-    text invite_code UK
-    text created_by
-    timestamptz created_at
-    timestamptz updated_at
-    timestamptz last_accessed_at
-    timestamptz deleted_at
-    text hlc
-    bigint server_seq
-  }
-
-  GROUP_MEMBERS {
-    text id PK
-    text group_id FK
-    text user_id
-    text invited_email
-    text display_name
-    text avatar_initials
-    text upi_id
-    text role
-    integer member_order
-    timestamptz joined_at
-    timestamptz last_accessed_at
-    timestamptz claimed_at
-    timestamptz removed_at
-    text hlc
-    bigint server_seq
-  }
-
-  EXPENSES {
-    text id PK
-    text group_id FK "NULL for direct non-group splits"
-    jsonb ad_hoc_participants "Roster when group_id IS NULL"
-    text title
-    text category
-    text original_currency
-    bigint original_amount_minor
-    text group_currency
-    bigint amount_minor
-    bigint fx_rate_scaled
-    text fx_status
-    text split_mode
-    integer rotation_seed
-    jsonb payers
-    jsonb splits
-    text current_revision_id
-    integer revision_number
-    boolean has_unresolved_conflict
-    text conflict_revision_id
-    text created_by_member_id
-    text updated_by_member_id
-    timestamptz deleted_at
-    text hlc
-    bigint server_seq
-  }
-
-  EXPENSE_REVISIONS {
-    text id PK
-    text expense_id FK
-    text group_id FK "Nullable for direct splits"
-    integer revision_number
-    text base_revision_id
-    text actor_member_id
-    text actor_display_name
-    text action
-    jsonb changes_json
-    jsonb snapshot
-    boolean is_conflict_branch
-    timestamptz created_at
-    text hlc
-    bigint server_seq
-  }
-
-  SETTLEMENTS {
-    text id PK
-    text group_id FK "Nullable for direct settlements"
-    text batch_settlement_id
-    text from_member_id
-    text to_member_id
-    bigint amount_minor
-    text currency
-    text payment_method
-    text payment_reference
-    text settled_date
-    timestamptz deleted_at
-    text hlc
-    bigint server_seq
-  }
-
-  GROUP_ACTIVITY_LOG {
-    text id PK
-    text group_id FK "Nullable for direct activity"
-    text actor_member_id
-    text actor_display_name
-    text entity_type
-    text entity_id
-    text action
-    text summary_text
-    text detail_note
-    text_array diff_badges
-    timestamptz created_at
-    text hlc
-    bigint server_seq
-  }
-
-  RECEIPT_ATTACHMENTS {
-    text id PK
-    text group_id FK "Nullable for direct non-group splits"
-    text expense_id FK
-    text storage_path "wise-spliter-receipts/{group_id_or_direct}/{expense_id}/{receipt_id}.webp"
-    text file_name
-    text mime_type
-    integer size_bytes
-    text uploaded_by
-    timestamptz created_at
-    timestamptz deleted_at
-    text hlc
-    bigint server_seq
-  }
-
-  PROFILES ||--o{ GROUPS : "creates (created_by)"
-  PROFILES ||--o{ GROUP_MEMBERS : "links on Google Sign-In (user_id)"
-  GROUPS ||--o{ GROUP_MEMBERS : "contains roster"
-  GROUPS |o--o{ EXPENSES : "scopes (nullable group_id)"
-  EXPENSES ||--o{ EXPENSE_REVISIONS : "records immutable snapshots"
-  EXPENSES ||--o{ RECEIPT_ATTACHMENTS : "attaches WebP bills"
-  GROUPS |o--o{ EXPENSE_REVISIONS : "scopes history"
-  GROUPS |o--o{ SETTLEMENTS : "settles balances"
-  GROUPS |o--o{ GROUP_ACTIVITY_LOG : "audits mutations"
-  GROUPS |o--o{ RECEIPT_ATTACHMENTS : "scopes receipts"
-```
+| Platform | Status | Evidence | Gaps |
+| --- | --- | --- | --- |
+| **Web / PWA** | Working | `public/manifest.webmanifest` (standalone, 192/512/maskable icons); `public/sw.js` network-first cache `wise-spliter-offline-v4`, skips `/api/*`; registered only in production builds and never inside Capacitor (`src/main.tsx`) | Precache holds only the HTML shell and icons; hashed JS/CSS are cached on the first fetch after the worker controls the page, so offline start needs one earlier online load. Safari may evict storage of sites not added to the Home Screen after 7 days of no use, which would drop an unsynced outbox. |
+| **Android** | Builds an installable APK | `android/` (Capacitor 8, compile/target SDK 36, min SDK 24), `capacitor.config.ts` (`androidScheme: 'https'`), `make apk` / `make apk-prod` via `scripts/build-apk.sh` with host SDK or `Dockerfile.android` | The script always runs `assembleDebug`, so even `apk-prod` ships a debug-signed APK with `versionCode 1`; there is no release signing or AAB for Play. Google sign-in navigates the WebView itself to the OAuth URL (`DevAuthModal.tsx`), which Google blocks in embedded WebViews; email/password works. `apk-prod` requires an `https://` public `VITE_API_BASE_URL`. |
+| **iOS** | Not set up | No `ios/` folder, no `@capacitor/ios` dependency. Code is ready for it: `capacitor://localhost` is an allowed origin and `resolveApiUrl` treats `capacitor:` as native. | `bun add @capacitor/ios`, `bunx cap add ios`, a Mac with Xcode, an Apple Developer account, and the same system-browser OAuth fix as Android. |
+| **Desktop** | Only as an installed PWA | No `src-tauri/`, no `@tauri-apps/*` dependency, no Electron. Only the API origin list (`tauri://localhost`, `https://tauri.localhost`) and `resolveApiUrl` mention Tauri. | Add Tauri only if a store build, file system or tray is needed. Tauri 2 on Windows defaults to `http://tauri.localhost`, which production rejects, so set `useHttpsScheme`. |
 
 ---
 
-## 3. One-Shot Local Development & Docker Orchestration (`make dev` & `make docker-up-dev`)
+## 4. Client Architecture
 
-Wise-Spliter is designed so a developer can boot the entire 5-layer stack with a single command (`make dev` on the host or `make docker-up-dev` in containers).
-
-### 3.1 Host One-Shot Workflow (`make dev` & `make setup-dev`)
-Running `make dev` (which invokes `make setup-dev` followed by `node scripts/dev-stack.mjs`) executes the following end-to-end startup pipeline:
-1. **Centralized Supabase Stack Verification (`SUPABASE_DIR = /home/chetan/projects/my-scripts/setup/dependencies`):**
-   * Checks whether the shared local Supabase containers (`supabase_db_dependencies` on `:54322`, PostgREST on `:54321`, Studio on `:54323`) are healthy and running; starts them from `SUPABASE_DIR` if stopped.
-2. **Idempotent Schema Migration & Security Verification (`node scripts/apply-migration.mjs local`):**
-   * Applies both `supabase/migrations/0001_wise_spliter_schema.sql` and `supabase/migrations/0002_wise_spliter_security_hardening.sql` to `supabase_db_dependencies` via `psql` (`ON_ERROR_STOP=1`).
-   * Ensures `wise_spliter` is exposed in PostgREST schemas, enforces `FORCE ROW LEVEL SECURITY` across all 8 tables, revokes `SECURITY DEFINER` RPC execution from `PUBLIC, anon, authenticated`, and reloads PostgREST (`NOTIFY pgrst, 'reload schema';`).
-   * Probes every table and `service_role` RPC (`schema_health`, `pull_changes`, `push_mutations`) while confirming `HTTP 401` rejection on direct `anon` PostgREST probes.
-   * *(Optional Local Google OAuth)*: Configure `[auth.external.google]` (`enabled = true`) in `/home/chetan/projects/my-scripts/setup/dependencies/supabase/config.toml` alongside `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID` and `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` (Authorized redirect URI: `http://127.0.0.1:54321/auth/v1/callback`).
-3. **Dev User & Ledger Seed Provisioning (`make setup-dev` -> `bun run scripts/setup-dev-user.mjs`):**
-   * Provisions the 3 development accounts (`arjun.mehta@gmail.com`, `rohan.verma@gmail.com`, `priya.nair@gmail.com`) in centralized Supabase Auth (`auth.users`) and `wise_spliter.profiles`, seeds the baseline ledger dataset into `wise_spliter.*`, verifies browser-style `signInWithPassword` authentication + backend HMAC session minting, and prints the terminal credential summary table.
-4. **Backend API Gatekeeper Startup (`Port 4174`):**
-   * Starts `src/server/index.ts` on `http://127.0.0.1:4174` with `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `SUPABASE_SCHEMA=wise_spliter`.
-   * Checks if `wise_spliter.groups` is empty and automatically seeds the initial multi-currency ledger dataset if needed.
-5. **Frontend Vite Server Startup (`Port 4173`):**
-   * Launches the React 19 + Vite client on `http://localhost:4173` with `/api/*` proxied directly to `http://127.0.0.1:4174`.
-
-### 3.2 Containerized Orchestration (`make docker-up-dev`)
-Running `make docker-up-dev` orchestrates the containerized development stack via Docker Compose:
-* Connects the Wise-Spliter Backend (`:4174`) and Frontend (`:4173`) containers to the centralized Supabase stack via `host.docker.internal:54321` / `:54322`.
-* Runs the migration verifier (`scripts/apply-migration.mjs`) prior to serving traffic so the `wise_spliter` schema is guaranteed ready before the UI accepts requests.
+* **UI** (`src/ui/pages`, `src/ui/modals`, `src/ui/primitives`, `src/App.tsx`): six pages, four modals, shared primitives. Rules in [coding-standards.md](./coding-standards.md) and `AGENTS.md`.
+* **Domain** (`src/domain`): pure TypeScript, no I/O. BigInt minor units for 0/2/3-decimal currencies, five split modes with a frozen rotating remainder, bitmask-DP debt simplification. Algorithms in [technical-spec.md](./technical-spec.md).
+* **State** (`src/state/LedgerContext.tsx`): one provider holds the whole `MockLedgerDataset`, loaded from Dexie at startup (the UI renders once it is loaded). An old full snapshot (Dexie JSON or the `localStorage` blob of earlier versions) is migrated once and removed. On every dataset change it diffs the previous and next dataset into mutations (`diffDatasetToMutations`) and calls `commitLocalChanges` (`src/storage/local-db.ts`), which writes only the changed rows plus those outbox rows in one Dexie transaction, so a kill keeps both or neither. Rows keep their order through an `_o` sort key; the non-entity fields live in one `kvStore` row. A failed write (for example a full disk) keeps the baseline and the mutations for the next commit and shows a calm toast. The outbox is coalesced to one row per `entity:id`, ordered by `seq`; a group's base-currency change is moved ahead of queued bills.
+* **Signing in on a device with signed-out data:** a dialog offers "Bring my local data into this account" (non-sample groups and direct bills are pushed, with the signed-out "me" mapped to the account) or "Start fresh" (with a JSON backup download first).
+* **Sync loop** (`runSyncRef` in `LedgerContext`): runs 1.5 s after a local change, on app start, on `online` and on `visibilitychange`; one run at a time, exponential backoff up to 5 min. There is no polling and no Realtime, so other members' edits arrive when the app wakes or the user writes.
+* **Session handling** (`src/sync-engine/supabase-sync.ts`): `resolveApiUrl('/api/...')` keeps relative paths on the web and prefixes `VITE_API_BASE_URL` in native shells (or for an `https://` base). The browser Supabase client uses only the publishable key, only for Google OAuth.
+* **Fallbacks:** if IndexedDB is unavailable the storage layer falls back to in-memory tables.
 
 ---
 
-## 4. Quality Gates, Zero-Deprecation Enforcement & 7-Story E2E Verification Standard
+## 5. Sync Protocol (summary)
 
-1. **Zero-Deprecation Enforcement (`scripts/check-deprecations.mjs`):**
-   * `make typecheck` runs `tsc --noEmit && node scripts/check-deprecations.mjs`, scanning every file in the TypeScript program for `reportsDeprecated` (`TS6385` / `TS6387`).
-   * Enforces canonical `@phosphor-icons/react` `*Icon` imports, React 19 `React.SyntheticEvent<HTMLFormElement>` form handlers, and pure bitwise `Uint8Array` base64 conversion (`src/portability/portability-engine.ts`).
-2. **47-Test Domain Math, Property Fuzz, Portability, IndexedDB & Red-Team Security Unit Suite (`tests/unit/`):**
-   * `domain-and-portability.test.ts` (15 tests), `math-engine-scenarios.test.ts` (21 scenario & `fast-check` property suites), and `security-breach.test.ts` (11 live red-team breach & PostgREST isolation tests).
-3. **7-Story Full-Stack Playwright E2E Verification (`tests/e2e/wise-spliter.spec.ts`):**
-   * **Story 1:** Minimalist Home Dashboard (`<= 3` recent groups), plain-English standing summary, First-Time Quick-Start strip, `ContextualPageGuideBanner`, `HelpGuideModal`, Settl quick-amount presets, Splitwise live split sentence, personal impact badges, and Direct Non-Group Split synced via `POST /api/ledger/sync`.
-   * **Story 2:** Progressive Group Workspace, Concurrent Offline Conflict Resolution (`[Keep Yours] / [Keep Theirs]`), `ExplainBalanceModal` plain-English verdict + exact ledger identity, all 5 Split Modes, Multiple Payers, Foreign FX conversion, Rotating Remainder, and WebP Receipt upload (`POST /api/receipts/upload`).
-   * **Story 3:** Group Management (Simplify Debts toggle, Base Currency Re-denomination Mode A/B, Unclaimed Member add/claim, and New Group creation).
-   * **Story 4:** Transparent Activity History (Group & Global), Per-Expense Revision History restore, and Trash Recovery Vault restore.
-   * **Story 5:** Friends Cross-Group Net Balances, 1-Tap Atomic Cross-Group Settle Up, UPI QR Studio, and WhatsApp Summary export.
-   * **Story 6:** Insights & Global Search across `0, 2, 3` decimal currencies (`JPY`, `INR`, `KWD`), Splitwise CSV import, `.xlsx`/`.pdf`/`AES-256-GCM` portability, live Backend API & PostgREST security breach rejections (`HTTP 401` unauthenticated session minting blocked, `HTTP 403` cross-site CSRF / cross-tenant impersonation / private group hijack / direct `:54321` RPC blocked), collaborator login (`rohan.verma@gmail.com`), and 1-Tap Demo Sandbox Login (`POST /api/auth/demo`).
-   * **Story 7:** End-to-end Math & UX Lab verifying 3-way rotating remainder via Settl quick-amount presets, Splitwise personal impact badge, and `INR -> KWD` (3-decimal fils) FX re-conversion passing strict backend invariant validation (`HTTP 200`).
+Full rules: [database-and-sync-spec.md, Section 4](./database-and-sync-spec.md). Contract types: `src/types/sync-contract.ts`.
+
+* **HLC:** `<48-bit ms hex>-<16-bit counter hex>-<node>`, node = user id + per-install device id. The client never runs more than 60 s ahead; the server rejects HLCs more than 60 s in the future.
+* **Push** `POST /api/ledger/push`: up to 200 mutations (`upsert`, `delete`, `restore`) and 240 KB per batch. Per mutation the result is `applied`, `stale` (stored HLC is newer or equal; returns `serverHlc`), `forbidden` or `invalid`. Only those four statuses remove a row from the outbox. Last writer by HLC wins; for expenses both versions are kept in `expense_revisions` and the bill is flagged as a conflict.
+* **Batch failure:** a lock timeout, deadlock or the 2 s time budget aborts the whole batch (HTTP 503); the client halves its batch size and retries. A second concurrent push for the same account gets HTTP 429 (per-account try-lock in the database).
+* **Pull** `GET /api/ledger/pull?cursor=`: rows with `server_seq > cursor` that the caller may read, at most 500 per page, soft deletes as `deleted: true`. `backfillGroupIds` / `backfillExpenseIds` name groups or direct bills the caller gained access to after the cursor; the client pages each from cursor 0 (`?groupId=` or `?expenseId=`) before advancing the main cursor. A 403 on a backfill evicts that scope locally.
+* **Commit order:** every write draws `server_seq` from one sequence under `pg_advisory_xact_lock(7735001)` held until commit, so a cursor can never skip a row that commits late. This is one global write lock for the whole schema.
+
+---
+
+## 6. Backend Runtime and Endpoints
+
+* **Runtime:** `node:http` `createServer` in `src/server/index.ts`, run by Bun (`bun run src/server/index.ts`). No web framework. Binds `API_HOST` (default `127.0.0.1`) and `API_PORT` (default `4174`).
+* **Modules:** `index.ts` (routes, body reader, errors), `securityAndAuth.ts` (tokens, CORS/CSRF, headers, rate limits), `supabaseAdmin.ts` (service-role client, profile lookups, RPC wrappers), `syncRows.ts` (trust-boundary validation and camelCase/snake_case mapping).
+* **Startup checks:** production requires `GRANT_TOKEN_SECRET` of at least 32 characters, valid numeric env values, and Supabase Auth email confirmation on (`mailer_autoconfirm = false`, re-checked every 10 min; the password and Google routes return 503 if it flips).
+* **Errors:** database errors become `DbUnavailable` (503, generic message); `42501` from an RPC becomes 403.
+
+| Method and path | Auth | Purpose |
+| --- | --- | --- |
+| `GET /api/health` | none | Liveness plus `schema_health` reachability |
+| `POST /api/auth/demo` | none | Demo session for the seeded demo profile; 404 in production |
+| `POST /api/auth/google` | Supabase access token in body | Verifies a confirmed Google OAuth session, finds or creates the profile, claims placeholders |
+| `POST /api/auth/login` | email + password | GoTrue password sign-in; profile must already exist and not be Google-linked |
+| `POST /api/auth/logout` | session | Bumps `token_version` (revokes all of the user's tokens) and clears the cookie |
+| `POST /api/auth/session` | session | Sliding renewal: new 12 h token, same original sign-in time |
+| `GET /api/ledger/pull` | session | Cursor pull, optional `groupId` or `expenseId` backfill scope |
+| `POST /api/ledger/push` | session | Outbox batch push |
+| `POST /api/receipts/upload` | session | Receipt pointer upsert; any `dataUrl` is dropped |
+| `POST /api/account/delete` | session | `delete_account` RPC, returns 204 |
+
+---
+
+## 7. Auth and Session Model
+
+* **Identity providers:** Supabase GoTrue (Google OAuth, email/password). GoTrue's `auth.users` is shared with the other app; a `wise_spliter.profiles` row is what makes someone a user of this app.
+* **Session token:** our own HMAC-SHA256 token, `header.payload.signature`, payload `{ aud, sub, tv, aat, iat, exp }`, signed with `GRANT_TOKEN_SECRET`. 12 h TTL; renewable until `SESSION_MAX_LIFETIME_DAYS` (default 30) after the original sign-in (`aat`). `aud` binds a token to its environment. Raw Supabase JWTs are never accepted on data routes.
+* **Per-request check:** signature and claims, then a profile read; a deleted profile or a changed `token_version` rejects the token. Demo tokens are rejected in production.
+* **Transport:**
+  * Web: `__Host-ws_session` cookie (`HttpOnly; Secure; Path=/; SameSite=Lax`). The bearer token is kept in memory only and re-minted from the cookie through `/api/auth/session` after a reload. This needs the web app and the API on the same origin, because client fetches use `credentials: 'same-origin'`.
+  * Native: `Authorization: Bearer`; the token is persisted in the Dexie `kvStore` (plain IndexedDB, not Keystore/Keychain).
+* **Browser protections:** `ALLOWED_ORIGINS` allowlist plus native shell origins; in production only `https://` origins are kept. State-changing requests with a disallowed `Origin`, or with `Sec-Fetch-Site: cross-site` and no `Origin`, get 403. Strict security headers (CSP `default-src 'none'`, `nosniff`, HSTS in production).
+* **Rate limits:** fixed windows, default 120 requests/min per user (or per IP, IPv6 per /64, before sign-in) and 10 failed logins per (account, IP) per 15 min. Client IP source is set by `TRUST_PROXY`. Maps are bounded but per process.
+* **Placeholder claiming:** after a verified sign-in, `claim_members` binds unclaimed members and direct-split participants whose `invited_email` equals the verified email.
+
+---
+
+## 8. Database Security Model
+
+Source of truth: [`0004_tenant_isolation_and_sync.sql`](../supabase/migrations/0004_tenant_isolation_and_sync.sql) and [database-and-sync-spec.md, Section 5](./database-and-sync-spec.md).
+
+* **Isolation:** all objects live in schema `wise_spliter`. `PUBLIC`, `anon` and `authenticated` have no schema usage and no table, sequence or function privileges, including default privileges. The publishable key in the client bundle therefore cannot read or write ledger data.
+* **Deny-all RLS:** RLS is enabled and forced on all 10 tables (`profiles`, `groups`, `group_members`, `expenses`, `expense_revisions`, `settlements`, `group_activity_log`, `receipt_attachments`, `expense_participants`, `quota_usage`) with no policies. The earlier membership policies were dropped in 0004.
+* **RPCs:** `push_mutations`, `pull_changes`, `claim_members`, `delete_account`, `schema_health`; all `SECURITY DEFINER` with `SET search_path = ''`, `EXECUTE` granted to `service_role` only. Each starts with `assert_backend()`, which checks the `role` setting (inside a definer function `current_user` is always the owner).
+* **Tenant rules in SQL:** the API passes the verified actor id; membership, roles (admin vs member), direct-split participation and server-owned fields (`created_by`, `owner_id`, actor ids and names) are decided inside the RPC transaction with indexed predicates. There is no cross-tenant filtering in JavaScript.
+* **Triggers for every writer, service role included:** immutable columns, payer/split membership checks, per-tenant row caps (for example 50,000 expenses per owner and scope, 50 receipts per expense), and `server_seq` assignment under the commit-order lock.
+* **Service-role direct table access:** outside the RPCs the API touches only `profiles` (lookup, bind, create, `token_version` bump).
+* **Migrations:** `scripts/apply-migration.mjs` applies pending files plus a final privilege lockdown in one `psql` transaction, records them in `wise_spliter.schema_migrations`, and never uses `supabase db push` or the shared `supabase_migrations` history. `make migrate-verify` checks tables, forced RLS, RPCs and grants.
+
+---
+
+## 9. Receipts
+
+* The image is compressed to WebP and stored only in Dexie `localReceiptBlobs` on the author's device, tagged with the signed-in user. Blobs survive sign-out and show again when the same user signs back in; account deletion removes them.
+* What syncs is a `receipt_pointer` row (`id`, `expenseId`, `fileName`, `mimeType`, size, `sha256`) through the push endpoint or `POST /api/receipts/upload`; both drop `dataUrl`. Supabase Storage is not used and its old policy was dropped.
+* Other members' devices see the pointer, not the image. Sharing images peer to peer is designed in [p2p-receipt-mesh-plan.md](./p2p-receipt-mesh-plan.md) but not built (no `/api/p2p/*` route exists). Until then, a lost device loses its receipt images.
+
+---
+
+## 10. Deployment Targets
+
+| Target | How | Notes |
+| --- | --- | --- |
+| **Local** | `make dev`: ensures the shared local Supabase in `$SUPABASE_DIR`, applies migrations, seeds dev users (`scripts/setup-dev-user.mjs`, loopback only), then `scripts/dev-stack.mjs` runs the API (`:4174`) and Vite (`:4173`, `/api` proxy) | `make dev-ui` skips the Supabase and migration steps |
+| **Docker** | `make docker-up` / `make docker-up-dev`: `docker-compose.yml` runs a Supabase preflight, `api` and `app` (`vite preview`) from `Dockerfile` | Compose does not set `API_HOST`, so the API binds `127.0.0.1` inside its container and the published port and the `app` proxy cannot reach it. The `app` service inherits a healthcheck that probes the API port. `vite preview` is not meant as a production web server. |
+| **Pyrite** | `make deploy-pyrite`: builds `Dockerfile.api` (Bun, `API_HOST=0.0.0.0`, API only) for `linux/amd64` and pushes it | Default tag is `ttl.sh/...:24h` and expires; set `IMAGE_REF` to a durable registry. Run with `NODE_ENV=production` and `TRUST_PROXY=true`. The web bundle is not part of this image. |
+| **Cloudflare (planned)** | API as a Worker, web bundle served from the same origin | See [tasks/Cloudflare-Worker.md](./tasks/Cloudflare-Worker.md). The handler must move from `node:http` to a `fetch(Request)` handler and the per-process rate limiter needs a shared store. Free-plan limits are in [database-capacity.md, Section 4](./database-capacity.md). |
+| **Android APK** | `make apk` (dev URL) / `make apk-prod` (`.env.production`, https only) | Output `releases/wise-spliter.apk` (debug-signed) |
+
+---
+
+## 11. Configuration
+
+Template: [`.env.example`](../.env.example). Copy to `.env.development` / `.env.production` (both gitignored). Only `VITE_*` values reach the client bundle and are public.
+
+| Variable | Side | Purpose |
+| --- | --- | --- |
+| `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_SCHEMA` | server | Service-role access to `wise_spliter` |
+| `GRANT_TOKEN_SECRET` | server | HMAC key for session tokens; unique per environment, 32+ chars in production |
+| `ALLOWED_ORIGINS`, `DISABLE_NATIVE_ORIGINS` | server | CORS/CSRF allowlist |
+| `TRUST_PROXY` | server | Client IP source: `false`, `true` (rightmost `X-Forwarded-For`), `cloudflare` |
+| `API_HOST`, `API_PORT`, `MAX_JSON_BODY_BYTES` | server | Bind address and body cap (256 KB) |
+| `RATE_LIMIT_*`, `API_RATE_LIMIT`, `AUTH_RATE_LIMIT_*` | server | Limiter tuning; malformed values stop startup |
+| `SESSION_MAX_LIFETIME_DAYS`, `SESSION_AUDIENCE` | server | Absolute session lifetime, token audience |
+| `NODE_ENV` | server | `production` turns on secret, HTTPS-origin, demo and email-confirmation rules |
+| `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` | client | Google OAuth only |
+| `VITE_API_BASE_URL` | client + Vite | Proxy target in dev; absolute API base for native builds |
+| `SUPABASE_DIR`, `SUPABASE_DB_*`, `SUPABASE_DB_URL`, `DEV_USER_PASSWORD` | tooling | Local stack, migrations, dev seed and tests |
+
+---
+
+## 12. Testing Strategy and Gates
+
+All five gates must exit 0: `make typecheck && make migrate-verify && make test && make build && make e2e`.
+
+| Gate | What it covers |
+| --- | --- |
+| `make typecheck` | `tsc --noEmit` (strict) plus `scripts/check-deprecations.mjs` (no deprecated symbols) |
+| `make migrate-verify` | Live checks of the local schema: tables, forced RLS, RPCs, privileges |
+| `make test` | Vitest in `tests/unit/`: pure domain and portability, `fast-check` property tests, `sync-client.test.ts` (outbox, merge, backfill, HLC with `fake-indexeddb`), and two live suites (`security-breach.test.ts`, `redteam-regression.test.ts`) that drive `handleApiRequest` in process against the local Supabase |
+| `make build` | `tsc -b && vite build` |
+| `make e2e` | Playwright, one desktop Chromium project, `tests/e2e/`, boots `scripts/dev-stack.mjs` |
+
+`make verify-agents` lints `AGENTS.md`, `docs/coding-standards.md` and the persona files (size budget, no en or em dashes). Builder and verifier roles are split by `agents/ORCHESTRATOR.md`.
+
+Not covered: no CI configuration in the repo (gates run by hand), no mobile viewport or Android device tests, the live suites need a running local Supabase with specific env vars, and nothing tests multi-replica behaviour.
+
+---
+
+## 13. Known Limits and Next Steps
+
+1. **Global write lock:** one advisory lock serializes all writes in the schema (a few hundred write transactions per second). Upgrade path: per-group sequences and cursors, or snapshot fencing.
+2. **Shared free-tier Supabase project:** database size, egress, MAU and the 1-week inactivity pause are shared with another app; database size binds first ([database-capacity.md, Section 6](./database-capacity.md)).
+3. **Client memory:** the whole ledger still lives in React state and every change diffs the full arrays in memory (O(N) per edit); Dexie writes are incremental. Upgrade path: per-group lazy loading.
+4. **Single API instance assumptions:** rate limits are per process; a second replica or Worker isolates each get the full quota.
+5. **Native gaps:** Google sign-in inside the Android WebView, debug-signed APK, no iOS project, no desktop shell, tokens in plain IndexedDB on native.
+6. **Receipts:** device-only until the P2P plan ships.
+7. **Freshness:** no Realtime or polling; changes from others arrive on app open, foreground, reconnect or after a local write.
+8. **Bundle:** `xlsx` and `jspdf` are imported statically into the main chunk; a dynamic `import()` on export would cut first load.

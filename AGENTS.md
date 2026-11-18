@@ -14,7 +14,7 @@
 
 ## 3. Money, Security & Multi-Platform Invariants
 - **Zero-Float Money:** Exact `BigInt` minor units across `0/2/3`-decimal currencies ([currencies.ts](./src/domain/money/currencies.ts)), frozen rotating remainders, `sum(payers) === amountMinor === sum(included splits)`, and group `sum(net) === 0n`.
-- **Tenant Security (`wise_spliter`):** Keep `SUPABASE_SECRET_KEY` & `GRANT_TOKEN_SECRET` server-only; never import `dev-profiles.ts` in `src/ui/`. Preserve `FORCE ROW LEVEL SECURITY` (`removed_at IS NULL`) across all 8 tables and `service_role`-only RPCs ([0002_wise_spliter_security_hardening.sql](./supabase/migrations/0002_wise_spliter_security_hardening.sql)).
+- **Tenant Security (`wise_spliter`):** Keep `SUPABASE_SECRET_KEY` & `GRANT_TOKEN_SECRET` server-only; never import `dev-profiles.ts` in `src/ui/`. Preserve deny-all `FORCE ROW LEVEL SECURITY` on every table, zero grants to `anon`/`authenticated`, and `assert_backend()` in every `service_role`-only RPC ([0004_tenant_isolation_and_sync.sql](./supabase/migrations/0004_tenant_isolation_and_sync.sql)).
 - **Single App (Web, Android, iOS, Desktop):** Pure Vite + Capacitor/Tauri bundle; route all API calls via `resolveApiUrl('/api/...')` in [supabase-sync.ts](./src/sync-engine/supabase-sync.ts).
 
 ## 4. UI Pattern Reference Map (Reuse - Never Duplicate)

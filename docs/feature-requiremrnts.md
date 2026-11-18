@@ -1,4 +1,4 @@
-# Wise-Spliter — Feature Requirements Document
+# Wise-Spliter: Feature Requirements Document
 
 **Overview:**
 Wise-Spliter is a 100% free, local-first, multi-platform daily expense-splitting and bill-sharing application (Desktop, iOS, Android, and Web) combining the offline speed and mathematical precision of **Settl** with the rich multi-user group collaboration, audit history, and settlement features of **Splitwise**. Every feature is completely free with no subscriptions, no ads, and no daily limits.
@@ -20,12 +20,13 @@ Wise-Spliter is a 100% free, local-first, multi-platform daily expense-splitting
 * **Google Sign-In (Passwordless OAuth) & 1-Tap Demo Sandbox:** One-tap Sign in with Google (`POST /api/auth/google`) provides verified identity (`email`, `name`, `avatar`) and auto-claims invited groups, paired with a 1-tap Demo Sandbox Profile (`POST /api/auth/demo`) so first-time visitors can explore sample multi-currency groups with zero setup.
 * **100% Offline-First Local Database with Automatic Cloud Sync:** The app always reads and writes to a complete on-device local database first (working seamlessly on flights and trips without internet) and automatically syncs with the cloud database (`wise_spliter` schema) when online.
 * **Instant Unclaimed / Placeholder Group Members with Auto-Linking:** Add friends to any group immediately by Name (and optional Gmail/UPI ID) so you can split bills right away even if they haven't installed the app yet; if they sign in with Google or join via group invite link later, their account links to their existing member history automatically.
+* **Group Edit Rights (Splitwise Parity):** Any active member of a group can edit, delete and restore any expense or payment in that group, whoever added it; every change is recorded in the activity history. Removed members and anyone outside the group cannot. Non-group bills can be changed only by their participants. Deleting or restoring the group itself, changing its base currency, rotating its invite code and changing member roles are admin-only.
 * **Unlimited Everything (100% Free):** No daily expense caps, no cooldown timers, no ads, and no paywalled features.
 
 ### 2. Expense Splitting, Modular Quick-Add & Math Precision
 
 * **Modular Quick-Add Expense (Group-Scoped or Direct Non-Group Split):** Invoke "Add Expense" from either the **Home Screen** or inside a **Specific Group**. When opened inside a group, that group is pre-selected automatically; when opened from the Home Screen without selecting a group (`group_id = null`), the expense is split directly among the friends/participants added to that bill without tying it to any group.
-* **Minimalist Home Screen with Top 3 Recent Groups & Progressive Disclosure:** The Home Screen surfaces only essential high-signal information—net balance summary, primary quick actions (`+ Add Expense`, `Settle Up`, `All Groups`, `Guided Help`), at most **3 recently accessed or updated groups**, and recent direct non-group splits. Opening a specific group progressively reveals minimal group-level insights, group-scoped expense operations, and automatic next-step guidance.
+* **Minimalist Home Screen with Top 3 Recent Groups & Progressive Disclosure:** The Home Screen surfaces only essential high-signal information, net balance summary, primary quick actions (`+ Add Expense`, `Settle Up`, `All Groups`, `Guided Help`), at most **3 recently accessed or updated groups**, and recent direct non-group splits. Opening a specific group progressively reveals minimal group-level insights, group-scoped expense operations, and automatic next-step guidance.
 * **Interactive Help & Contextual Page Guide:** Built-in skippable/dismissible step-by-step guidance on each screen (`ContextualPageGuideBanner`) plus an interactive **Help & Feature Guide** modal (`HelpGuideModal`) so users always know where to find every capability without cluttering the interface.
 * **Core Split Modes:** Split bills equally (with one-tap participant exclusion), by exact amounts, percentages, shares/ratios, or +/- adjustments.
 * **Multiple Payers Support:** Record a single expense where two or more people contributed to paying the bill.
@@ -47,19 +48,19 @@ Wise-Spliter is a 100% free, local-first, multi-platform daily expense-splitting
 
 ### 5. Multi-Currency & Travel (Splitwise + Settl Parity)
 
-* **170+ Currencies (0, 2, & 3 Decimal Support):** Full native support for currencies like INR, USD, JPY (0 decimals), and KWD (3 decimals).
+* **160+ Currencies (0, 2, & 3 Decimal Support):** Full native support for currencies like INR, USD, JPY (0 decimals), and KWD (3 decimals).
 * **Unified Group Base Currency with Auto FX Conversion & Audit Note:** Convert foreign-currency travel expenses into the group's base currency using live or cached offline exchange rates (with manual override), permanently recording the original foreign amount and exact FX rate used (e.g., `Converted from €50.00 EUR at 1 EUR = 91.20 INR`) and flagging offline-cached rates so they can be refreshed if desired.
 * **Editable Group Currency:** Change a group's base currency after creation with an explicit choice to either **Re-label currency symbol only** or **Re-convert existing expenses via FX rates**.
 
 ### 6. Organization, Transparency, Group Update History & Insights
 
-* **Transparent Group Activity & Update History Feed:** Dedicated per-group and global activity timelines visible to all group members showing every action—expenses added, edited (with before $\to$ after diff values), deleted, or restored, settlements logged, members added/joined, and group settings changed.
+* **Transparent Group Activity & Update History Feed:** Dedicated per-group and global activity timelines visible to all group members showing every action, expenses added, edited (with before $\to$ after diff values), deleted, or restored, settlements logged, members added/joined, and group settings changed.
 * **Per-Expense Immutable Edit History & Trash Recovery:** Inspect the full chronological revision log on any individual expense and restore any previous version or soft-deleted expense/group in one tap.
 * **Atomic Multi-User Offline Conflict Resolution:** Treat every expense edit as an indivisible financial unit (`base_revision_id`); if two members edit the same bill while offline, preserve both revisions in history and surface a clear **"Review Offline Conflict ([Keep Yours] / [Keep Theirs])"** banner without ever silently corrupting numbers.
 * **Categories & Custom Tags:** Organize expenses by categories (Food, Rent, Travel, Groceries) and custom hashtags.
 * **Visual Spending Analytics:** View monthly spending charts, category breakdowns, and personal vs. group spend trends.
 * **Instant Global Search & Filters:** Search across all historical expenses by keyword, amount, date range, payer, or category.
-* **Expense Comments, Notes & Receipt Attachments:** Add notes, discussion comments, and receipt/bill photo attachments on individual bills. Compressed WebP receipt images are saved immediately in the local Dexie.js IndexedDB table `local_receipt_blobs` for 100% offline viewing during flights/trips, and uploaded via the Backend API (`POST /api/receipts/upload` on `:4174`) to the private Supabase Storage bucket `wise-spliter-receipts` at `{group_id_or_direct}/{expense_id}/{receipt_id}.webp` with metadata persisted in `wise_spliter.receipt_attachments` and `wise_spliter.expenses.receipts`.
+* **Expense Comments, Notes & Device-Local Receipt Attachments:** Add notes, discussion comments, and receipt/bill photo attachments on individual bills. Compressed WebP receipt images live strictly on-device in the Dexie.js IndexedDB table `local_receipt_blobs` (`0` bytes uploaded to Supabase Storage or `data_url` columns), while only a lightweight ~180-byte content-addressed `SHA-256` manifest pointer syncs to `wise_spliter` for peer-to-peer swarm fetching (see [`./p2p-receipt-mesh-plan.md`](./p2p-receipt-mesh-plan.md)).
 
 ### 7. Data Ownership & Portability
 

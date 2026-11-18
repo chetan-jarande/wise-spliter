@@ -1,4 +1,4 @@
-# Wise-Spliter — Technical Architecture & Feature Specification (Phase 1)
+# Wise-Spliter: Technical Architecture & Feature Specification (Phase 1)
 
 **Related Documents:**
 * [Feature Requirements (Phase 1 & Phase 2)](./feature-requiremrnts.md)
@@ -13,7 +13,7 @@
 
 **Wise-Spliter** is a 100% free, multi-platform (Desktop, iOS, Android, and Web) expense-splitting and bill-sharing application that combines:
 1. **Settl's Mathematical Precision & Offline Speed:**
-   * 170+ currencies with native `0`, `2`, and `3` decimal minor-unit integer arithmetic (`BigInt`).
+   * 160+ currencies with native `0`, `2`, and `3` decimal minor-unit integer arithmetic (`BigInt`).
    * Deterministic **Rotating Remainder** distribution so odd leftover paise/cents never penalize the same person twice, frozen at creation time so deleting or editing another bill never shifts historical paise.
    * Instant `< 1ms` local-first reads and writes with full offline operation during travel or flights.
 2. **Splitwise's Multi-User Collaboration, Transparency & Ecosystem Parity:**
@@ -33,8 +33,8 @@
 | **Multi-Platform Delivery** | **Offline Service Worker (`public/sw.js`) + PWA Manifest (`public/manifest.webmanifest`) + Capacitor (`@capacitor/core`)** | Installs natively as an offline-capable standalone app on **Desktop (Linux/macOS/Windows)**, **iOS**, and **Android** from one codebase; `public/sw.js` caches app shell and static assets for 100% flight/offline operation. |
 | **UI, Icons & Design System** | **Tailwind CSS + Double-Bezel Primitives (`DesignPrimitives.tsx`) + `@phosphor-icons/react`** | Institutional-grade responsive layouts (`Plus Jakarta Sans` + `JetBrains Mono` tabular figures) with Minimalist Home Dashboard (`<= 3` recent groups), Modular `ExpenseEditorModal`, Progressive Group Workspace, and `HelpGuideModal` + `ContextualPageGuideBanner`. |
 | **Local Offline Database** | **Dexie.js 4 (`IndexedDB`)** | ACID multi-table local transactions, reactive state, FIFO `sync_outbox` queue, and offline WebP receipt image storage in `local_receipt_blobs`. |
-| **Backend API Gatekeeper** | **Node/Bun HTTP Service (`src/server/index.ts` & `src/server/supabaseAdmin.ts` on `:4174`)** | Keeps `SUPABASE_SECRET_KEY` (`service_role`) strictly server-side, validates financial conservation invariants before DB writes, handles `POST /api/receipts/upload` to private bucket `wise-spliter-receipts`, and binds `Accept-Profile` / `Content-Profile: wise_spliter`. |
-| **Centralized & Cloud Supabase** | **Centralized Local Supabase (`SUPABASE_DIR = /home/chetan/projects/my-scripts/setup/dependencies`) & Hosted Supabase (`wise_spliter` schema)** | Google OAuth, isolated `wise_spliter` Postgres schema (`:54322`) & PostgREST (`:54321`), RPCs (`wise_spliter.schema_health`, `wise_spliter.push_mutations`, `wise_spliter.pull_changes`), and private receipt bucket `wise-spliter-receipts`. See [database-and-sync-spec.md](./database-and-sync-spec.md). |
+| **Backend API Gatekeeper** | **Node/Bun HTTP Service (`src/server/index.ts` & `src/server/supabaseAdmin.ts` on `:4174`)** | Keeps `SUPABASE_SECRET_KEY` (`service_role`) server-side, authenticates HMAC sessions, validates every pushed entity (ids, sizes, currencies, dates, `BigInt` conservation), and forwards `POST /api/ledger/push` / `GET /api/ledger/pull` to the `service_role`-only RPCs with the verified actor id. Fails closed (`HTTP 503`) on database errors. |
+| **Centralized & Cloud Supabase** | **Centralized Local Supabase (`$SUPABASE_DIR` from `.env.development`) & Hosted Supabase (`wise_spliter` schema)** | Google OAuth, isolated `wise_spliter` Postgres schema (`:54322`) & PostgREST (`:54321`), RPCs (`schema_health`, `push_mutations(actor, mutations)`, `pull_changes(actor, cursor, limit)`, `claim_members`, `delete_account`) that enforce tenant isolation, roles and HLC ordering inside Postgres. No grants for `anon` / `authenticated`. See [database-and-sync-spec.md](./database-and-sync-spec.md). |
 | **Charts & Analytics** | **Recharts / Native SVG Telemetry (`AnalyticsAndSearchPage.tsx`)** | Interactive monthly spending trends, category breakdowns, and multi-parameter search/filtering. |
 | **Data Portability** | **Multi-Sheet Excel (`.xlsx`), Printable `.pdf`, RFC-4180 `.csv`, Splitwise CSV/JSON Importer, UPI Links & Web Crypto (`AES-256-GCM`)** | Splitwise CSV/JSON import, multi-sheet `.xlsx` & `.pdf` statements, WhatsApp settlement summaries with `upi://pay` links, and encrypted `.wisesplit` backups. |
 | **Verification Suite** | **Vitest + `fast-check` (Property-Based Testing) + Playwright** | Randomized property fuzz runs verifying financial conservation laws plus live end-to-end Playwright verification. |
@@ -58,20 +58,22 @@ wise-spliter/
 │   ├── manifest.webmanifest                  # Installable PWA manifest
 │   └── sw.js                                 # Offline Service Worker caching app shell & static assets
 ├── scripts/
-│   ├── apply-migration.mjs                   # Applies & verifies `0001` + `0002` `wise_spliter` migrations & RLS posture
+│   ├── apply-migration.mjs                   # psql runner with its own `wise_spliter.schema_migrations` ledger + verification
 │   ├── check-deprecations.mjs                # TypeScript zero-deprecation gate (`TS6385` / `TS6387`)
 │   ├── dev-stack.mjs                         # Concurrent API (:4174) + Vite UI (:4173) dev orchestrator
 │   └── setup-dev-user.mjs                    # Seeds dev accounts in Supabase Auth + `wise_spliter.*`
 ├── supabase/
 │   └── migrations/
 │       ├── 0001_wise_spliter_schema.sql      # Core `wise_spliter` tables, indexes, bucket & RPCs
-│       └── 0002_wise_spliter_security_hardening.sql # `FORCE RLS`, `service_role`-only RPCs & Storage policies
+│       ├── 0002_wise_spliter_security_hardening.sql # `FORCE RLS`, `service_role`-only RPCs & Storage policies
+│       ├── 0003_local_only_receipt_pointers.sql # Device-local receipts: pointer metadata only
+│       └── 0004_tenant_isolation_and_sync.sql # Revoked grants, push/pull RPCs, CHECKs, caps, triggers, account deletion
 ├── src/
 │   ├── types/
 │   │   └── ledger.ts                         # Canonical TypeScript contracts (groups, direct splits, receipts, revisions)
 │   ├── domain/
 │   │   ├── money/
-│   │   │   └── currencies.ts                 # 170+ ISO-4217 currencies (0, 2, 3 decimals), strict BigInt parser/formatter & FX converter
+│   │   │   └── currencies.ts                 # 160+ ISO-4217 currencies (0, 2, 3 decimals), strict BigInt parser/formatter & FX converter
 │   │   ├── splits/
 │   │   │   └── split-calculator.ts           # 5 split modes, rotating remainder, multi-payer FX & currency re-denomination helpers
 │   │   └── ledger/
@@ -81,9 +83,10 @@ wise-spliter/
 │   ├── sync-engine/
 │   │   └── supabase-sync.ts                  # `resolveApiUrl`, Demo/Google/Login session management, outbox flusher & receipt upload client
 │   ├── server/
-│   │   ├── index.ts                          # Backend API Gatekeeper on `127.0.0.1:4174` (`/api/auth/*`, `/api/ledger/*`, `/api/receipts/upload`)
-│   │   ├── securityAndAuth.ts                # HMAC/JWT/Cookie auth, CSRF/Origin checks, 5-rule tenant & entity-PK authorization & rate limits
-│   │   └── supabaseAdmin.ts                  # Server-only `SUPABASE_SECRET_KEY` adapter targeting `wise_spliter` schema & `wise-spliter-receipts` bucket
+│   │   ├── index.ts                          # Backend API on `127.0.0.1:4174` (`/api/auth/*`, `/api/ledger/push`, `/api/ledger/pull`, `/api/receipts/upload`, `/api/account/delete`)
+│   │   ├── securityAndAuth.ts                # HMAC session tokens (`sub`, `tv`, `exp`), CSRF/Origin checks, CORS, bounded rate limits
+│   │   ├── syncRows.ts                       # Trust-boundary validation and camelCase <-> snake_case row mapping
+│   │   └── supabaseAdmin.ts                  # Server-only admin client, RPC wrappers, exact-match profile lookups
 │   ├── portability/
 │   │   └── portability-engine.ts             # RFC-4180 Splitwise importer, formula-safe CSV/XLSX/PDF exporters, UPI/WhatsApp & AES-256-GCM backup
 │   ├── state/
@@ -105,9 +108,9 @@ wise-spliter/
 │           └── PortabilityAndSyncPage.tsx    # Splitwise import, CSV/Multi-Sheet `.xlsx`/`.pdf` export, AES-256-GCM backup & cloud sync status
 └── tests/
     ├── unit/
-    │   ├── domain-and-portability.test.ts    # Core currency, split, Bitmask-DP, Dexie, portability & auth isolation unit tests (15)
+    │   ├── domain-and-portability.test.ts    # Core currency, split, Bitmask-DP, SHA-256, Dexie, portability & auth tests (19)
     │   ├── math-engine-scenarios.test.ts     # Edge-case scenarios, FX re-denomination & `fast-check` property fuzz suites (21)
-    │   └── security-breach.test.ts           # Live red-team breach, CSRF, PK-overwrite, path-traversal & PostgREST lockdown tests (11)
+    │   └── security-breach.test.ts           # Live red-team breach, CSRF, PK-overwrite, zero-cloud-blob & PostgREST tests (12)
     └── e2e/
         └── wise-spliter.spec.ts              # 7-story full-stack Playwright E2E acceptance suite
 ```
@@ -132,14 +135,14 @@ When creating or updating an expense with total $T \in \mathbb{Z}^+$ (in group b
    * When editing an existing expense, its original `rotation_seed` is preserved unless the user explicitly resets splits.
    * Once saved, the resulting `owed_minor` values are **frozen inside `expense.splits`** so deleting or editing another expense in the group never mutates the paise of existing bills (100% Splitwise & Settl parity).
 
-2. **Mode 1 — Equal Split (`split_mode = 'equal'`):**
+2. **Mode 1: Equal Split (`split_mode = 'equal'`):**
    * Base share: $q = \lfloor T / k \rfloor$, remainder: $r = T \bmod k$ (where $0 \le r < k$).
    * Order the $k$ included members starting at offset $s = \text{rotation\_seed} \bmod k$:
      $$\text{RotatedIndex}(j) = (j - s + k) \bmod k$$
    * The first $r$ members in this rotated order receive $q + 1$ minor units (`remainder_minor = 1`); the remaining $k - r$ members receive $q$ minor units (`remainder_minor = 0`).
    * **Proof of Fairness:** Over any $k$ consecutive equal-split expenses with identical $r$, every single member receives the extra $+1$ paisa/cent the exact same number of times.
 
-3. **Mode 2 — Shares / Ratios Split (`split_mode = 'shares'`):**
+3. **Mode 2: Shares / Ratios Split (`split_mode = 'shares'`):**
    * Each included member $i$ has positive integer share weight $w_i \in \mathbb{Z}^+$, with total weight $W = \sum_{i=0}^{k-1} w_i$.
    * Exact floor allocation: $q_i = \lfloor (T \times w_i) / W \rfloor$, numerator remainder: $\text{rem}_i = (T \times w_i) \bmod W$.
    * Leftover minor units to distribute: $\Delta = T - \sum q_i$ (always $0 \le \Delta < k$).
@@ -148,16 +151,16 @@ When creating or updating an expense with total $T \in \mathbb{Z}^+$ (in group b
      2. Tie-breaker: ascending rotated position $(i - (\text{rotation\_seed} \bmod k) + k) \bmod k$.
    * Assign $+1$ minor unit to the top $\Delta$ members.
 
-4. **Mode 3 — Percentage Split (`split_mode = 'percentage'`):**
+4. **Mode 3: Percentage Split (`split_mode = 'percentage'`):**
    * Percentages are represented in **basis points** ($100.00\% = 10000 \text{ bps}$).
    * **Validation Gate:** Must satisfy $\sum_{i=0}^{k-1} \text{bps}_i == 10000$.
    * Computed identically to Shares Mode with $w_i = \text{bps}_i$ and $W = 10000$.
 
-5. **Mode 4 — Exact Amounts (`split_mode = 'exact'`):**
+5. **Mode 4: Exact Amounts (`split_mode = 'exact'`):**
    * User enters exact minor amounts $e_i$ per included member.
    * **Validation Gate:** Must satisfy $\sum_{i=0}^{k-1} e_i == T$. If $\sum e_i \neq T$, the UI displays the exact remaining/over-allocated amount (e.g., *"₹15.00 left to assign"*) and blocks saving until reconciled.
 
-6. **Mode 5 — Adjustments `+/-` (`split_mode = 'adjustment'`):**
+6. **Mode 5: Adjustments `+/-` (`split_mode = 'adjustment'`):**
    * Each included member $i$ has a signed integer adjustment $a_i \in \mathbb{Z}$ (in minor units).
    * Let $A = \sum_{i=0}^{k-1} a_i$ and remaining pool $P = T - A$.
    * **Validation Gate:** $P \ge 0$ and for every member $i$, their final share $s_i = \text{EqualSplit}(P, k, \text{rotation\_seed})_i + a_i \ge 0$.
@@ -168,19 +171,25 @@ When creating or updating an expense with total $T \in \mathbb{Z}^+$ (in group b
 
 ---
 
-### 4.3 Multi-Currency Conversion & Group Base Currency Changes (`src/domain/money/fx-converter.ts`)
+### 4.3 Multi-Currency Conversion & Group Base Currency Changes (`src/domain/money/currencies.ts`, `src/utils/fx-rates.ts`)
 
-1. **Entering a Foreign-Currency Expense:**
-   * Suppose Group Base Currency is $G$ (exponent $E_G$, e.g., `INR`, $E_G = 2$) and the bill is entered in Currency $F$ (exponent $E_F$, e.g., `EUR`, $E_F = 2$ or `JPY`, $E_F = 0$).
-   * Exchange rate $R$ ($1 \text{ major unit of } F = R \text{ major units of } G$) is stored as an integer scaled by $10^8$:
-     $$R_{\text{scaled}} = \text{round}(R \times 10^8)$$
-   * Converted amount in Group Base Currency minor units:
-     $$\text{amount\_minor} = \text{round}\left( \frac{\text{original\_amount\_minor} \times R_{\text{scaled}} \times 10^{E_G}}{10^{E_F} \times 10^8} \right)$$
-   * **Splitwise Parity FX Audit Note:** Automatically attaches `fx_audit_note` to the expense (e.g., `"Converted from €50.00 EUR at 1 EUR = 91.20 INR [Live rate / Offline cached rate]"`) and records it in `group_activity_log`.
-2. **Changing a Group's Base Currency After Expenses Exist:**
+1. **Rate source:** [Frankfurter v2](https://frankfurter.dev/) (`GET https://api.frankfurter.dev/v2/rates?base=EUR`), fetched directly from the client.
+   * Why: free, no API key, `access-control-allow-origin: *`, about 200 quotes blended from central banks (ECB and others), including INR, VND, AED, SAR, PKR, LKR, NPR, BDT, KWD, BHD, OMR, JPY, KRW, THB and IDR. The docs allow commercial use and local caching, and there are no quotas, only abuse rate limits.
+   * Limits: daily reference rates, not intraday. Each quote carries its own `date` (some providers publish with a lag or skip weekends). Rates for exotic currencies can be stale. The response includes crypto quotes, which are dropped, as are codes outside the ISO 4217 catalog.
+   * One request per device per local day: the table (EUR-based decimal strings plus each quote's date) is cached in the Dexie `kvStore` under `fx_rates_cache` with `fetchedOn` (local `YYYY-MM-DD`). The in-app offline toggle skips the fetch.
+2. **Rate status:** `live` only when the cached table was fetched today; `cached_offline` when an older cache is used (the note shows the rate's date); `manual` when the user typed the rate; `identity` when no conversion is needed. With no rate for a pair, saving is blocked until a manual rate is entered. There is no 1:1 fallback anywhere: `parseFxRateToScaled` returns 0 for unusable input and the converters throw `RangeError` on a non-positive rate.
+3. **Entering a Foreign-Currency Expense:**
+   * Suppose Group Base Currency is $G$ (exponent $E_G$) and the bill is entered in Currency $F$ (exponent $E_F$).
+   * Cross rate from EUR quotes $q_F, q_G$ (parsed as exact decimals, BigInt): $R_{\text{scaled}} = \text{roundHalfAwayFromZero}(q_G \times 10^8 / q_F)$, so $1\,F = R$ $G$ with 8 decimals. Rates are rejected when they round to 0 or exceed $2^{53}-1$ once scaled.
+   * Converted amount in Group Base Currency minor units (BigInt, half away from zero):
+     $$\text{amount\_minor} = \text{roundHalfAwayFromZero}\left( \frac{\text{original\_amount\_minor} \times R_{\text{scaled}} \times 10^{E_G}}{10^{E_F} \times 10^8} \right)$$
+   * Conservation: splits and payers are allocated from the converted total with the Hamilton largest-remainder allocator and its rotating tie-break, so `sum(payers) == amount_minor == sum(included splits)` holds exactly after conversion.
+   * Stored on the expense: `originalAmountMinor`, `originalCurrency`, `fxRateScaled`, `amountMinor`, `fxStatus`, and `fxAuditNote` (for example `"Converted from €50.00 EUR at 1 EUR = 91.20 INR (live rate, 2026-11-16)"`), whose date is the rate's date.
+4. **Changing a Group's Base Currency After Expenses Exist:**
    * Presents two explicit, lossless modes:
-     * **Mode A — Re-label Currency Only:** Changes `base_currency` code (adjusting minor-unit scale factor $10^{E_{\text{new}} - E_{\text{old}}}$ if switching between 0/2/3 decimal currencies) without applying an exchange rate.
-     * **Mode B — Convert Existing Ledger via Exchange Rate:** Converts all active expenses and settlements into the new `base_currency`, writes a `'currency_reconverted'` revision for each expense, and logs `'group_currency_changed'` in `group_activity_log`.
+     * **Mode A: Re-label Currency Only:** Changes `base_currency` code (adjusting minor-unit scale factor $10^{E_{\text{new}} - E_{\text{old}}}$ if switching between 0/2/3 decimal currencies) without applying an exchange rate.
+     * **Mode B: Convert Existing Ledger via Exchange Rate:** Uses the typed rate (`manual`) or the cached quote (`live`/`cached_offline`); refuses when neither exists. Converts all active expenses and settlements into the new `base_currency` (conservation holds per expense, group net stays 0), writes a `'currency_reconverted'` revision for each expense, and logs `'group_currency_changed'` with the rate, its status and date in `group_activity_log`.
+5. **Amount input:** locale-aware. With a decimal-comma locale (`de-DE`) `"12,50"` is 12.50; otherwise a comma must form valid Western (`1,234`) or Indian (`1,00,000`) grouping, so `"12,50"` is rejected and never read as 1,250.00.
 
 ---
 
@@ -257,11 +266,11 @@ Tapping any member or suggested settlement produces a structured `BalanceExplana
    * Includes all 5 split modes (`equal`, `exact`, `percentage`, `shares`, `adjustment`), multiple payers, live FX conversion with audit note generation, and offline-capable WebP receipt image attachments.
 3. **Progressive Group Workspace (`GroupsLedgerPage.tsx`) & Guided Onboarding (`HelpGuideModal` + `ContextualPageGuideBanner`):**
    * Opening a group updates its `last_accessed_at` timestamp and progressively reveals concise group-level balance insights, member roster management (instant add by Name + optional Gmail/UPI ID), "Explain This Balance" lineage modals (`ExplainBalanceModal`), and skippable contextual guidance (`ContextualPageGuideBanner` + `HelpGuideModal`).
-4. **Receipt Image & Bill Attachment Architecture (`local_receipt_blobs` $\to$ `POST /api/receipts/upload` $\to$ `wise-spliter-receipts`):**
-   * **Offline / Local Device:** Compressed WebP images are stored immediately in the Dexie.js IndexedDB table `local_receipt_blobs` so receipts work 100% offline during flights and trips.
-   * **Online / Centralized & Cloud Supabase:** Uploaded via the Backend API Service (`POST /api/receipts/upload` on `:4174`) to the private **Supabase Storage bucket `wise-spliter-receipts`** at path `{group_id_or_direct}/{expense_id}/{receipt_id}.webp`, with structured metadata recorded in `wise_spliter.receipt_attachments` and `wise_spliter.expenses.receipts`.
-5. **Centralized Supabase (`SUPABASE_DIR = /home/chetan/projects/my-scripts/setup/dependencies`) & Backend API Gatekeeper (`src/server/index.ts` on `:4174`):**
-   * The Backend API Gatekeeper on port `4174` holds `SUPABASE_SECRET_KEY` (`service_role`) strictly on the server, validates financial conservation laws ($\sum \text{payers} == \text{amount\_minor} == \sum \text{splits}$) before database writes, and communicates with PostgREST (`:54321`) using `Accept-Profile: wise_spliter` and `Content-Profile: wise_spliter` alongside RPCs `wise_spliter.schema_health`, `wise_spliter.push_mutations`, and `wise_spliter.pull_changes`.
+4. **Device-Local Receipt Architecture (`local_receipt_blobs` + `SHA-256` P2P Pointer):**
+   * **On-Device Only:** Compressed WebP images live strictly in Dexie `local_receipt_blobs` (`0` bytes uploaded to Supabase Storage or `data_url` columns).
+   * **Cloud Pointer & P2P Swarm:** Only a ~180-byte `SHA-256` manifest pointer syncs with the expense so online peers can fetch the receipt directly peer-to-peer ([`./p2p-receipt-mesh-plan.md`](./p2p-receipt-mesh-plan.md)).
+5. **Centralized Supabase (`$SUPABASE_DIR` from `.env.development`) & Backend API Gatekeeper (`src/server/index.ts` on `:4174`):**
+   * The Backend API Gatekeeper on port `4174` holds `SUPABASE_SECRET_KEY` (`service_role`) strictly on the server, validates financial conservation laws ($\sum \text{payers} == \text{amount\_minor} == \sum \text{splits}$, in `BigInt`) before database writes, and calls the RPCs `wise_spliter.push_mutations` and `wise_spliter.pull_changes` with the verified actor. The database decides tenant access, roles and HLC ordering in the same transaction as the write.
 6. **Offline Service Worker (`public/sw.js`):**
    * Caches the application shell and static assets so Wise-Spliter boots and operates seamlessly without network connectivity.
 

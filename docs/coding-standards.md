@@ -89,7 +89,7 @@ Wise-Spliter handles real multi-party money, multi-currency conversions, and pri
   * **Environment Configuration (`.env.example`, `.env.development`, `.env.production`):** Follows the `merry-tools` convention where server-only secrets (`SUPABASE_SECRET_KEY`, `GRANT_TOKEN_SECRET`, `ALLOWED_ORIGINS`) have no prefix, and only public browser keys (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_SUPABASE_ANON_KEY`, `VITE_SUPABASE_SCHEMA`, `VITE_API_BASE_URL`) are prefixed with `VITE_`.
 * **Server-Only Secret Key (`SUPABASE_SECRET_KEY`) & Dev Seed Profiles (`src/data/dev-profiles.ts`):**
   * `SUPABASE_SECRET_KEY` (`service_role` / `sb_secret_...`) must only be read inside server-side code (`src/server/index.ts`, `src/server/supabaseAdmin.ts`, and CLI scripts in `scripts/`).
-  * `src/data/dev-profiles.ts` is strictly a server/CLI seed module used by `make setup-dev` (`scripts/setup-dev-user.mjs`) to provision the 3 development accounts (`arjun.mehta@gmail.com`, `rohan.verma@gmail.com`, `priya.nair@gmail.com`) in Supabase Auth (`auth.users`) and `wise_spliter.profiles`. Never import `dev-profiles.ts` or hardcode passwords inside `src/ui/` or any browser component.
+  * `src/data/dev-profiles.ts` is strictly a server/CLI seed module used by `make setup-dev` (`scripts/setup-dev-user.mjs`) to provision the 3 development accounts (`arjun.mehta@example.com`, `rohan.verma@example.com`, `priya.nair@example.com`) in Supabase Auth (`auth.users`) and `wise_spliter.profiles`. Never import `dev-profiles.ts` or hardcode passwords inside `src/ui/` or any browser component.
   * Never prefix secret keys with `VITE_` or bundle them into client code.
 * **Backend Authentication (`HTTP 401`), Demo Sandbox (`POST /api/auth/demo`), Google OAuth (`POST /api/auth/google`), Login (`POST /api/auth/login`) & Multi-Tenant Isolation (`HTTP 403` IDOR Protection in `src/server/securityAndAuth.ts`):**
   * **1-Tap Demo Sandbox (`POST /api/auth/demo`), Google OAuth (`POST /api/auth/google`) & Email Login (`POST /api/auth/login` in `DevAuthModal.tsx`):** Clicking `header-user-pill` opens `DevAuthModal`, providing (a) 1-tap Demo Sandbox login (`demo-profile-login-btn` -> `POST /api/auth/demo`, restricted strictly to `usr_arjun_01`), (b) Google OAuth 2.0 redirect (`dev-google-oauth-btn` -> GoTrue OAuth -> `LedgerContext` `onAuthStateChange` -> `POST /api/auth/google` verifying `auth.getUser(accessToken)` and auto-claiming matching `invited_email` group members), and (c) backend-validated email/password login (`POST /api/auth/login` guarded by brute-force rate limiting). `POST /api/auth/session` rejects any unauthenticated non-demo session minting request with `HTTP 401`.
@@ -97,14 +97,14 @@ Wise-Spliter handles real multi-party money, multi-currency conversions, and pri
   * **Authorization, Active Membership & Entity-PK Ownership Prevention (`HTTP 403`):**
     * `filterDatasetForUser(dataset, user)` scopes `GET /api/ledger/bootstrap` and `GET /api/ledger/pull-changes` so users only receive groups where they are an active member (`removed_at IS NULL`) and standalone direct splits (`groupId === null`) where `adHocParticipants` includes their identity.
     * `authorizeDatasetSyncForUser`, `authorizeMutationsForUser`, and `authorizeReceiptUploadForUser` enforce 5 strict rules across `POST /api/ledger/sync`, `POST /api/ledger/push-mutations`, and `POST /api/receipts/upload`: (1) Anti-Impersonation (`currentUser` must match the authenticated token), (2) Active Group Membership (`removed_at IS NULL`), (3) Existing DB Group Ownership Protection, (4) Expense Scope Protection, and (5) Cross-Tenant Entity PK Ownership & Storage Path-Traversal Protection (`/^[a-zA-Z0-9_-]{1,80}$/`). Violations are rejected with `HTTP 400` / `HTTP 403`.
-  * **Hardening (`buildSecurityHeaders`, `validateCsrfAndOrigin`, Body Caps & `checkRateLimit`):** Binds to `127.0.0.1:4174` by default, rejects untrusted cross-site `Origin` / `Sec-Fetch-Site` state-mutating requests with `HTTP 403` (while permitting `capacitor://localhost` & `tauri://localhost`), caps request body size (`HTTP 413`), enforces production secret fail-fast guards, and gates `X-Forwarded-For` behind `TRUST_PROXY=true`.
-* **Dedicated PostgreSQL Schema (`wise_spliter` - `0001` & `0002` Migrations):**
+  * **Hardening (`buildSecurityHeaders`, `validateCsrfAndOrigin`, Body Caps & `checkRateLimit`):** Binds to `127.0.0.1:4174` by default, rejects untrusted cross-site `Origin` / `Sec-Fetch-Site` state-mutating requests with `HTTP 403` (while permitting `capacitor://localhost` & `tauri://localhost`), caps request body size (`HTTP 413`), enforces production secret fail-fast guards, and derives the client IP per `TRUST_PROXY`: `false` (socket address, local), `true` (rightmost `X-Forwarded-For` hop, e.g. behind Pyrite), or `cloudflare` (`CF-Connecting-IP`; the origin must accept only Cloudflare traffic).
+* **Dedicated PostgreSQL Schema (`wise_spliter` - `0001`, `0002` & `0003` Migrations):**
   * All database objects live inside `CREATE SCHEMA IF NOT EXISTS wise_spliter;`. Never create tables or functions in `public`.
   * Enforce `REVOKE ALL ON SCHEMA wise_spliter FROM PUBLIC, anon;`, `FORCE ROW LEVEL SECURITY` on all 8 tables with `(SELECT auth.uid())` active-membership policies, and `REVOKE EXECUTE` on `SECURITY DEFINER` RPCs (`schema_health`, `push_mutations`, `pull_changes`) from `PUBLIC, anon, authenticated` so only `service_role` can invoke them (`supabase/migrations/0002_wise_spliter_security_hardening.sql`).
   * All PostgREST calls from `src/server/supabaseAdmin.ts` bind to schema `wise_spliter` via `db: { schema: SUPABASE_SCHEMA }` (`Accept-Profile: wise_spliter` and `Content-Profile: wise_spliter`).
-* **Receipt Image & Bill Attachment Storage Rules:**
-  * **Offline / Local Device:** Compressed WebP images are stored immediately in the Dexie.js IndexedDB table `local_receipt_blobs` so receipt attachments work 100% offline during flights and trips.
-  * **Online / Centralized & Cloud Supabase:** Uploaded via the Backend API Service (`POST /api/receipts/upload` on `:4174`) to the private **Supabase Storage bucket `wise-spliter-receipts`** at path `{group_id_or_direct}/{expense_id}/{receipt_id}.webp`, with structured metadata recorded in `wise_spliter.receipt_attachments` and `wise_spliter.expenses.receipts`.
+* **Device-Local Receipt Attachment Rules (`0` Cloud Blob Bytes):**
+  * **On-Device Storage:** Compressed WebP images are stored strictly in Dexie `local_receipt_blobs` (`uploadedToCloud: false`, `storageBucket: 'local-device-only'`).
+  * **Zero Cloud Image Uploads:** `stripReceiptBlobsFromDataset()` and `0003_local_only_receipt_pointers.sql` ensure `dataUrl` is never sent or persisted (`data_url = NULL`) and Supabase Storage holds `0` receipt bytes. Only lightweight `SHA-256` manifest pointers sync for P2P swarm fetching ([`./p2p-receipt-mesh-plan.md`](./p2p-receipt-mesh-plan.md)).
 * **XSS & Code Execution Prevention:**
   * Never use `eval()`, `new Function()`, or `dangerouslySetInnerHTML`. All imported CSV/JSON/backup payloads must be parsed as structured data and validated before rendering.
 
@@ -126,11 +126,11 @@ make typecheck
 ```
 * **Requirement:** `tsc --noEmit && node scripts/check-deprecations.mjs` must exit with `0` TypeScript errors and `0` deprecated symbol diagnostics across all client, domain, storage, server, and test files.
 
-### Step 2: Unit, Math Scenario, Property-Based (`fast-check`), IndexedDB & Red-Team Security Suite (47 Tests)
+### Step 2: Unit, Math Scenario, Property-Based (`fast-check`), IndexedDB & Red-Team Security Suite (52 Tests)
 ```bash
 make test
 ```
-* **Requirement:** `100%` of Vitest suites (`tests/unit/domain-and-portability.test.ts` - 15 tests, `tests/unit/math-engine-scenarios.test.ts` - 21 tests, and `tests/unit/security-breach.test.ts` - 11 tests; **47 tests total**) must pass, including:
+* **Requirement:** `100%` of Vitest suites (`tests/unit/domain-and-portability.test.ts` - 19 tests, `tests/unit/math-engine-scenarios.test.ts` - 21 tests, and `tests/unit/security-breach.test.ts` - 12 tests; **52 tests total**) must pass, including:
   * `fast-check` property-based fuzz suites (1,600+ randomized cases) verifying split conservation, rotating remainder fairness, intra-bill net surplus/deficit bilateral debt conservation, $O(n \cdot 2^n)$ `BigInt` Bitmask-DP ($n \le 16$) vs. Greedy ($n > 16$), and currency re-denomination invariants across `0, 2, 3` decimal currencies.
   * Local-first `IndexedDB` (`Dexie.js`) persistence, `syncOutbox` FIFO queueing, offline WebP receipt blobs (`localReceiptBlobs`), formula-injection-safe `.csv`/`.xlsx`, and `.pdf` binary generation tests.
   * Red-team breach tests verifying `HTTP 401` on unauthenticated `/api/auth/session` impersonation and forged JWTs, `HTTP 403` on cross-site CSRF, cross-tenant PK overwrites, soft-removed member access, and `../` receipt path traversal, `HTTP 413` on oversized bodies, and direct PostgREST `:54321` `anon`/`authenticated` RPC lockdown.
@@ -139,7 +139,7 @@ make test
 ```bash
 make migrate-verify
 ```
-* **Requirement:** Runs `node scripts/apply-migration.mjs verify` against the centralized Supabase instance (`SUPABASE_DIR = /home/chetan/projects/my-scripts/setup/dependencies`), confirming `PASS` for all 8 tables, `FORCE ROW LEVEL SECURITY` (`count=8`), `service_role`-only access to `schema_health` / `pull_changes` / `push_mutations`, and `HTTP 401` rejection on direct `anon` PostgREST probes.
+* **Requirement:** Runs `node scripts/apply-migration.mjs verify` against the centralized Supabase instance (`$SUPABASE_DIR` from `.env.development`), confirming `PASS` for all 8 tables, `FORCE ROW LEVEL SECURITY` (`count=8`), `service_role`-only access to `schema_health` / `pull_changes` / `push_mutations`, and `HTTP 401` rejection on direct `anon` PostgREST probes.
 
 ### Step 4: Clean Production Bundle Build
 ```bash
@@ -157,7 +157,7 @@ make e2e
   3. **User Story 3:** Group Management - Debt Simplification toggle (`ON`/`OFF`), Base Currency Re-denomination (`relabel` / `reconvert`), Instant Unclaimed Member addition & claim flow, and New Group creation synced to Supabase.
   4. **User Story 4:** Transparent Activity History (Group vs. Global scope), Per-Expense Immutable Revision History inspector with 1-click revision restore, and Trash Recovery Vault restore.
   5. **User Story 5:** Friends Cross-Group Net Balances, 1-Tap Atomic Batch Settle Up across groups, UPI Deep-Link / QR Code Studio (`upi://pay?`), and WhatsApp Summary export.
-  6. **User Story 6:** Insights & Global Search across `0, 2, 3` decimal currencies (`JPY`, `INR`, `KWD`), Portability (`Splitwise CSV import`, `.xlsx`, `.pdf`, `PBKDF2 + AES-256-GCM` `.wisesplit` backup round-trip), live Backend API & PostgREST Security Breach checks (`HTTP 401` on unauthenticated `/api/auth/session` minting, `HTTP 403` on CSRF / cross-user impersonation / private group hijack, direct `:54321` RPC rejection), collaborator login (`rohan.verma@gmail.com`), and 1-Tap Demo Sandbox Login (`POST /api/auth/demo`).
+  6. **User Story 6:** Insights & Global Search across `0, 2, 3` decimal currencies (`JPY`, `INR`, `KWD`), Portability (`Splitwise CSV import`, `.xlsx`, `.pdf`, `PBKDF2 + AES-256-GCM` `.wisesplit` backup round-trip), live Backend API & PostgREST Security Breach checks (`HTTP 401` on unauthenticated `/api/auth/session` minting, `HTTP 403` on CSRF / cross-user impersonation / private group hijack, direct `:54321` RPC rejection), collaborator login (`rohan.verma@example.com`), and 1-Tap Demo Sandbox Login (`POST /api/auth/demo`).
   7. **User Story 7:** Math & UX Precision Lab verifying Settl quick-amount preset chips, 3-way rotating remainder, Splitwise personal impact badge, and `INR -> KWD` (3-decimal fils) FX re-conversion passing strict backend invariant validation (`HTTP 200`).
 
 ### Step 6: Independent 4-Persona Verification Council (`Builder != Verifier`)

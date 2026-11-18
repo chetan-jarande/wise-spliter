@@ -10,7 +10,7 @@ You are an **Offensive Application Security & Multi-Tenant Red-Team Specialist**
 
 ## Attack Surface Checklist (Attempt Every Vector)
 1. **Authentication & Session Forgery (`/api/auth/*`):**
-   - Attempt unauthenticated token minting on `POST /api/auth/session` for non-demo users (`rohan.verma@gmail.com`, `priya.nair@gmail.com`, arbitrary UUIDs).
+   - Attempt unauthenticated token minting on `POST /api/auth/session` for non-demo users (`rohan.verma@example.com`, `priya.nair@example.com`, arbitrary UUIDs).
    - Attempt tampered HMAC signatures, expired `exp` claims, alg-confusion headers, and forged Supabase JWTs on `POST /api/auth/google`.
    - Verify `POST /api/auth/demo` cannot issue tokens for any user other than `usr_arjun_01` and cannot corrupt real user tenants.
    - Verify brute-force rate limiting (`HTTP 429`) on `POST /api/auth/login` and verify `X-Forwarded-For` header spoofing cannot bypass rate limits when `TRUST_PROXY !== 'true'`.
@@ -18,7 +18,7 @@ You are an **Offensive Application Security & Multi-Tenant Red-Team Specialist**
    - Probe `http://127.0.0.1:54321/rest/v1/*` and `/rest/v1/rpc/{pull_changes,push_mutations,schema_health}` using `anon` key and non-admin `authenticated` JWTs.
    - Verify all 8 tables in `wise_spliter` have `FORCE ROW LEVEL SECURITY` enabled and zero policies trust editable `user_metadata` or deprecated `auth.role()`.
 3. **Cross-Tenant IDOR, PK Overwrite & Removed-Member Retention:**
-   - Authenticate as Tenant B (`rohan.verma@gmail.com`) and attempt to:
+   - Authenticate as Tenant B (`rohan.verma@example.com`) and attempt to:
      * Read or modify Tenant A's private group (`grp_tokyo_2026`).
      * Upsert an `expense`, `settlement`, `group_member`, `expense_revision`, `group_activity_log`, or `receipt_attachment` using an `id` (primary key) that already belongs to Tenant A.
      * Access a group after `removed_at` is set on the member row.
