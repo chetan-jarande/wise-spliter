@@ -22,6 +22,7 @@
     "migrate:remote": "node scripts/apply-migration.mjs remote",
     "migrate:sql": "node scripts/apply-migration.mjs remote --print-sql",
     "migrate:verify": "node scripts/apply-migration.mjs verify",
+    "seed:demo": "bun run scripts/seed-demo-data.mjs",
     "setup:dev": "bun run scripts/setup-dev-user.mjs"
   },
   "dependencies": {

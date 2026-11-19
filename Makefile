@@ -13,7 +13,7 @@ NEED_SUPABASE_DIR = @test -n "$(SUPABASE_DIR)" || { echo "ERROR: set SUPABASE_DI
 
 .PHONY: help up dev dev-ui api prod build start apk apk-prod stop check-port install test e2e e2e-headed e2e-ui typecheck verify-agents clean \
         supabase-up supabase-down supabase-status supabase-ensure \
-        migrate-up migrate-local migrate-remote migrate-verify migrate-verify-prod migrate-sql migrate-docker setup-dev reset-dev-data \
+        migrate-up migrate-local migrate-remote migrate-verify migrate-verify-prod migrate-sql migrate-docker setup-dev seed-demo reset-dev-data \
         docker-up-dev docker-down-dev docker-build docker-up docker-down docker-logs deploy-pyrite down
 
 
@@ -28,6 +28,20 @@ dev: setup-dev
 
 setup-dev: supabase-ensure migrate-up
 	set -a && [ -f .env.development ] && . ./.env.development; set +a && bun run scripts/setup-dev-user.mjs
+
+# Populate demo ledger data in local dev DB (works whether app is running or stopped).
+# Optional overrides: USER_NAME="Your Name" USER_EMAIL="you@demo.local" USER_UPI="you@upi" AUTH_MODE="password|google"
+USER_NAME ?=
+USER_EMAIL ?=
+USER_UPI ?=
+USER_PASSWORD ?=
+AUTH_MODE ?= password
+SEED_ARGS ?=
+
+seed-demo: supabase-ensure migrate-up
+	set -a && [ -f .env.development ] && . ./.env.development; set +a && \
+	USER_NAME="$(USER_NAME)" USER_EMAIL="$(USER_EMAIL)" USER_UPI="$(USER_UPI)" USER_PASSWORD="$(USER_PASSWORD)" AUTH_MODE="$(AUTH_MODE)" \
+	bun run scripts/seed-demo-data.mjs $(SEED_ARGS)
 
 reset-dev-data: supabase-ensure
 	set -a && [ -f .env.development ] && . ./.env.development; set +a && bun run scripts/reset-dev-data.mjs
@@ -194,6 +208,7 @@ help:
 	@echo "Wise-Spliter Build, Database & Run Commands:"
 	@echo "  make dev             - Ensure centralized Supabase is up, apply wise_spliter schema, seed dev users, and start API (4174) + UI (4173)"
 	@echo "  make setup-dev       - Ensure Supabase + migrations and provision dev users & ledger seed in wise_spliter"
+	@echo "  make seed-demo       - LOCAL DEV ONLY: populate demo groups & bills (supports USER_NAME=\"...\" USER_EMAIL=\"...\" whether app is up or stopped)"
 	@echo "  make reset-dev-data  - LOCAL ONLY: delete test/e2e groups and bills piled on the dev profiles (keeps the last 30 min), re-seed, reset their quotas"
 	@echo "  make dev-ui          - Start API (4174) + UI (4173) directly without re-running supabase-ensure"
 	@echo "  make api             - Run Backend API service on http://localhost:$(API_PORT)"
