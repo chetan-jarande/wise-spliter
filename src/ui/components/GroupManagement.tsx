@@ -22,12 +22,12 @@ import { canEditMemberUpi } from '../../utils/group-permissions';
 import { isNativeCapacitorApp } from '../../utils/native-platform';
 
 export const BTN =
-  'min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60';
-export const BTN_PRIMARY = `${BTN} bg-[#059669] hover:bg-emerald-600 text-white`;
-export const BTN_GHOST = `${BTN} border border-slate-200 dark:border-white/15 bg-slate-50 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200`;
-export const BTN_DANGER = `${BTN} border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-300`;
+  'min-h-[44px] min-w-[44px] inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold tracking-tight transition-[transform,opacity,background-color,border-color,color,box-shadow] duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 disabled:cursor-not-allowed disabled:opacity-55';
+export const BTN_PRIMARY = `${BTN} lg-luminous-pill`;
+export const BTN_GHOST = `${BTN} lg-scene-tile text-[#141715] dark:text-[#F3F5F3]`;
+export const BTN_DANGER = `${BTN} border border-rose-500/30 bg-rose-500/12 dark:bg-rose-400/14 hover:bg-rose-500/20 dark:hover:bg-rose-400/22 text-rose-800 dark:text-rose-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]`;
 const INPUT =
-  'min-h-[44px] w-full rounded-xl border border-slate-300 dark:border-white/15 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#059669]';
+  'lg-recessed-well min-h-[44px] w-full rounded-2xl px-3.5 py-2 text-sm text-[#141715] dark:text-[#F3F5F3] placeholder:text-[#68726C] dark:placeholder:text-[#8A938D] focus:outline-none focus:ring-2 focus:ring-emerald-500/50';
 
 export function inviteLinkFor(code: string): string {
   const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
@@ -56,7 +56,7 @@ export function JoinGroupForm({ initialCode = '', onJoined }: { initialCode?: st
   };
 
   return (
-    <form onSubmit={submit} data-testid="join-group-form" className="flex flex-col sm:flex-row gap-2 sm:items-start">
+    <form onSubmit={submit} data-testid="join-group-form" className="flex flex-col sm:flex-row gap-2.5 sm:items-start">
       <div className="flex-1 min-w-0">
         <label htmlFor="join-group-code" className="sr-only">
           Invite code or link
@@ -78,7 +78,7 @@ export function JoinGroupForm({ initialCode = '', onJoined }: { initialCode?: st
           className={`${INPUT} font-mono`}
         />
         {showError && (
-          <p id="join-group-error" data-testid="join-group-error" className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">
+          <p id="join-group-error" data-testid="join-group-error" className="mt-1.5 text-[11px] font-medium text-rose-700 dark:text-rose-300">
             That does not look like an invite code. Codes look like WS- followed by 10 letters and numbers.
           </p>
         )}
@@ -119,25 +119,30 @@ export function InvitePanel({ group, isAdmin }: { group: GroupRecord; isAdmin: b
   };
 
   return (
-    <div data-testid="invite-panel" className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-slate-900/60 p-4 space-y-3">
-      <div className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Invite people</div>
+    <div data-testid="invite-panel" className="lg-recessed-well rounded-[20px] p-4 space-y-3.5">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#4A524D] dark:text-[#B7BEB9]">
+        Invite people
+      </div>
       {!isSignedIn && (
-        <p data-testid="invite-sign-in-note" className="text-xs text-amber-800 dark:text-amber-300">
+        <p data-testid="invite-sign-in-note" className="text-xs font-medium text-amber-800 dark:text-amber-200">
           Sign in to share this group. The code and link work once the group is synced.
         </p>
       )}
       {link ? (
         <>
-          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-[#4A524D] dark:text-[#B7BEB9]">
             <span>Code</span>
-            <span data-testid="invite-code-text" className="font-mono font-bold text-slate-900 dark:text-slate-100 select-all">
+            <span
+              data-testid="invite-code-text"
+              className="lg-scene-tile rounded-full px-2.5 py-0.5 font-mono font-semibold text-[#141715] dark:text-[#F3F5F3] select-all"
+            >
               {group.inviteCode}
             </span>
           </div>
           <div
             data-testid="invite-link-text"
             title={link}
-            className="font-mono text-[11px] text-slate-500 dark:text-slate-400 truncate select-all"
+            className="font-mono text-[11px] text-[#5C6660] dark:text-[#9CA69F] truncate select-all"
           >
             {link}
           </div>
@@ -159,10 +164,13 @@ export function InvitePanel({ group, isAdmin }: { group: GroupRecord; isAdmin: b
           </div>
         </>
       ) : (
-        <p className="text-xs text-slate-500 dark:text-slate-400">The invite code appears after the group syncs.</p>
+        <p className="text-xs text-[#5C6660] dark:text-[#9CA69F]">The invite code appears after the group syncs.</p>
       )}
       {confirmRotate && (
-        <div data-testid="invite-rotate-confirm" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">
+        <div
+          data-testid="invite-rotate-confirm"
+          className="rounded-2xl border border-amber-600/30 dark:border-amber-300/28 bg-amber-500/12 dark:bg-amber-400/14 p-3.5 space-y-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]"
+        >
           <p className="text-xs text-amber-900 dark:text-amber-200">
             The current code and link stop working. People already in the group stay in it.
           </p>
@@ -207,7 +215,7 @@ export function GroupDangerZone({
   const [confirm, setConfirm] = useState<'leave' | 'delete' | null>(null);
 
   return (
-    <div data-testid="group-danger-zone" className="space-y-3">
+    <div data-testid="group-danger-zone" className="space-y-3 pt-1">
       <div className="flex flex-wrap gap-2">
         <button type="button" data-testid="leave-group-btn" onClick={() => setConfirm('leave')} className={BTN_GHOST}>
           <SignOut className="w-4 h-4" weight="bold" />
@@ -222,7 +230,11 @@ export function GroupDangerZone({
       </div>
 
       {confirm === 'leave' && (
-        <div role="alertdialog" aria-label="Leave group" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">
+        <div
+          role="alertdialog"
+          aria-label="Leave group"
+          className="rounded-2xl border border-amber-600/30 dark:border-amber-300/28 bg-amber-500/12 dark:bg-amber-400/14 p-3.5 space-y-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]"
+        >
           {myNetMinor !== 0 && (
             <p data-testid="leave-group-balance-warning" className="flex items-start gap-1.5 text-xs font-semibold text-amber-900 dark:text-amber-200">
               <Warning className="w-4 h-4 shrink-0" weight="fill" />
@@ -232,7 +244,7 @@ export function GroupDangerZone({
               </span>
             </p>
           )}
-          <p className="text-xs text-slate-700 dark:text-slate-300">
+          <p className="text-xs text-[#2B312D] dark:text-[#DCE2DD]">
             The group and its bills disappear from this device. Someone can invite you back later.
           </p>
           <div className="flex flex-wrap gap-2">
@@ -255,9 +267,13 @@ export function GroupDangerZone({
       )}
 
       {confirm === 'delete' && (
-        <div role="alertdialog" aria-label="Delete group" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 space-y-2">
-          <p className="text-xs text-slate-700 dark:text-slate-300">
-            <span dir="auto" className="font-bold break-words">{group.name}</span> moves to Trash for everyone in it. An
+        <div
+          role="alertdialog"
+          aria-label="Delete group"
+          className="rounded-2xl border border-rose-500/30 bg-rose-500/12 dark:bg-rose-400/14 p-3.5 space-y-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]"
+        >
+          <p className="text-xs text-[#2B312D] dark:text-[#DCE2DD]">
+            <span dir="auto" className="font-semibold break-words [overflow-wrap:anywhere]">{group.name}</span> moves to Trash for everyone in it. An
             admin can restore it from Trash with all of its bills.
           </p>
           <div className="flex flex-wrap gap-2">
@@ -283,7 +299,7 @@ export function GroupDangerZone({
 }
 
 const SMALL =
-  'min-h-[44px] inline-flex items-center gap-1 rounded-lg border border-slate-200/80 dark:border-white/10 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer';
+  'lg-scene-tile min-h-[44px] min-w-[44px] inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-[#141715] dark:text-[#F3F5F3] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60';
 
 export function MemberAdminActions({
   group,
@@ -303,7 +319,7 @@ export function MemberAdminActions({
     <>
       {!member.userId && (
         <button type="button" data-testid={`member-add-email-${member.id}`} onClick={() => setMode('email')} className={SMALL}>
-          <EnvelopeSimple className="w-3.5 h-3.5 text-[#059669]" />
+          <EnvelopeSimple className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />
           <span>{member.invitedEmail ? 'Change email' : 'Add email'}</span>
         </button>
       )}
@@ -314,13 +330,13 @@ export function MemberAdminActions({
           onClick={() => setMemberRole(group.id, member.id, member.role === 'admin' ? 'member' : 'admin')}
           className={SMALL}
         >
-          <Crown className="w-3.5 h-3.5 text-[#059669]" />
+          <Crown className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />
           <span>{member.role === 'admin' ? 'Remove admin' : 'Make admin'}</span>
         </button>
       )}
       {!isMe && (
         <button type="button" data-testid={`remove-member-${member.id}`} onClick={() => setMode('remove')} className={SMALL}>
-          <UserMinus className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+          <UserMinus className="w-3.5 h-3.5 text-rose-700 dark:text-rose-300" />
           <span>Remove</span>
         </button>
       )}
@@ -328,8 +344,8 @@ export function MemberAdminActions({
       {mode === 'email' && (
         <form
           noValidate
-          className="basis-full flex flex-col sm:flex-row gap-2 pt-1"
-          onSubmit={(e) => {
+          className="basis-full flex flex-col sm:flex-row gap-2 pt-1.5"
+          onSubmit={(e: React.SyntheticEvent<HTMLFormElement>) => {
             e.preventDefault();
             if (addMemberEmail(group.id, member.id, email)) setMode('idle');
           }}
@@ -348,7 +364,7 @@ export function MemberAdminActions({
             placeholder="friend@example.com"
             className={`${INPUT} sm:flex-1`}
           />
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button type="submit" data-testid={`member-email-save-${member.id}`} className={BTN_PRIMARY}>
               Save email
             </button>
@@ -356,24 +372,28 @@ export function MemberAdminActions({
               Cancel
             </button>
           </div>
-          <p className="basis-full text-[11px] text-slate-500 dark:text-slate-400">
+          <p className="basis-full text-[11px] text-[#5C6660] dark:text-[#9CA69F]">
             When they sign in with this email, this spot and its balance become theirs.
           </p>
         </form>
       )}
 
       {mode === 'remove' && (
-        <div role="alertdialog" aria-label={`Remove ${member.displayName}`} className="basis-full rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 space-y-2">
+        <div
+          role="alertdialog"
+          aria-label={`Remove ${member.displayName}`}
+          className="basis-full rounded-2xl border border-rose-500/30 bg-rose-500/12 dark:bg-rose-400/14 p-3.5 space-y-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]"
+        >
           {netMinor !== 0 && (
             <p data-testid={`remove-member-balance-warning-${member.id}`} className="flex items-start gap-1.5 text-xs font-semibold text-amber-900 dark:text-amber-200">
               <Warning className="w-4 h-4 shrink-0" weight="fill" />
-              <span dir="auto">
+              <span dir="auto" className="break-words [overflow-wrap:anywhere]">
                 {balanceSentence(member.displayName, netMinor, group.baseCurrency, false)} The balance stays in the
                 group and still shows in Who Pays Whom.
               </span>
             </p>
           )}
-          <p className="text-xs text-slate-700 dark:text-slate-300">
+          <p className="text-xs text-[#2B312D] dark:text-[#DCE2DD]">
             Their past bills stay in the history, marked as a former member.
           </p>
           <div className="flex flex-wrap gap-2">
@@ -415,19 +435,19 @@ export function MemberUpiEditor({ group, member }: { group: GroupRecord; member:
         }}
         className={SMALL}
       >
-        <CurrencyInr className="w-3.5 h-3.5 text-[#059669]" />
+        <CurrencyInr className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />
         <span>{member.upiId ? 'Edit UPI' : 'Add UPI'}</span>
       </button>
       {mode === 'locked' && (
-        <p data-testid={`member-upi-locked-${member.id}`} role="status" className="basis-full text-[11px] text-slate-600 dark:text-slate-400">
+        <p data-testid={`member-upi-locked-${member.id}`} role="status" className="basis-full text-[11px] text-[#4A524D] dark:text-[#B7BEB9]">
           <span dir="auto">Only {member.displayName} can change their UPI ID.</span>
         </p>
       )}
       {mode === 'edit' && (
         <form
           noValidate
-          className="basis-full flex flex-col sm:flex-row gap-2 pt-1"
-          onSubmit={(e) => {
+          className="basis-full flex flex-col sm:flex-row gap-2 pt-1.5"
+          onSubmit={(e: React.SyntheticEvent<HTMLFormElement>) => {
             e.preventDefault();
             if (setMemberUpi(group.id, member.id, upi)) setMode('idle');
           }}
@@ -447,7 +467,7 @@ export function MemberUpiEditor({ group, member }: { group: GroupRecord; member:
             placeholder="name@bank"
             className={`${INPUT} font-mono sm:flex-1`}
           />
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button type="submit" data-testid={`member-upi-save-${member.id}`} className={BTN_PRIMARY}>
               Save UPI
             </button>
@@ -456,7 +476,7 @@ export function MemberUpiEditor({ group, member }: { group: GroupRecord; member:
             </button>
           </div>
           {!member.userId && (
-            <p className="basis-full text-[11px] text-slate-500 dark:text-slate-400">
+            <p className="basis-full text-[11px] text-[#5C6660] dark:text-[#9CA69F]">
               Everyone in the group sees who changed it.
             </p>
           )}

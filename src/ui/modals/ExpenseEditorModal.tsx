@@ -40,7 +40,6 @@ import {
 import {
   CurrencyAmount,
   CurrencyPrecisionPill,
-  DoubleBezelCard,
   StatusBadge,
 } from '../primitives/DesignPrimitives';
 import {
@@ -992,70 +991,86 @@ export function ExpenseEditorModal({
   const approxPerPersonMinor =
     includedCount > 0 ? Math.floor(totalConvertedMinor / includedCount) : 0;
 
+  const inputWellClass =
+    'w-full max-w-full min-w-0 min-h-[44px] lg-recessed-well rounded-2xl px-3.5 py-2.5 text-sm text-[#141715] dark:text-[#F3F5F3] placeholder:text-[#68726C] dark:placeholder:text-[#8A938D] focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-shadow';
+  const selectOptionClass =
+    'bg-[#F6F8F6] text-[#141715] dark:bg-[#222522] dark:text-[#F3F5F3]';
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
-      <div className="w-full max-w-3xl my-auto">
-        <DoubleBezelCard
-          className="shadow-2xl"
-          innerClassName="max-h-[90vh] overflow-y-auto space-y-5 bg-white dark:bg-[#111827] text-slate-900 dark:text-slate-100"
-        >
-          {/* Modal Header */}
-          <div className="flex items-start justify-between gap-4 border-b border-slate-200/80 dark:border-white/10 pb-4">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge tone={isDirectSplit ? 'blue' : 'emerald'}>
-                  <Coins className="w-3.5 h-3.5" weight="duotone" />
-                  <span>
-                    {initialExpense
-                      ? `Edit Bill (Version #${initialExpense.revisionNumber})`
-                      : isDirectSplit
-                      ? 'Direct 1-on-1 / Ad-Hoc Split'
-                      : 'New Group Bill'}
-                  </span>
-                </StatusBadge>
-                <CurrencyPrecisionPill currencyCode={effectiveBaseCurrency} />
-              </div>
-              <h2 className="mt-1.5 text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                {initialExpense
-                  ? `Update "${initialExpense.title}"`
-                  : isDirectSplit
-                  ? `Split Directly Between ${adHocParticipants.length} People`
-                  : `Add Bill to ${selectedGroup?.name ?? activeGroup.name}`}
-              </h2>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center lg-modal-scrim p-0 sm:p-6 overflow-y-auto overflow-x-hidden">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="expense-editor-modal-title"
+        className="lg-modal-surface w-full max-w-3xl sm:my-auto rounded-t-[28px] sm:rounded-[30px] max-h-[92dvh] sm:max-h-[90dvh] overflow-y-auto overflow-x-hidden px-4 pt-3.5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-6 space-y-5 text-[#141715] dark:text-[#F3F5F3]"
+      >
+        {/* Mobile Spatial Sheet Grabber */}
+        <div
+          aria-hidden="true"
+          className="mx-auto -mt-0.5 mb-1.5 h-1 w-10 rounded-full bg-black/[0.14] dark:bg-white/[0.22] sm:hidden"
+        />
+
+        {/* Modal Header */}
+        <div className="flex items-start justify-between gap-3 sm:gap-4 border-b border-black/[0.08] dark:border-white/[0.10] pb-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge tone={isDirectSplit ? 'blue' : 'emerald'}>
+                <Coins className="w-3.5 h-3.5" weight="duotone" />
+                <span>
+                  {initialExpense
+                    ? `Edit Bill (Version #${initialExpense.revisionNumber})`
+                    : isDirectSplit
+                    ? 'Direct 1-on-1 / Ad-Hoc Split'
+                    : 'New Group Bill'}
+                </span>
+              </StatusBadge>
+              <CurrencyPrecisionPill currencyCode={effectiveBaseCurrency} />
             </div>
+            <h2
+              id="expense-editor-modal-title"
+              className="mt-1.5 text-lg sm:text-xl font-bold tracking-tight text-[#141715] dark:text-[#F3F5F3] break-words"
+            >
+              {initialExpense
+                ? `Update "${initialExpense.title}"`
+                : isDirectSplit
+                ? `Split Directly Between ${adHocParticipants.length} People`
+                : `Add Bill to ${selectedGroup?.name ?? activeGroup.name}`}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="lg-icon-orb rounded-full min-h-[44px] min-w-[44px] shrink-0 flex items-center justify-center p-2 text-[#4A524D] hover:text-[#141715] dark:text-[#B7BEB9] dark:hover:text-[#F3F5F3] transition-[transform,color,background-color] duration-200 hover:scale-[1.03] active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
+            aria-label="Close modal"
+          >
+            <X className="w-4 h-4 sm:w-5 sm:h-5" weight="bold" />
+          </button>
+        </div>
+
+        {remoteChanged && liveExpense && (
+          <div
+            data-testid="expense-remote-update-notice"
+            role="status"
+            className="lg-recessed-well rounded-2xl ring-1 ring-sky-500/30 bg-sky-500/[0.06] dark:bg-sky-400/[0.08] px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-[#2B312D] dark:text-[#DCE2DD]"
+          >
+            <span>This bill was updated on another device. Your changes are kept until you reload it.</span>
             <button
               type="button"
-              onClick={onClose}
-              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
-              aria-label="Close modal"
+              data-testid="expense-reload-remote-btn"
+              onClick={() => initForm(liveExpense)}
+              className="lg-scene-tile rounded-full min-h-[44px] px-3.5 py-2 font-semibold text-sky-800 dark:text-sky-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
             >
-              <X className="w-5 h-5" weight="bold" />
+              Reload latest version
             </button>
           </div>
+        )}
 
-          {remoteChanged && liveExpense && (
-            <div
-              data-testid="expense-remote-update-notice"
-              role="status"
-              className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-sky-500/30 bg-sky-500/[0.06] px-3.5 py-2.5 text-xs text-slate-700 dark:text-slate-200"
-            >
-              <span>This bill was updated on another device. Your changes are kept until you reload it.</span>
-              <button
-                type="button"
-                data-testid="expense-reload-remote-btn"
-                onClick={() => initForm(liveExpense)}
-                className="min-h-[44px] rounded-xl px-3 py-2 font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-500/10 cursor-pointer"
-              >
-                Reload latest version
-              </button>
-            </div>
-          )}
-
-          {/* Group / Scope Selector */}
-          <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-slate-900/60 p-3.5">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
+        {/* Group / Scope Selector */}
+        <div className="lg-bezel-outer rounded-[22px] p-1">
+          <div className="lg-bezel-inner rounded-[18px] p-3.5">
+            <label className="block text-xs font-bold uppercase tracking-wider text-[#4A524D] dark:text-[#B7BEB9] mb-2">
               <span className="inline-flex items-center gap-1.5">
-                <FolderOpen className="w-4 h-4 text-[#059669]" weight="duotone" />
+                <FolderOpen className="w-4 h-4 text-emerald-700 dark:text-emerald-300" weight="duotone" />
                 <span>Expense Scope (Group or Direct Non-Group Split)</span>
               </span>
             </label>
@@ -1063,799 +1078,826 @@ export function ExpenseEditorModal({
               data-testid="expense-group-scope-select"
               value={selectedGroupId}
               onChange={(e) => handleGroupScopeChange(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 dark:border-white/15 bg-white dark:bg-slate-900 px-3.5 py-2.5 text-sm font-semibold text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#059669]"
+              className={`${inputWellClass} font-semibold dark:[color-scheme:dark] cursor-pointer`}
             >
-              <option value="">
+              <option value="" className={selectOptionClass}>
                 No Group (Direct Split Between Added Participants)
               </option>
               {activeGroups.map((g) => (
-                <option key={g.id} value={g.id}>
+                <option key={g.id} value={g.id} className={selectOptionClass}>
                   {g.name} ({g.baseCurrency})
                 </option>
               ))}
             </select>
           </div>
+        </div>
 
-          {/* Inline Direct Participants Builder (Only when No Group is selected) */}
-          {isDirectSplit && (
-            <div
-              data-testid="adhoc-participants-panel"
-              className="rounded-2xl border border-sky-500/30 bg-sky-500/[0.05] dark:bg-sky-500/[0.06] p-4 space-y-3"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <UserPlus className="w-4 h-4 text-sky-600 dark:text-sky-400" weight="duotone" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                    Direct Split Participants ({adHocParticipants.length})
-                  </span>
-                </div>
-                <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                  No group required - settles in Friends &amp; Settle Hub
+        {/* Inline Direct Participants Builder (Only when No Group is selected) */}
+        {isDirectSplit && (
+          <div
+            data-testid="adhoc-participants-panel"
+            className="lg-recessed-well rounded-2xl ring-1 ring-sky-500/25 dark:ring-sky-400/25 bg-sky-500/[0.04] dark:bg-sky-400/[0.05] p-3.5 sm:p-4 space-y-3"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <UserPlus className="w-4 h-4 text-sky-700 dark:text-sky-300" weight="duotone" />
+                <span className="text-xs font-bold uppercase tracking-wider text-[#141715] dark:text-[#F3F5F3]">
+                  Direct Split Participants ({adHocParticipants.length})
                 </span>
               </div>
+              <span className="text-[11px] text-[#5C6660] dark:text-[#9CA69F]">
+                No group required - settles in Friends &amp; Settle Hub
+              </span>
+            </div>
 
-              {/* Active Ad-Hoc Participants Pills */}
-              <div className="flex flex-wrap items-center gap-2">
-                {adHocParticipants.map((p) => {
-                  const canRemove = !isSelfParticipant(p);
-                  return (
-                    <span
-                      key={p.id}
-                      className="inline-flex items-center gap-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 shadow-sm"
-                    >
-                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300 text-[10px] font-bold">
-                        {p.avatarInitials}
-                      </span>
-                      <span>{p.displayName}</span>
-                      {isSelfParticipant(p) && (
-                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">
-                          (You)
-                        </span>
-                      )}
-                      {canRemove && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveAdHocParticipant(p.id)}
-                          className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
-                          title={`Remove ${p.displayName}`}
-                        >
-                          <Trash className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </span>
-                  );
-                })}
-              </div>
-
-              {/* Custom Friend Input */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1 border-t border-slate-200/70 dark:border-white/10">
-                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                  Add the friends you are splitting this bill with.
-                </span>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    data-testid="adhoc-friend-name-input"
-                    maxLength={LIMITS.personName}
-                    value={customFriendName}
-                    onChange={(e) => setCustomFriendName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddCustomFriend();
-                      }
-                    }}
-                    placeholder="Add person by name..."
-                    className="w-full sm:w-44 rounded-lg border border-slate-300 dark:border-white/15 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#059669]"
-                  />
-                  <button
-                    type="button"
-                    data-testid="add-adhoc-friend-btn"
-                    onClick={handleAddCustomFriend}
-                    className="inline-flex items-center gap-1 rounded-lg bg-[#059669] hover:bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors shrink-0"
+            {/* Active Ad-Hoc Participants Pills */}
+            <div className="flex flex-wrap items-center gap-2">
+              {adHocParticipants.map((p) => {
+                const canRemove = !isSelfParticipant(p);
+                return (
+                  <span
+                    key={p.id}
+                    className={`lg-scene-tile rounded-full inline-flex items-center gap-2 pl-2 ${
+                      canRemove ? 'pr-1.5 py-1' : 'pr-3 py-1.5'
+                    } text-xs font-semibold text-[#141715] dark:text-[#F3F5F3]`}
                   >
-                    <Plus className="w-3.5 h-3.5" weight="bold" />
-                    <span>Add</span>
-                  </button>
-                </div>
+                    <span
+                      aria-hidden="true"
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-500/15 text-sky-800 dark:text-sky-200 text-[10px] font-bold shrink-0"
+                    >
+                      {p.avatarInitials}
+                    </span>
+                    <span className="truncate max-w-[160px]">{p.displayName}</span>
+                    {isSelfParticipant(p) && (
+                      <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-mono">
+                        (You)
+                      </span>
+                    )}
+                    {canRemove && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAdHocParticipant(p.id)}
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[#68726C] dark:text-[#8A938D] hover:text-rose-700 dark:hover:text-rose-300 hover:bg-rose-500/12 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40"
+                        title={`Remove ${p.displayName}`}
+                      >
+                        <Trash className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+
+            {/* Custom Friend Input */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-black/[0.07] dark:border-white/[0.09]">
+              <span className="text-[11px] font-medium text-[#5C6660] dark:text-[#9CA69F]">
+                Add the friends you are splitting this bill with.
+              </span>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <input
+                  type="text"
+                  data-testid="adhoc-friend-name-input"
+                  maxLength={LIMITS.personName}
+                  value={customFriendName}
+                  onChange={(e) => setCustomFriendName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddCustomFriend();
+                    }
+                  }}
+                  placeholder="Add person by name..."
+                  className="flex-1 min-w-0 sm:w-52 min-h-[44px] lg-recessed-well rounded-2xl px-3.5 py-2 text-xs sm:text-sm text-[#141715] dark:text-[#F3F5F3] placeholder:text-[#68726C] dark:placeholder:text-[#8A938D] focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                />
+                <button
+                  type="button"
+                  data-testid="add-adhoc-friend-btn"
+                  onClick={handleAddCustomFriend}
+                  className="lg-luminous-pill min-h-[44px] rounded-full px-4 py-2 inline-flex items-center justify-center gap-1.5 text-xs font-semibold shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
+                >
+                  <Plus className="w-3.5 h-3.5" weight="bold" />
+                  <span>Add</span>
+                </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Core Bill Details & Spatial Amount Chamber */}
+        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3.5">
+          <div className="sm:col-span-7 min-w-0">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-[#5C6660] dark:text-[#9CA69F] mb-1.5">
+              Expense Title
+            </label>
+            <input
+              type="text"
+              data-testid="expense-title-input"
+              maxLength={LIMITS.expenseTitle}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g., Thalassa Cliff Dinner or Blue Tokai Coffee"
+              className={inputWellClass}
+            />
+          </div>
+
+          <div className="sm:col-span-5 min-w-0">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-[#5C6660] dark:text-[#9CA69F] mb-1.5">
+              <span className="inline-flex items-center gap-1">
+                <Tag className="w-3.5 h-3.5" />
+                <span>Category</span>
+              </span>
+            </label>
+            <select
+              data-testid="expense-category-select"
+              value={category}
+              onChange={(e) => setCategory(e.target.value as ExpenseCategoryKey)}
+              className={`${inputWellClass} dark:[color-scheme:dark] cursor-pointer`}
+            >
+              {dataset.categoriesCatalog.map((cat) => (
+                <option key={cat.key} value={cat.key} className={selectOptionClass}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="sm:col-span-4 min-w-0">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-[#5C6660] dark:text-[#9CA69F] mb-1.5">
+              Bill Amount ({originalCurrency})
+            </label>
+            <input
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              data-testid="expense-amount-input"
+              value={amountInput}
+              onChange={(e) => applyAmountString(e.target.value)}
+              aria-invalid={amountInput.trim() !== '' && originalAmountMinor <= 0}
+              placeholder={toAmountInput(0, originalCurrency)}
+              className={`${inputWellClass} font-mono tabular-nums font-bold`}
+            />
+          </div>
+
+          <div className="sm:col-span-4 min-w-0">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-[#5C6660] dark:text-[#9CA69F] mb-1.5">
+              Bill Currency
+            </label>
+            <select
+              data-testid="expense-currency-select"
+              value={originalCurrency}
+              onChange={(e) => handleCurrencyChange(e.target.value)}
+              className={`${inputWellClass} font-mono dark:[color-scheme:dark] cursor-pointer`}
+            >
+              {allCurrencyOptions.map((c) => (
+                <option key={c.code} value={c.code} className={selectOptionClass}>
+                  {c.code} - {c.name} ({c.symbol})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="sm:col-span-4 min-w-0">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-[#5C6660] dark:text-[#9CA69F] mb-1.5">
+              <span className="inline-flex items-center gap-1">
+                <CalendarBlank className="w-3.5 h-3.5" />
+                <span>Expense Date</span>
+              </span>
+            </label>
+            <input
+              type="date"
+              data-testid="expense-date-input"
+              value={expenseDate}
+              onChange={(e) => setExpenseDate(e.target.value)}
+              className={`${inputWellClass} font-mono dark:[color-scheme:dark]`}
+            />
+          </div>
+
+          {/* Quick Amount Preset Capsules */}
+          <div
+            data-testid="ux-quick-amount-presets"
+            className="sm:col-span-12 flex flex-wrap items-center gap-2 pt-0.5"
+          >
+            <span className="text-[11px] font-semibold text-[#5C6660] dark:text-[#9CA69F] mr-0.5">
+              Quick add amount:
+            </span>
+            {quickAmountPresets.map((amt) => (
+              <button
+                key={amt}
+                type="button"
+                data-testid={`quick-amount-chip-${amt}`}
+                onClick={() => handleQuickAddPreset(amt)}
+                className="lg-scene-tile rounded-full min-h-[38px] px-3.5 py-1.5 inline-flex items-center justify-center font-mono tabular-nums text-xs font-semibold text-[#141715] dark:text-[#F3F5F3] hover:border-emerald-500/40 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
+              >
+                +{origMeta.symbol}
+                {amt.toLocaleString('en-IN')}
+              </button>
+            ))}
+            {amountInput && (
+              <button
+                type="button"
+                onClick={() => applyAmountString('')}
+                className="lg-scene-tile rounded-full min-h-[38px] px-3.5 py-1.5 inline-flex items-center justify-center text-xs font-semibold text-[#5C6660] dark:text-[#9CA69F] hover:text-rose-700 dark:hover:text-rose-300 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Live Plain-English Summary Sentence */}
+        <div
+          data-testid="ux-live-split-sentence"
+          className="lg-recessed-well rounded-2xl ring-1 ring-emerald-600/20 dark:ring-emerald-400/20 bg-emerald-500/[0.06] dark:bg-emerald-400/[0.07] px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm"
+        >
+          <div className="text-[#2B312D] dark:text-[#DCE2DD]">
+            Paid by <strong className="font-semibold text-[#141715] dark:text-[#F3F5F3]">{payerLabelText}</strong>{' '}
+            and split <strong className="font-semibold text-[#141715] dark:text-[#F3F5F3]">{activeModeVerb}</strong>{' '}
+            among{' '}
+            <strong className="font-semibold text-[#141715] dark:text-[#F3F5F3]">
+              {includedCount} {includedCount === 1 ? 'person' : 'people'}
+            </strong>
+            {totalConvertedMinor > 0 && splitMode === 'equal' && includedCount > 0 && (
+              <span className="ml-1 font-mono tabular-nums text-xs text-[#4A524D] dark:text-[#B7BEB9]">
+                ({formatMinorToMajor(approxPerPersonMinor, effectiveBaseCurrency)}/person)
+              </span>
+            )}
+          </div>
+
+          {totalConvertedMinor > 0 && (
+            <div className="font-mono tabular-nums text-xs font-bold">
+              {myNetDraftMinor > 0 ? (
+                <span className="text-emerald-800 dark:text-emerald-300">
+                  you lend {formatMinorToMajor(myNetDraftMinor, effectiveBaseCurrency)}
+                </span>
+              ) : myNetDraftMinor < 0 ? (
+                <span className="text-rose-800 dark:text-rose-300">
+                  you borrow {formatMinorToMajor(Math.abs(myNetDraftMinor), effectiveBaseCurrency)}
+                </span>
+              ) : (
+                <span className="text-[#5C6660] dark:text-[#9CA69F]">settled on bill</span>
+              )}
             </div>
           )}
+        </div>
 
-          {/* Core Bill Details */}
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3.5">
-            <div className="sm:col-span-7">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                Expense Title
-              </label>
-              <input
-                type="text"
-                data-testid="expense-title-input"
-                maxLength={LIMITS.expenseTitle}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g., Thalassa Cliff Dinner or Blue Tokai Coffee"
-                className="w-full rounded-xl border border-slate-300 dark:border-white/15 bg-slate-50 dark:bg-slate-900/90 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#059669]"
-              />
-            </div>
-
-            <div className="sm:col-span-5">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                <span className="inline-flex items-center gap-1">
-                  <Tag className="w-3.5 h-3.5" />
-                  <span>Category</span>
+        {/* Foreign Currency FX Rate & Live Preview Chamber */}
+        {originalCurrency !== effectiveBaseCurrency && (
+          <div className="lg-recessed-well rounded-2xl ring-1 ring-emerald-600/25 dark:ring-emerald-400/25 bg-emerald-500/[0.05] dark:bg-emerald-400/[0.06] p-3.5 sm:p-4 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                <ArrowsLeftRight className="w-4 h-4 shrink-0" weight="bold" />
+                <span>
+                  Foreign Currency Conversion ({originalCurrency} to {effectiveBaseCurrency})
                 </span>
-              </label>
-              <select
-                data-testid="expense-category-select"
-                value={category}
-                onChange={(e) => setCategory(e.target.value as ExpenseCategoryKey)}
-                className="w-full rounded-xl border border-slate-300 dark:border-white/15 bg-slate-50 dark:bg-slate-900/90 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#059669]"
-              >
-                {dataset.categoriesCatalog.map((cat) => (
-                  <option key={cat.key} value={cat.key}>
-                    {cat.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="sm:col-span-4">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                Bill Amount ({originalCurrency})
-              </label>
-              <input
-                type="text"
-                inputMode="decimal"
-                autoComplete="off"
-                data-testid="expense-amount-input"
-                value={amountInput}
-                onChange={(e) => applyAmountString(e.target.value)}
-                aria-invalid={amountInput.trim() !== '' && originalAmountMinor <= 0}
-                placeholder={toAmountInput(0, originalCurrency)}
-                className="w-full rounded-xl border border-slate-300 dark:border-white/15 bg-slate-50 dark:bg-slate-900/90 px-3.5 py-2.5 font-mono tabular-nums text-sm font-semibold text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#059669]"
-              />
-            </div>
-
-            <div className="sm:col-span-4">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                Bill Currency
-              </label>
-              <select
-                data-testid="expense-currency-select"
-                value={originalCurrency}
-                onChange={(e) => handleCurrencyChange(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 dark:border-white/15 bg-slate-50 dark:bg-slate-900/90 px-3.5 py-2.5 font-mono text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#059669]"
-              >
-                {allCurrencyOptions.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.code} - {c.name} ({c.symbol})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="sm:col-span-4">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                <span className="inline-flex items-center gap-1">
-                  <CalendarBlank className="w-3.5 h-3.5" />
-                  <span>Expense Date</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#5C6660] dark:text-[#9CA69F]">
+                  1 {originalCurrency} =
                 </span>
-              </label>
-              <input
-                type="date"
-                data-testid="expense-date-input"
-                value={expenseDate}
-                onChange={(e) => setExpenseDate(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 dark:border-white/15 bg-slate-50 dark:bg-slate-900/90 px-3.5 py-2.5 font-mono text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#059669]"
-              />
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  data-testid="expense-fx-rate-input"
+                  value={toLocaleDecimalInput(fxMode === 'manual' ? fxRateInput : activeFx ? formatScaledFxRate(activeFx.rateScaled) : '', INPUT_LOCALE)}
+                  placeholder="Enter rate"
+                  aria-invalid={fxMissing}
+                  onChange={(e) => {
+                    setFxRateInput(toLocaleDecimalInput(e.target.value, INPUT_LOCALE));
+                    setFxMode('manual');
+                  }}
+                  className="w-28 min-h-[40px] lg-recessed-well rounded-2xl px-3 py-1.5 font-mono tabular-nums text-xs font-semibold text-[#141715] dark:text-[#F3F5F3] placeholder:text-[#68726C] dark:placeholder:text-[#8A938D] focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                />
+                <span className="text-xs font-mono font-semibold text-[#2B312D] dark:text-[#DCE2DD]">
+                  {effectiveBaseCurrency}
+                </span>
+              </div>
             </div>
-
-            {/* Settl-Style Quick Amount Preset Chips */}
-            <div
-              data-testid="ux-quick-amount-presets"
-              className="sm:col-span-12 flex flex-wrap items-center gap-1.5"
-            >
-              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mr-1">
-                Quick add amount:
-              </span>
-              {quickAmountPresets.map((amt) => (
-                <button
-                  key={amt}
-                  type="button"
-                  data-testid={`quick-amount-chip-${amt}`}
-                  onClick={() => handleQuickAddPreset(amt)}
-                  className="rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-800/80 hover:border-emerald-500/40 hover:bg-emerald-500/10 px-2.5 py-1 font-mono tabular-nums text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
-                >
-                  +{origMeta.symbol}
-                  {amt.toLocaleString('en-IN')}
-                </button>
-              ))}
-              {amountInput && (
-                <button
-                  type="button"
-                  onClick={() => applyAmountString('')}
-                  className="rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 hover:text-rose-600 dark:hover:text-rose-400 px-2.5 py-1 text-xs font-semibold text-slate-500 dark:text-slate-400 transition-colors cursor-pointer"
-                >
-                  Clear
-                </button>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#4A524D] dark:text-[#B7BEB9]">
+              {fxMissing ? (
+                <span data-testid="fx-rate-missing" className="font-semibold text-amber-800 dark:text-amber-300">
+                  No exchange rate is available for {originalCurrency} to {effectiveBaseCurrency}. Enter the rate to save this bill.
+                </span>
+              ) : (
+                <span data-testid="fx-audit-note">{fxConversion.fxAuditNote}</span>
               )}
+              <span className="font-mono tabular-nums font-bold text-emerald-800 dark:text-emerald-300">
+                Converted Total:{' '}
+                <CurrencyAmount
+                  minorAmount={totalConvertedMinor}
+                  currencyCode={effectiveBaseCurrency}
+                />
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Payer Configuration (Single vs Multiple Payers) */}
+        <div className="lg-recessed-well rounded-2xl p-3.5 sm:p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-emerald-700 dark:text-emerald-300" weight="duotone" />
+              <span className="text-xs font-bold uppercase tracking-wider text-[#2B312D] dark:text-[#DCE2DD]">
+                Paid By
+              </span>
+            </div>
+            <button
+              type="button"
+              data-testid="multi-payer-toggle"
+              onClick={handleToggleMultiPayer}
+              className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 ${
+                isMultiPayer
+                  ? 'lg-luminous-pill'
+                  : 'lg-scene-tile text-[#141715] dark:text-[#F3F5F3]'
+              }`}
+            >
+              <span>{isMultiPayer ? 'Multiple Payers Active' : 'Multiple Payers'}</span>
+            </button>
+          </div>
+
+          {!isMultiPayer ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {currentParticipants.map((m) => {
+                const selected = singlePayerId === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    data-testid={`payer-chip-${m.id}`}
+                    disabled={m.isFormer}
+                    title={m.isFormer ? 'Former member: kept on this bill, cannot be picked as a new payer' : undefined}
+                    onClick={() => setSinglePayerId(m.id)}
+                    className={`min-h-[44px] inline-flex items-center gap-2 rounded-full pl-2 pr-3.5 py-1.5 text-xs font-semibold cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 ${
+                      selected
+                        ? 'lg-luminous-pill'
+                        : 'lg-scene-tile text-[#141715] dark:text-[#F3F5F3]'
+                    }`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold shrink-0 ${
+                        selected
+                          ? 'bg-white/15 dark:bg-black/12 text-inherit'
+                          : 'lg-icon-orb text-[#1F2421] dark:text-[#E5EAE6]'
+                      }`}
+                    >
+                      {m.avatarInitials}
+                    </span>
+                    <span>{m.displayName}{m.isFormer ? ' (former member)' : ''}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {currentParticipants.map((m) => (
+                <div
+                  key={m.id}
+                  className="lg-scene-tile rounded-2xl px-3.5 py-2.5 flex items-center justify-between gap-2"
+                >
+                  <span className="text-xs font-semibold text-[#141715] dark:text-[#F3F5F3] truncate">
+                    {m.displayName}
+                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-xs font-mono text-[#68726C] dark:text-[#8A938D]">{baseMeta.symbol}</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      data-testid={`payer-input-${m.id}`}
+                      disabled={m.isFormer}
+                      value={toLocaleDecimalInput(multiPayerInputs[m.id] ?? '0', INPUT_LOCALE)}
+                      onChange={(e) =>
+                        setMultiPayerInputs((prev) => ({ ...prev, [m.id]: toLocaleDecimalInput(e.target.value, INPUT_LOCALE) }))
+                      }
+                      className="w-24 sm:w-28 min-h-[40px] lg-recessed-well rounded-2xl px-3 py-1.5 text-right font-mono tabular-nums text-xs font-semibold text-[#141715] dark:text-[#F3F5F3] placeholder:text-[#68726C] dark:placeholder:text-[#8A938D] focus:outline-none focus:ring-2 focus:ring-emerald-500/50 disabled:opacity-50"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 5 Split Modes + Group Default Preset Controls */}
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-[#2B312D] dark:text-[#DCE2DD]">
+              How Should We Split It?
+            </span>
+            {selectedGroup && (
+              <div className="flex flex-wrap items-center gap-2">
+                {selectedGroup.defaultSplitConfig && (
+                  <button
+                    type="button"
+                    data-testid="apply-default-split-btn"
+                    onClick={handleApplyDefaultSplit}
+                    className="lg-scene-tile rounded-full min-h-[38px] px-3.5 py-1.5 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-600/25 dark:ring-emerald-400/25 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
+                  >
+                    <Sparkle className="w-3.5 h-3.5" weight="fill" />
+                    <span>Use Saved Split ({selectedGroup.defaultSplitConfig.label})</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  data-testid="save-default-split-btn"
+                  onClick={handleSaveDefaultSplit}
+                  className="lg-scene-tile rounded-full min-h-[38px] px-3.5 py-1.5 inline-flex items-center gap-1.5 text-xs font-semibold text-[#2B312D] dark:text-[#DCE2DD] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
+                >
+                  <FloppyDisk className="w-3.5 h-3.5" />
+                  <span>Save Split as Default</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Recessed Glass Segmented Split Mode Track */}
+          <div
+            role="group"
+            aria-label="Split mode"
+            className="lg-recessed-well rounded-2xl p-1 grid grid-cols-2 sm:grid-cols-5 gap-1"
+          >
+            {SPLIT_MODES.map((item, idx) => {
+              const active = splitMode === item.mode;
+              const spanClass = idx === SPLIT_MODES.length - 1 ? 'col-span-2 sm:col-span-1' : '';
+              return (
+                <button
+                  key={item.mode}
+                  type="button"
+                  data-testid={`split-mode-${item.mode}`}
+                  aria-pressed={active}
+                  onClick={() => handleSwitchSplitMode(item.mode)}
+                  className={`min-h-[48px] rounded-[12px] px-3 py-2 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 ${spanClass} ${
+                    active
+                      ? 'lg-luminous-pill'
+                      : 'text-[#2B312D] dark:text-[#DCE2DD] hover:bg-black/[0.045] dark:hover:bg-white/[0.06] transition-colors'
+                  }`}
+                >
+                  <div className="text-xs font-bold tracking-tight">{item.label}</div>
+                  <div
+                    className={`text-[10px] truncate ${
+                      active ? 'opacity-75' : 'text-[#68726C] dark:text-[#8A938D]'
+                    }`}
+                  >
+                    {item.hint}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Participant Split Wells */}
+          <div className="space-y-2">
+            {currentParticipants.map((m) => {
+              const isInc = includedMembers[m.id] !== false;
+              const splitShare = computedSplits.find((s) => s.memberId === m.id);
+              const owedMinor = splitShare?.owedMinor ?? 0;
+              const hasRotatedRemainder = splitShare?.remainderMinor === 1;
+              const sharePct =
+                isInc && totalConvertedMinor > 0
+                  ? `${((owedMinor / totalConvertedMinor) * 100).toFixed(1)}% of bill`
+                  : isInc
+                  ? 'Included'
+                  : 'Not in split';
+
+              return (
+                <div
+                  key={m.id}
+                  className={`lg-recessed-well rounded-2xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 transition-opacity ${
+                    isInc
+                      ? 'text-[#141715] dark:text-[#F3F5F3]'
+                      : 'opacity-55 text-[#68726C] dark:text-[#8A938D]'
+                  }`}
+                >
+                  <label className="flex flex-wrap items-center gap-2.5 cursor-pointer min-h-[44px] min-w-0">
+                    <input
+                      type="checkbox"
+                      data-testid={`split-include-${m.id}`}
+                      disabled={m.isFormer}
+                      checked={isInc}
+                      onChange={(e) =>
+                        setIncludedMembers((prev) => ({ ...prev, [m.id]: e.target.checked }))
+                      }
+                      className="h-4 w-4 rounded accent-emerald-600 focus:ring-2 focus:ring-emerald-500/50 cursor-pointer shrink-0"
+                    />
+                    <span
+                      aria-hidden="true"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500/14 text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-600/20 dark:ring-emerald-400/20 text-xs font-bold shrink-0"
+                    >
+                      {m.avatarInitials}
+                    </span>
+                    <span className="text-sm font-semibold text-[#141715] dark:text-[#F3F5F3] truncate max-w-[160px] sm:max-w-none">
+                      {m.displayName}
+                    </span>
+                    {m.isFormer && (
+                      <StatusBadge tone="amber">
+                        <span data-testid={`former-member-chip-${m.id}`}>Former member</span>
+                      </StatusBadge>
+                    )}
+                    {hasRotatedRemainder && (
+                      <StatusBadge tone="amber">
+                        <span>+1 {minorUnitLabel} rotated</span>
+                      </StatusBadge>
+                    )}
+                  </label>
+
+                  <div className="flex items-center gap-3 ml-auto">
+                    {isInc && splitMode !== 'equal' && (
+                      <div className="flex items-center gap-1.5">
+                        {splitMode === 'shares' && (
+                          <span className="text-xs text-[#68726C] dark:text-[#8A938D]">Shares:</span>
+                        )}
+                        {splitMode === 'percentage' && (
+                          <span className="text-xs text-[#68726C] dark:text-[#8A938D]">%:</span>
+                        )}
+                        {(splitMode === 'exact' || splitMode === 'adjustment') && (
+                          <span className="text-xs font-mono text-[#68726C] dark:text-[#8A938D]">
+                            {splitMode === 'adjustment' ? '+/-' : baseMeta.symbol}
+                          </span>
+                        )}
+                        <input
+                          type="text"
+                          inputMode={splitMode === 'adjustment' ? 'text' : 'decimal'}
+                          autoComplete="off"
+                          data-testid={`split-input-${m.id}`}
+                          disabled={m.isFormer}
+                          value={toLocaleDecimalInput(memberInputStrings[m.id] ?? '', INPUT_LOCALE)}
+                          onChange={(e) =>
+                            setMemberInputStrings((prev) => ({
+                              ...prev,
+                              [m.id]: toLocaleDecimalInput(e.target.value, INPUT_LOCALE),
+                            }))
+                          }
+                          className="w-24 sm:w-28 min-h-[40px] lg-recessed-well rounded-2xl bg-white/55 dark:bg-black/25 px-3 py-1.5 text-right font-mono tabular-nums text-xs font-semibold text-[#141715] dark:text-[#F3F5F3] placeholder:text-[#68726C] dark:placeholder:text-[#8A938D] focus:outline-none focus:ring-2 focus:ring-emerald-500/50 disabled:opacity-50"
+                        />
+                      </div>
+                    )}
+
+                    <div className="text-right min-w-[96px] sm:min-w-[110px]">
+                      <div className="text-sm font-bold font-mono tabular-nums text-[#141715] dark:text-[#F3F5F3]">
+                        <CurrencyAmount
+                          minorAmount={owedMinor}
+                          currencyCode={effectiveBaseCurrency}
+                        />
+                      </div>
+                      <div className="text-[10px] font-medium text-[#68726C] dark:text-[#8A938D]">
+                        {sharePct}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Optional Notes & Tags */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          <div className="min-w-0">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-[#5C6660] dark:text-[#9CA69F] mb-1.5">
+              Notes (Optional)
+            </label>
+            <input
+              type="text"
+              data-testid="expense-notes-input"
+              maxLength={LIMITS.expenseNotes}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g., Includes tip, drinks, or room upgrade..."
+              className={`${inputWellClass} text-xs sm:text-sm`}
+            />
+          </div>
+          <div className="min-w-0">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-[#5C6660] dark:text-[#9CA69F] mb-1.5">
+              Tags (Optional)
+            </label>
+            <input
+              type="text"
+              data-testid="expense-tags-input"
+              value={tagsInput}
+              onChange={(e) => setTagsInput(e.target.value)}
+              aria-invalid={textProblems.length > 0}
+              placeholder="#dinner, #goa, #villa"
+              className={`${inputWellClass} font-mono text-xs sm:text-sm`}
+            />
+            {textProblems.length > 0 && (
+              <p data-testid="expense-text-problems" className="mt-1 text-[11px] text-amber-800 dark:text-amber-300">
+                {textProblems.join(' ')}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Receipt Attachment Section (Offline-Ready + Cloud Synced) */}
+        <div
+          data-testid="expense-receipt-section"
+          className="lg-recessed-well rounded-2xl p-3.5 sm:p-4 space-y-3"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            <div>
+              <div className="flex items-center gap-2">
+                <Paperclip className="w-4 h-4 text-emerald-700 dark:text-emerald-300" weight="bold" />
+                <span className="text-xs font-bold uppercase tracking-wider text-[#141715] dark:text-[#F3F5F3]">
+                  Receipt or Bill Photo (Optional)
+                </span>
+              </div>
+              <p className="text-[11px] text-[#5C6660] dark:text-[#9CA69F] mt-0.5">
+                Saved privately on this device (0 KB uploaded to cloud).
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="lg-scene-tile rounded-full min-h-[44px] px-3.5 py-2 inline-flex items-center gap-1.5 text-xs font-semibold text-[#141715] dark:text-[#F3F5F3] cursor-pointer focus-within:ring-2 focus-within:ring-emerald-500/50">
+                <UploadSimple className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" weight="bold" />
+                <span>Upload Photo / PDF</span>
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  data-testid="receipt-file-input"
+                  onChange={handleReceiptFileChange}
+                  className="hidden"
+                />
+              </label>
+
+              <button
+                type="button"
+                data-testid="attach-sample-receipt-btn"
+                onClick={handleAttachSampleReceipt}
+                className="lg-scene-tile rounded-full min-h-[44px] px-3.5 py-2 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-600/25 dark:ring-emerald-400/25 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
+              >
+                <Image className="w-3.5 h-3.5" weight="duotone" />
+                <span>Attach Sample Receipt</span>
+              </button>
             </div>
           </div>
 
-          {/* Splitwise-Style Live Plain-English Summary Sentence */}
-          <div
-            data-testid="ux-live-split-sentence"
-            className="rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.06] dark:bg-emerald-500/[0.08] px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm"
-          >
-            <div className="text-slate-700 dark:text-slate-200">
-              Paid by <strong className="text-slate-900 dark:text-white">{payerLabelText}</strong>{' '}
-              and split <strong className="text-slate-900 dark:text-white">{activeModeVerb}</strong>{' '}
-              among{' '}
-              <strong className="text-slate-900 dark:text-white">
-                {includedCount} {includedCount === 1 ? 'person' : 'people'}
-              </strong>
-              {totalConvertedMinor > 0 && splitMode === 'equal' && includedCount > 0 && (
-                <span className="ml-1 font-mono tabular-nums text-xs text-slate-600 dark:text-slate-300">
-                  ({formatMinorToMajor(approxPerPersonMinor, effectiveBaseCurrency)}/person)
-                </span>
+          {attachedReceipts.length > 0 && (
+            <div className="space-y-2 pt-1">
+              {attachedReceipts.map((rcp) => (
+                <div
+                  key={rcp.id}
+                  data-testid="attached-receipt-badge"
+                  className="lg-scene-tile rounded-2xl ring-1 ring-emerald-600/25 dark:ring-emerald-400/25 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    {rcp.dataUrl && rcp.dataUrl.startsWith('data:image/') && (
+                      <img
+                        src={rcp.dataUrl}
+                        alt={rcp.fileName}
+                        className="h-9 w-14 rounded-lg object-cover border border-black/[0.08] dark:border-white/[0.12] shrink-0"
+                      />
+                    )}
+                    <div className="min-w-0">
+                      <div className="font-semibold text-[#141715] dark:text-[#F3F5F3] flex flex-wrap items-center gap-1.5">
+                        <span className="truncate max-w-[180px] sm:max-w-xs">{rcp.fileName}</span>
+                        <span className="font-mono text-[10px] text-emerald-700 dark:text-emerald-300">
+                          ({rcp.sizeKb} KB)
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-[#5C6660] dark:text-[#9CA69F]">
+                        {rcp.dataUrl
+                          ? 'Stored on this device only (0 KB uploaded to cloud)'
+                          : `Stored on ${rcp.uploadedByName}'s device (0 KB uploaded to cloud)`}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveReceipt(rcp.id)}
+                    className="lg-icon-orb rounded-full min-h-[36px] min-w-[36px] flex items-center justify-center p-1.5 text-[#5C6660] dark:text-[#9CA69F] hover:text-rose-700 dark:hover:text-rose-300 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40"
+                    title="Remove receipt"
+                  >
+                    <Trash className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Calm Live Reconciliation Status Bar */}
+        <div
+          data-testid="split-reconciliation-bar"
+          className={`rounded-2xl p-3.5 sm:p-4 transition-colors ${
+            totalConvertedMinor === 0
+              ? 'lg-recessed-well text-[#4A524D] dark:text-[#B7BEB9]'
+              : validation.valid
+              ? 'border border-emerald-600/25 dark:border-emerald-400/25 bg-emerald-500/[0.10] dark:bg-emerald-400/[0.12] shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] text-emerald-950 dark:text-emerald-100'
+              : 'border border-rose-600/25 dark:border-rose-400/25 bg-rose-500/[0.10] dark:bg-rose-400/[0.12] shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] text-rose-950 dark:text-rose-100'
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-bold">
+              {totalConvertedMinor === 0 ? (
+                <Coins className="w-4 h-4 text-[#68726C] dark:text-[#8A938D] shrink-0" weight="duotone" />
+              ) : validation.valid ? (
+                <CheckCircle className="w-4 h-4 text-emerald-700 dark:text-emerald-300 shrink-0" weight="fill" />
+              ) : (
+                <WarningCircle className="w-4 h-4 text-rose-700 dark:text-rose-300 shrink-0" weight="fill" />
               )}
+              <span>
+                {totalConvertedMinor === 0
+                  ? 'Enter a bill amount above to calculate shares'
+                  : validation.valid
+                  ? `100% Reconciled • ${formatMinorToMajor(0, effectiveBaseCurrency)} left - Ready to save`
+                  : needsMoreParticipants
+                  ? 'Add at least one friend to split this bill with'
+                  : validation.unallocatedSplitMinor > 0
+                  ? `${formatMinorToMajor(validation.unallocatedSplitMinor, effectiveBaseCurrency)} left to assign`
+                  : validation.unallocatedSplitMinor < 0
+                  ? `${formatMinorToMajor(Math.abs(validation.unallocatedSplitMinor), effectiveBaseCurrency)} over-assigned`
+                  : 'Adjust payer or split amounts to match bill total'}
+              </span>
             </div>
 
             {totalConvertedMinor > 0 && (
-              <div className="font-mono tabular-nums text-xs font-bold">
-                {myNetDraftMinor > 0 ? (
-                  <span className="text-emerald-700 dark:text-emerald-300">
-                    you lend {formatMinorToMajor(myNetDraftMinor, effectiveBaseCurrency)}
-                  </span>
-                ) : myNetDraftMinor < 0 ? (
-                  <span className="text-rose-700 dark:text-rose-300">
-                    you borrow {formatMinorToMajor(Math.abs(myNetDraftMinor), effectiveBaseCurrency)}
+              <div className="font-mono tabular-nums text-xs">
+                {validation.unallocatedSplitMinor === 0 ? (
+                  <span>
+                    Total:{' '}
+                    <CurrencyAmount
+                      minorAmount={totalConvertedMinor}
+                      currencyCode={effectiveBaseCurrency}
+                    />
                   </span>
                 ) : (
-                  <span className="text-slate-500 dark:text-slate-400">settled on bill</span>
+                  <span>
+                    Remaining:{' '}
+                    <CurrencyAmount
+                      minorAmount={validation.unallocatedSplitMinor}
+                      currencyCode={effectiveBaseCurrency}
+                    />
+                  </span>
+                )}
+                {isMultiPayer && validation.unallocatedPayerMinor !== 0 && (
+                  <>
+                    {' • '}
+                    <span>
+                      Payer diff:{' '}
+                      <CurrencyAmount
+                        minorAmount={validation.unallocatedPayerMinor}
+                        currencyCode={effectiveBaseCurrency}
+                      />
+                    </span>
+                  </>
                 )}
               </div>
             )}
           </div>
 
-          {/* Foreign Currency FX Rate & Live Preview Bar */}
-          {originalCurrency !== effectiveBaseCurrency && (
-            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/[0.06] p-3.5 space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
-                  <ArrowsLeftRight className="w-4 h-4" weight="bold" />
-                  <span>
-                    Foreign Currency Conversion ({originalCurrency} to {effectiveBaseCurrency})
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    1 {originalCurrency} =
-                  </span>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    autoComplete="off"
-                    data-testid="expense-fx-rate-input"
-                    value={toLocaleDecimalInput(fxMode === 'manual' ? fxRateInput : activeFx ? formatScaledFxRate(activeFx.rateScaled) : '', INPUT_LOCALE)}
-                    placeholder="Enter rate"
-                    aria-invalid={fxMissing}
-                    onChange={(e) => {
-                      setFxRateInput(toLocaleDecimalInput(e.target.value, INPUT_LOCALE));
-                      setFxMode('manual');
-                    }}
-                    className="w-28 rounded-lg border border-emerald-500/40 bg-white dark:bg-slate-900 px-2.5 py-1 font-mono tabular-nums text-xs font-semibold text-slate-900 dark:text-slate-100"
-                  />
-                  <span className="text-xs font-mono font-semibold text-slate-700 dark:text-slate-300">
-                    {effectiveBaseCurrency}
-                  </span>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-300">
-                {fxMissing ? (
-                  <span data-testid="fx-rate-missing" className="font-semibold text-amber-700 dark:text-amber-300">
-                    No exchange rate is available for {originalCurrency} to {effectiveBaseCurrency}. Enter the rate to save this bill.
-                  </span>
-                ) : (
-                  <span data-testid="fx-audit-note">{fxConversion.fxAuditNote}</span>
-                )}
-                <span className="font-mono tabular-nums font-bold text-emerald-700 dark:text-emerald-300">
-                  Converted Total:{' '}
-                  <CurrencyAmount
-                    minorAmount={totalConvertedMinor}
-                    currencyCode={effectiveBaseCurrency}
-                  />
-                </span>
-              </div>
+          {totalConvertedMinor > 0 && remainderWinners.length > 0 && (
+            <div className="mt-1.5 text-[11px] text-amber-800 dark:text-amber-300">
+              Odd cent/paisa fairness: +1 {minorUnitLabel} assigned to{' '}
+              <strong>{remainderWinners.join(', ')}</strong> (rotates fairly each bill)
             </div>
           )}
 
-          {/* Payer Configuration (Single vs Multiple Payers) */}
-          <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/50 p-4 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-[#059669]" weight="duotone" />
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                  Paid By
-                </span>
-              </div>
-              <button
-                type="button"
-                data-testid="multi-payer-toggle"
-                onClick={handleToggleMultiPayer}
-                className={`min-h-[44px] inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  isMultiPayer
-                    ? 'bg-[#059669] text-white'
-                    : 'bg-slate-200/80 dark:bg-white/10 text-slate-700 dark:text-slate-300 hover:bg-slate-300/70'
-                }`}
-              >
-                <span>{isMultiPayer ? 'Multiple Payers Active' : 'Multiple Payers'}</span>
-              </button>
-            </div>
+          {totalConvertedMinor > 0 && !validation.valid && validation.errors.length > 0 && (
+            <ul className="mt-2 space-y-1 text-xs text-rose-800 dark:text-rose-200 list-disc list-inside">
+              {validation.errors.map((err, i) => (
+                <li key={i}>{err}</li>
+              ))}
+            </ul>
+          )}
+        </div>
 
-            {!isMultiPayer ? (
-              <div className="flex flex-wrap items-center gap-2">
-                {currentParticipants.map((m) => {
-                  const selected = singlePayerId === m.id;
-                  return (
-                    <button
-                      key={m.id}
-                      type="button"
-                      data-testid={`payer-chip-${m.id}`}
-                      disabled={m.isFormer}
-                      title={m.isFormer ? 'Former member: kept on this bill, cannot be picked as a new payer' : undefined}
-                      onClick={() => setSinglePayerId(m.id)}
-                      className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all ${
-                        selected
-                          ? 'bg-[#059669] text-white shadow-sm'
-                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-white/10'
-                      }`}
-                    >
-                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/15 text-[10px] font-bold">
-                        {m.avatarInitials}
-                      </span>
-                      <span>{m.displayName}{m.isFormer ? ' (former member)' : ''}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {currentParticipants.map((m) => (
-                  <div
-                    key={m.id}
-                    className="flex items-center justify-between gap-2 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-white/10 px-3 py-2"
-                  >
-                    <span className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
-                      {m.displayName}
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-mono text-slate-400">{baseMeta.symbol}</span>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        autoComplete="off"
-                        data-testid={`payer-input-${m.id}`}
-                        disabled={m.isFormer}
-                        value={toLocaleDecimalInput(multiPayerInputs[m.id] ?? '0', INPUT_LOCALE)}
-                        onChange={(e) =>
-                          setMultiPayerInputs((prev) => ({ ...prev, [m.id]: toLocaleDecimalInput(e.target.value, INPUT_LOCALE) }))
-                        }
-                        className="w-24 rounded-lg border border-slate-300 dark:border-white/15 bg-slate-50 dark:bg-slate-900 px-2 py-1 text-right font-mono tabular-nums text-xs text-slate-900 dark:text-slate-100"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+        {saveError && (
+          <p data-testid="expense-save-error" role="alert" className="text-xs font-semibold text-rose-800 dark:text-rose-300">
+            {saveError}
+          </p>
+        )}
 
-          {/* 5 Split Modes + Group Default Preset Controls */}
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                How Should We Split It?
-              </span>
-              {selectedGroup && (
-                <div className="flex flex-wrap items-center gap-2">
-                  {selectedGroup.defaultSplitConfig && (
-                    <button
-                      type="button"
-                      data-testid="apply-default-split-btn"
-                      onClick={handleApplyDefaultSplit}
-                      className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/30 px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer"
-                    >
-                      <Sparkle className="w-3.5 h-3.5" weight="fill" />
-                      <span>Use Saved Split ({selectedGroup.defaultSplitConfig.label})</span>
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    data-testid="save-default-split-btn"
-                    onClick={handleSaveDefaultSplit}
-                    className="inline-flex items-center gap-1 rounded-lg bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/15 text-slate-700 dark:text-slate-300 px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer"
-                  >
-                    <FloppyDisk className="w-3.5 h-3.5" />
-                    <span>Save Split as Default</span>
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-              {SPLIT_MODES.map((item) => {
-                const active = splitMode === item.mode;
-                return (
-                  <button
-                    key={item.mode}
-                    type="button"
-                    data-testid={`split-mode-${item.mode}`}
-                    onClick={() => handleSwitchSplitMode(item.mode)}
-                    className={`rounded-xl px-3 py-2 text-left transition-all border cursor-pointer ${
-                      active
-                        ? 'bg-[#059669] text-white border-[#059669] shadow-sm'
-                        : 'bg-slate-50 dark:bg-slate-900/70 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:border-emerald-500/40'
-                    }`}
-                  >
-                    <div className="text-xs font-bold">{item.label}</div>
-                    <div
-                      className={`text-[10px] truncate ${
-                        active ? 'text-emerald-100' : 'text-slate-400 dark:text-slate-500'
-                      }`}
-                    >
-                      {item.hint}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Participant Split Rows */}
-            <div className="space-y-2">
-              {currentParticipants.map((m) => {
-                const isInc = includedMembers[m.id] !== false;
-                const splitShare = computedSplits.find((s) => s.memberId === m.id);
-                const owedMinor = splitShare?.owedMinor ?? 0;
-                const hasRotatedRemainder = splitShare?.remainderMinor === 1;
-                const sharePct =
-                  isInc && totalConvertedMinor > 0
-                    ? `${((owedMinor / totalConvertedMinor) * 100).toFixed(1)}% of bill`
-                    : isInc
-                    ? 'Included'
-                    : 'Not in split';
-
-                return (
-                  <div
-                    key={m.id}
-                    className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 transition-colors ${
-                      isInc
-                        ? 'border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900/80'
-                        : 'border-slate-200/50 dark:border-white/5 bg-slate-100/50 dark:bg-slate-900/30 opacity-60'
-                    }`}
-                  >
-                    <label className="flex items-center gap-2.5 cursor-pointer min-h-[44px]">
-                      <input
-                        type="checkbox"
-                        data-testid={`split-include-${m.id}`}
-                        disabled={m.isFormer}
-                        checked={isInc}
-                        onChange={(e) =>
-                          setIncludedMembers((prev) => ({ ...prev, [m.id]: e.target.checked }))
-                        }
-                        className="h-4 w-4 rounded border-slate-300 text-[#059669] focus:ring-[#059669]"
-                      />
-                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-xs font-bold">
-                        {m.avatarInitials}
-                      </span>
-                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                        {m.displayName}
-                      </span>
-                      {m.isFormer && (
-                        <StatusBadge tone="amber">
-                          <span data-testid={`former-member-chip-${m.id}`}>Former member</span>
-                        </StatusBadge>
-                      )}
-                      {hasRotatedRemainder && (
-                        <StatusBadge tone="amber">
-                          <span>+1 {minorUnitLabel} rotated</span>
-                        </StatusBadge>
-                      )}
-                    </label>
-
-                    <div className="flex items-center gap-3">
-                      {isInc && splitMode !== 'equal' && (
-                        <div className="flex items-center gap-1.5">
-                          {splitMode === 'shares' && (
-                            <span className="text-xs text-slate-400">Shares:</span>
-                          )}
-                          {splitMode === 'percentage' && (
-                            <span className="text-xs text-slate-400">%:</span>
-                          )}
-                          {(splitMode === 'exact' || splitMode === 'adjustment') && (
-                            <span className="text-xs font-mono text-slate-400">
-                              {splitMode === 'adjustment' ? '+/-' : baseMeta.symbol}
-                            </span>
-                          )}
-                          <input
-                            type="text"
-                            inputMode={splitMode === 'adjustment' ? 'text' : 'decimal'}
-                            autoComplete="off"
-                            data-testid={`split-input-${m.id}`}
-                            disabled={m.isFormer}
-                            value={toLocaleDecimalInput(memberInputStrings[m.id] ?? '', INPUT_LOCALE)}
-                            onChange={(e) =>
-                              setMemberInputStrings((prev) => ({
-                                ...prev,
-                                [m.id]: toLocaleDecimalInput(e.target.value, INPUT_LOCALE),
-                              }))
-                            }
-                            className="w-24 rounded-lg border border-slate-300 dark:border-white/15 bg-slate-50 dark:bg-slate-800 px-2.5 py-1 text-right font-mono tabular-nums text-xs font-semibold text-slate-900 dark:text-slate-100"
-                          />
-                        </div>
-                      )}
-
-                      <div className="text-right min-w-[110px]">
-                        <div className="text-sm font-bold font-mono tabular-nums">
-                          <CurrencyAmount
-                            minorAmount={owedMinor}
-                            currencyCode={effectiveBaseCurrency}
-                          />
-                        </div>
-                        <div className="text-[10px] font-medium text-slate-400">
-                          {sharePct}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Optional Notes & Tags */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                Notes (Optional)
-              </label>
-              <input
-                type="text"
-                data-testid="expense-notes-input"
-                maxLength={LIMITS.expenseNotes}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="e.g., Includes tip, drinks, or room upgrade..."
-                className="w-full rounded-xl border border-slate-300 dark:border-white/15 bg-slate-50 dark:bg-slate-900/90 px-3.5 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#059669]"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                Tags (Optional)
-              </label>
-              <input
-                type="text"
-                data-testid="expense-tags-input"
-                value={tagsInput}
-                onChange={(e) => setTagsInput(e.target.value)}
-                aria-invalid={textProblems.length > 0}
-                placeholder="#dinner, #goa, #villa"
-                className="w-full rounded-xl border border-slate-300 dark:border-white/15 bg-slate-50 dark:bg-slate-900/90 px-3.5 py-2 font-mono text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#059669]"
-              />
-              {textProblems.length > 0 && (
-                <p data-testid="expense-text-problems" className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
-                  {textProblems.join(' ')}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Receipt Attachment Section (Offline-Ready + Cloud Synced) */}
-          <div
-            data-testid="expense-receipt-section"
-            className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/50 p-4 space-y-3"
+        {/* Modal Footer Actions */}
+        <div className="flex flex-wrap items-center justify-end gap-3 pt-3 border-t border-black/[0.08] dark:border-white/[0.10]">
+          <button
+            type="button"
+            onClick={onClose}
+            className="lg-scene-tile rounded-full min-h-[44px] px-5 py-2.5 text-xs sm:text-sm font-semibold text-[#2B312D] dark:text-[#DCE2DD] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
           >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Paperclip className="w-4 h-4 text-[#059669]" weight="bold" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                    Receipt or Bill Photo (Optional)
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  Saved privately on this device (0 KB uploaded to cloud).
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="inline-flex items-center gap-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-white/10 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer transition-colors">
-                  <UploadSimple className="w-3.5 h-3.5 text-[#059669]" weight="bold" />
-                  <span>Upload Photo / PDF</span>
-                  <input
-                    type="file"
-                    accept="image/*,application/pdf"
-                    data-testid="receipt-file-input"
-                    onChange={handleReceiptFileChange}
-                    className="hidden"
-                  />
-                </label>
-
-                <button
-                  type="button"
-                  data-testid="attach-sample-receipt-btn"
-                  onClick={handleAttachSampleReceipt}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-500/30 px-3 py-1.5 text-xs font-semibold cursor-pointer transition-colors"
-                >
-                  <Image className="w-3.5 h-3.5" weight="duotone" />
-                  <span>Attach Sample Receipt</span>
-                </button>
-              </div>
-            </div>
-
-            {attachedReceipts.length > 0 && (
-              <div className="space-y-2 pt-1">
-                {attachedReceipts.map((rcp) => (
-                  <div
-                    key={rcp.id}
-                    data-testid="attached-receipt-badge"
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white dark:bg-slate-900 border border-emerald-500/30 px-3 py-2 text-xs"
-                  >
-                    <div className="flex items-center gap-3">
-                      {rcp.dataUrl && rcp.dataUrl.startsWith('data:image/') && (
-                        <img
-                          src={rcp.dataUrl}
-                          alt={rcp.fileName}
-                          className="h-9 w-14 rounded-lg object-cover border border-slate-200 dark:border-white/10"
-                        />
-                      )}
-                      <div>
-                        <div className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                          <span>{rcp.fileName}</span>
-                          <span className="font-mono text-[10px] text-emerald-600 dark:text-emerald-400">
-                            ({rcp.sizeKb} KB)
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                          {rcp.dataUrl
-                            ? 'Stored on this device only (0 KB uploaded to cloud)'
-                            : `Stored on ${rcp.uploadedByName}'s device (0 KB uploaded to cloud)`}
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveReceipt(rcp.id)}
-                      className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 p-1 transition-colors cursor-pointer"
-                      title="Remove receipt"
-                    >
-                      <Trash className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Calm Settl-Style Live Reconciliation Status Bar */}
-          <div
-            data-testid="split-reconciliation-bar"
-            className={`rounded-2xl border p-3.5 transition-colors ${
-              totalConvertedMinor === 0
-                ? 'border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-900/60 text-slate-700 dark:text-slate-300'
-                : validation.valid
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200'
-                : 'border-rose-500/30 bg-rose-500/10 text-rose-900 dark:text-rose-200'
+            Cancel
+          </button>
+          <button
+            type="button"
+            data-testid="save-expense-btn"
+            disabled={!validation.valid}
+            onClick={handleSaveExpense}
+            className={`min-h-[44px] inline-flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-xs sm:text-sm font-bold transition-[transform,opacity,background-color,color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 ${
+              validation.valid
+                ? 'lg-luminous-pill ring-1 ring-emerald-500/35 dark:ring-emerald-400/40 cursor-pointer'
+                : 'lg-recessed-well text-[#68726C] dark:text-[#8A938D] cursor-not-allowed opacity-60'
             }`}
           >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs font-bold">
-                {totalConvertedMinor === 0 ? (
-                  <Coins className="w-4 h-4 text-slate-500 dark:text-slate-400" weight="duotone" />
-                ) : validation.valid ? (
-                  <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" weight="fill" />
-                ) : (
-                  <WarningCircle className="w-4 h-4 text-rose-600 dark:text-rose-400" weight="fill" />
-                )}
-                <span>
-                  {totalConvertedMinor === 0
-                    ? 'Enter a bill amount above to calculate shares'
-                    : validation.valid
-                    ? `100% Reconciled • ${formatMinorToMajor(0, effectiveBaseCurrency)} left - Ready to save`
-                    : needsMoreParticipants
-                    ? 'Add at least one friend to split this bill with'
-                    : validation.unallocatedSplitMinor > 0
-                    ? `${formatMinorToMajor(validation.unallocatedSplitMinor, effectiveBaseCurrency)} left to assign`
-                    : validation.unallocatedSplitMinor < 0
-                    ? `${formatMinorToMajor(Math.abs(validation.unallocatedSplitMinor), effectiveBaseCurrency)} over-assigned`
-                    : 'Adjust payer or split amounts to match bill total'}
-                </span>
-              </div>
-
-              {totalConvertedMinor > 0 && (
-                <div className="font-mono tabular-nums text-xs">
-                  {validation.unallocatedSplitMinor === 0 ? (
-                    <span>
-                      Total:{' '}
-                      <CurrencyAmount
-                        minorAmount={totalConvertedMinor}
-                        currencyCode={effectiveBaseCurrency}
-                      />
-                    </span>
-                  ) : (
-                    <span>
-                      Remaining:{' '}
-                      <CurrencyAmount
-                        minorAmount={validation.unallocatedSplitMinor}
-                        currencyCode={effectiveBaseCurrency}
-                      />
-                    </span>
-                  )}
-                  {isMultiPayer && validation.unallocatedPayerMinor !== 0 && (
-                    <>
-                      {' • '}
-                      <span>
-                        Payer diff:{' '}
-                        <CurrencyAmount
-                          minorAmount={validation.unallocatedPayerMinor}
-                          currencyCode={effectiveBaseCurrency}
-                        />
-                      </span>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {totalConvertedMinor > 0 && remainderWinners.length > 0 && (
-              <div className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-300">
-                Odd cent/paisa fairness: +1 {minorUnitLabel} assigned to{' '}
-                <strong>{remainderWinners.join(', ')}</strong> (rotates fairly each bill)
-              </div>
-            )}
-
-            {totalConvertedMinor > 0 && !validation.valid && validation.errors.length > 0 && (
-              <ul className="mt-2 space-y-1 text-xs text-rose-700 dark:text-rose-300 list-disc list-inside">
-                {validation.errors.map((err, i) => (
-                  <li key={i}>{err}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          {saveError && (
-            <p data-testid="expense-save-error" role="alert" className="text-xs font-semibold text-rose-700 dark:text-rose-300">
-              {saveError}
-            </p>
-          )}
-
-          {/* Modal Footer Actions */}
-          <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-200/80 dark:border-white/10">
-            <button
-              type="button"
-              onClick={onClose}
-              className="min-h-[44px] rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              data-testid="save-expense-btn"
-              disabled={!validation.valid}
-              onClick={handleSaveExpense}
-              className={`min-h-[44px] inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-bold text-white transition-all ${
-                validation.valid
-                  ? 'bg-[#059669] hover:bg-emerald-600 shadow-md shadow-emerald-600/20 cursor-pointer'
-                  : 'bg-slate-400 dark:bg-slate-700 cursor-not-allowed opacity-60'
+            <CheckCircle
+              className={`w-4 h-4 ${
+                validation.valid ? 'text-emerald-400 dark:text-emerald-700' : ''
               }`}
-            >
-              <CheckCircle className="w-4 h-4" weight="bold" />
-              <span>{initialExpense ? 'Save Changes' : 'Save Bill'}</span>
-            </button>
-          </div>
-        </DoubleBezelCard>
+              weight="fill"
+            />
+            <span>{initialExpense ? 'Save Changes' : 'Save Bill'}</span>
+          </button>
+        </div>
       </div>
     </div>
   );

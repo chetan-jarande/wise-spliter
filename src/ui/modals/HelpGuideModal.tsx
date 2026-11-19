@@ -13,7 +13,7 @@ import {
 } from '@phosphor-icons/react';
 import { HelpGuideSection } from '../../types/ledger';
 import { ActivePageTab, useLedger } from '../../state/LedgerContext';
-import { DoubleBezelCard, StatusBadge } from '../primitives/DesignPrimitives';
+import { StatusBadge } from '../primitives/DesignPrimitives';
 
 export type GuidePageKey =
   | 'home'
@@ -233,17 +233,19 @@ export function ContextualPageGuideBanner({
       <>
         <div
           data-testid="contextual-page-guide"
-          className="flex items-center justify-between gap-2 rounded-xl border border-slate-200/70 dark:border-white/10 bg-white/70 dark:bg-slate-900/50 px-3.5 py-2 text-xs text-slate-600 dark:text-slate-400"
+          className="lg-recessed-well flex items-center justify-between gap-2 rounded-[20px] px-4 py-2 text-xs text-[#4A524D] dark:text-[#B7BEB9]"
         >
-          <span className="inline-flex items-center gap-1.5 font-medium">
-            <Info className="w-3.5 h-3.5 text-[#059669]" weight="duotone" />
-            <span>{guideSection.pageTitle}</span>
+          <span className="inline-flex items-center gap-2 font-medium min-w-0">
+            <span className="lg-icon-orb h-6 w-6 rounded-full inline-flex items-center justify-center shrink-0 text-emerald-700 dark:text-emerald-300">
+              <Info className="w-3.5 h-3.5" weight="duotone" />
+            </span>
+            <span className="truncate">{guideSection.pageTitle}</span>
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
               onClick={() => setIsDismissed(false)}
-              className="text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-[#059669] transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center rounded-full px-2.5 py-1 text-xs font-semibold text-[#4A524D] dark:text-[#B7BEB9] hover:text-[#141715] dark:hover:text-[#F3F5F3] transition-colors cursor-pointer"
             >
               Show Tip
             </button>
@@ -251,9 +253,9 @@ export function ContextualPageGuideBanner({
               type="button"
               data-testid="open-full-help-btn"
               onClick={handleOpenHelp}
-              className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer"
+              className="lg-scene-tile inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold text-[#141715] dark:text-[#F3F5F3] cursor-pointer"
             >
-              <BookOpen className="w-3.5 h-3.5" />
+              <BookOpen className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />
               <span>Full App Guide</span>
             </button>
           </div>
@@ -273,15 +275,15 @@ export function ContextualPageGuideBanner({
     <>
       <div
         data-testid="contextual-page-guide"
-        className="rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white/85 dark:bg-slate-900/75 px-3.5 py-2.5 transition-colors"
+        className="lg-recessed-well rounded-[20px] px-4 py-2.5 transition-colors"
       >
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5 min-w-0">
-            <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-[#059669] dark:text-emerald-400">
+            <span className="lg-icon-orb inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-emerald-700 dark:text-emerald-300">
               <Compass className="w-3.5 h-3.5" weight="duotone" />
             </span>
-            <p className="text-xs text-slate-600 dark:text-slate-300 leading-snug truncate sm:whitespace-normal">
-              <span className="font-bold text-slate-900 dark:text-slate-100 mr-1.5">
+            <p className="text-xs text-[#4A524D] dark:text-[#B7BEB9] leading-snug truncate sm:whitespace-normal">
+              <span className="font-semibold text-[#141715] dark:text-[#F3F5F3] mr-1.5">
                 {guideSection.pageTitle}:
               </span>
               {guideSection.shortTip}
@@ -292,7 +294,7 @@ export function ContextualPageGuideBanner({
             <button
               type="button"
               onClick={() => setShowPills((prev) => !prev)}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-slate-800/80 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:border-emerald-500/40 transition-colors cursor-pointer"
+              className="lg-scene-tile inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold text-[#1F2421] dark:text-[#E5EAE6] cursor-pointer"
             >
               <span>Quick tips</span>
               {showPills ? (
@@ -306,7 +308,7 @@ export function ContextualPageGuideBanner({
               type="button"
               data-testid="open-full-help-btn"
               onClick={handleOpenHelp}
-              className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/12 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/25 px-2.5 py-1 text-xs font-semibold transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1 rounded-full bg-emerald-500/12 dark:bg-emerald-400/14 hover:bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-600/25 dark:ring-emerald-300/25 px-3 py-1 text-xs font-semibold transition-colors cursor-pointer"
             >
               <Question className="w-3.5 h-3.5" weight="bold" />
               <span>Help Guide</span>
@@ -315,7 +317,7 @@ export function ContextualPageGuideBanner({
             <button
               type="button"
               onClick={() => setIsDismissed(true)}
-              className="rounded-lg p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
+              className="lg-icon-orb inline-flex items-center justify-center rounded-full p-1.5 text-[#5C6660] dark:text-[#9CA69F] hover:text-[#141715] dark:hover:text-[#F3F5F3] transition-colors cursor-pointer"
               aria-label="Minimize page guide"
               title="Hide tip"
             >
@@ -325,14 +327,14 @@ export function ContextualPageGuideBanner({
         </div>
 
         {showPills && (
-          <div className="mt-2.5 pt-2.5 border-t border-slate-200/70 dark:border-white/10 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="mt-2.5 pt-2.5 border-t border-black/[0.07] dark:border-white/[0.09] grid grid-cols-1 sm:grid-cols-2 gap-2">
             {guideSection.whereToFindWhat.map((item, idx) => (
               <div
                 key={idx}
-                className="flex items-start gap-2 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/70 dark:border-white/10 px-3 py-2 text-xs text-slate-700 dark:text-slate-300"
+                className="lg-scene-tile flex items-start gap-2 rounded-[14px] px-3 py-2 text-xs text-[#2B312D] dark:text-[#DCE2DD]"
               >
                 <CheckCircle
-                  className="w-3.5 h-3.5 text-[#059669] shrink-0 mt-0.5"
+                  className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300 shrink-0 mt-0.5"
                   weight="fill"
                 />
                 <span>{item}</span>
@@ -391,156 +393,153 @@ export function HelpGuideModal({
   return (
     <div
       data-testid="help-guide-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center lg-modal-scrim p-3 sm:p-6 overflow-y-auto"
     >
-      <div className="w-full max-w-4xl my-auto">
-        <DoubleBezelCard
-          className="shadow-2xl"
-          innerClassName="max-h-[90vh] overflow-y-auto space-y-5 bg-white dark:bg-[#111827] text-slate-900 dark:text-slate-100"
-        >
-          {/* Header */}
-          <div className="flex items-start justify-between gap-4 border-b border-slate-200/80 dark:border-white/10 pb-4">
+      <div className="w-full max-w-4xl my-auto lg-modal-surface rounded-[30px] p-5 sm:p-7 max-h-[90vh] overflow-y-auto space-y-5 text-[#141715] dark:text-[#F3F5F3]">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4 border-b border-black/[0.07] dark:border-white/[0.10] pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <StatusBadge tone="emerald">
+                <Sparkle className="w-3.5 h-3.5" weight="fill" />
+                <span>Interactive App Guide &amp; Feature Map</span>
+              </StatusBadge>
+            </div>
+            <h2 className="mt-2 text-lg sm:text-xl font-bold tracking-tight text-[#141715] dark:text-[#F3F5F3]">
+              How to Split Bills, Manage Groups &amp; Find Every Feature
+            </h2>
+            <p className="mt-1 text-xs text-[#5C6660] dark:text-[#9CA69F]">
+              Progressive disclosure keeps Home clutter-free while giving you 1-click access to
+              group ledgers, direct non-group splits, and audit tools.
+            </p>
+          </div>
+          <button
+            type="button"
+            data-testid="close-help-modal-btn"
+            onClick={onClose}
+            className="lg-icon-orb min-h-[44px] min-w-[44px] h-11 w-11 rounded-full flex items-center justify-center text-[#4A524D] hover:text-[#141715] dark:text-[#B7BEB9] dark:hover:text-white transition-colors shrink-0 cursor-pointer"
+            aria-label="Close help modal"
+          >
+            <X className="w-4 h-4" weight="bold" />
+          </button>
+        </div>
+
+        {/* Section Navigation Tabs */}
+        <div className="flex flex-wrap gap-2">
+          {SECTION_TAB_LABELS.map((tab) => {
+            const isSelected = selectedTabKey === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setSelectedTabKey(tab.key)}
+                className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-xs font-semibold transition-[transform,opacity,background-color,color,box-shadow] duration-200 cursor-pointer ${
+                  isSelected
+                    ? 'lg-luminous-pill'
+                    : 'lg-scene-tile text-[#4A524D] dark:text-[#B7BEB9] hover:text-[#141715] dark:hover:text-white'
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Active Section Details */}
+        <div className="lg-recessed-well rounded-[24px] p-4 sm:p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="flex items-center gap-2">
-                <StatusBadge tone="emerald">
-                  <Sparkle className="w-3.5 h-3.5" weight="fill" />
-                  <span>Interactive App Guide &amp; Feature Map</span>
-                </StatusBadge>
-              </div>
-              <h2 className="mt-1.5 text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                How to Split Bills, Manage Groups &amp; Find Every Feature
-              </h2>
-              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Progressive disclosure keeps Home clutter-free while giving you 1-click access to
-                group ledgers, direct non-group splits, and audit tools.
+              <h3 className="text-base font-bold text-[#141715] dark:text-[#F3F5F3]">
+                {activeSection.pageTitle}
+              </h3>
+              <p className="mt-1 text-xs text-[#4A524D] dark:text-[#B7BEB9] leading-relaxed">
+                {activeSection.shortTip}
               </p>
             </div>
             <button
               type="button"
-              data-testid="close-help-modal-btn"
-              onClick={onClose}
-              className="rounded-xl p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
-              aria-label="Close help modal"
+              onClick={() => handleJumpToFeature(activeSection.pageKey)}
+              className="lg-luminous-pill min-h-[40px] inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold shrink-0 cursor-pointer"
             >
-              <X className="w-5 h-5" weight="bold" />
+              <span>
+                Go to {SECTION_TAB_LABELS.find((t) => t.key === activeSection.pageKey)?.label}
+              </span>
+              <ArrowRight className="w-3.5 h-3.5" weight="bold" />
             </button>
           </div>
 
-          {/* Section Navigation Tabs */}
-          <div className="flex flex-wrap gap-2">
-            {SECTION_TAB_LABELS.map((tab) => {
-              const isSelected = selectedTabKey === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setSelectedTabKey(tab.key)}
-                  className={`rounded-xl px-3.5 py-2 text-xs font-bold transition-all border ${
-                    isSelected
-                      ? 'bg-[#059669] text-white border-[#059669] shadow-sm'
-                      : 'bg-slate-50 dark:bg-slate-900/70 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-white/10 hover:border-emerald-500/40'
-                  }`}
+          {/* Where to Find What Checklist */}
+          <div className="space-y-2">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#68726C] dark:text-[#8A938D]">
+              Where to Find What
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {activeSection.whereToFindWhat.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="lg-scene-tile flex items-start gap-2.5 rounded-[16px] p-3.5 text-xs text-[#1F2421] dark:text-[#E5EAE6]"
                 >
-                  {tab.label}
-                </button>
-              );
-            })}
+                  <CheckCircle
+                    className="w-4 h-4 text-emerald-700 dark:text-emerald-300 shrink-0 mt-0.5"
+                    weight="fill"
+                  />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
           </div>
 
-          {/* Active Section Details */}
-          <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50/70 dark:bg-slate-900/60 p-4 sm:p-5 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                  {activeSection.pageTitle}
-                </h3>
-                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  {activeSection.shortTip}
-                </p>
+          {/* Step-by-Step Workflows */}
+          {activeSection.steps.length > 0 && (
+            <div className="space-y-2.5 pt-2">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#68726C] dark:text-[#8A938D]">
+                Step-by-Step Workflows
               </div>
-              <button
-                type="button"
-                onClick={() => handleJumpToFeature(activeSection.pageKey)}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[#059669] hover:bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition-colors shrink-0"
-              >
-                <span>Go to {SECTION_TAB_LABELS.find((t) => t.key === activeSection.pageKey)?.label}</span>
-                <ArrowRight className="w-3.5 h-3.5" weight="bold" />
-              </button>
-            </div>
-
-            {/* Where to Find What Checklist */}
-            <div className="space-y-2">
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Where to Find What
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {activeSection.whereToFindWhat.map((item, idx) => (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {activeSection.steps.map((step) => (
                   <div
-                    key={idx}
-                    className="flex items-start gap-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-white/10 p-3 text-xs text-slate-700 dark:text-slate-200"
+                    key={step.stepNumber}
+                    className="lg-scene-tile flex flex-col justify-between rounded-[18px] p-4 space-y-3"
                   >
-                    <CheckCircle
-                      className="w-4 h-4 text-[#059669] shrink-0 mt-0.5"
-                      weight="fill"
-                    />
-                    <span>{item}</span>
+                    <div className="space-y-1.5">
+                      <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/12 dark:bg-emerald-400/14 ring-1 ring-emerald-600/25 dark:ring-emerald-300/25 px-2.5 py-0.5 text-[11px] font-mono tabular-nums font-semibold text-emerald-800 dark:text-emerald-200">
+                        Step 0{step.stepNumber}
+                      </div>
+                      <div className="text-xs font-bold text-[#141715] dark:text-[#F3F5F3]">
+                        {step.title}
+                      </div>
+                      <p className="text-xs text-[#4A524D] dark:text-[#B7BEB9] leading-relaxed">
+                        {step.description}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleJumpToFeature(step.targetTab)}
+                      className="lg-recessed-well inline-flex items-center justify-between gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-[#141715] dark:text-[#F3F5F3] hover:bg-emerald-500/12 hover:text-emerald-800 dark:hover:text-emerald-200 transition-colors cursor-pointer"
+                    >
+                      <span>{step.actionLabel}</span>
+                      <ArrowRight className="w-3.5 h-3.5" weight="bold" />
+                    </button>
                   </div>
                 ))}
               </div>
             </div>
+          )}
+        </div>
 
-            {/* Step-by-Step Workflows */}
-            {activeSection.steps.length > 0 && (
-              <div className="space-y-2.5 pt-2">
-                <div className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Step-by-Step Workflows
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {activeSection.steps.map((step) => (
-                    <div
-                      key={step.stepNumber}
-                      className="flex flex-col justify-between rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-white/10 p-3.5 space-y-3"
-                    >
-                      <div className="space-y-1.5">
-                        <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-mono tabular-nums font-bold text-emerald-700 dark:text-emerald-300">
-                          Step 0{step.stepNumber}
-                        </div>
-                        <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                          {step.title}
-                        </div>
-                        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                          {step.description}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleJumpToFeature(step.targetTab)}
-                        className="inline-flex items-center justify-between gap-1.5 rounded-lg bg-slate-100 dark:bg-white/10 hover:bg-emerald-500/15 hover:text-emerald-700 dark:hover:text-emerald-300 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors"
-                      >
-                        <span>{step.actionLabel}</span>
-                        <ArrowRight className="w-3.5 h-3.5" weight="bold" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Footer */}
-          <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-200/80 dark:border-white/10">
-            <span className="text-xs text-slate-500 dark:text-slate-400">
-              Tip: Every screen has a collapsible guide banner at the top for quick reference.
-            </span>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-4 py-2 text-xs font-bold hover:opacity-90 transition-opacity"
-            >
-              Got It
-            </button>
-          </div>
-        </DoubleBezelCard>
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-3 pt-2 border-t border-black/[0.07] dark:border-white/[0.10]">
+          <span className="text-xs text-[#5C6660] dark:text-[#9CA69F]">
+            Tip: Every screen has a collapsible guide banner at the top for quick reference.
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="lg-luminous-pill min-h-[42px] inline-flex items-center justify-center rounded-full px-5 py-2 text-xs font-semibold cursor-pointer"
+          >
+            Got It
+          </button>
+        </div>
       </div>
     </div>
   );

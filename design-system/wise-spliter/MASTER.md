@@ -15,28 +15,21 @@
 
 ## Global Rules
 
-### Color Palette
+### Color Palette (Apple visionOS / Ombria Spatial Liquid Glass)
 
-| Role | Hex | CSS Variable |
-|------|-----|--------------|
-| Primary | `#1E40AF` | `--color-primary` |
-| On Primary | `#FFFFFF` | `--color-on-primary` |
-| Secondary | `#3B82F6` | `--color-secondary` |
-| On Secondary | `#000000` | `--color-on-secondary` |
-| Accent/CTA | `#059669` | `--color-accent` |
-| On Accent/CTA | `#000000` | `--color-on-accent` |
-| Background | `#0F172A` | `--color-background` |
-| Foreground | `#FFFFFF` | `--color-foreground` |
-| Card | `#192134` | `--color-card` |
-| Card Foreground | `#FFFFFF` | `--color-card-foreground` |
-| Muted | `#101A34` | `--color-muted` |
-| Muted Foreground | `#94A3B8` | `--color-muted-foreground` |
-| Border | `rgba(255,255,255,0.08)` | `--color-border` |
-| Destructive | `#DC2626` | `--color-destructive` |
-| On Destructive | `#FFFFFF` | `--color-on-destructive` |
-| Ring | `#FFFFFF` | `--color-ring` |
+| Role | Dark Mode (Smoked Stone Glass) | Light Mode (Frosted Pearl Glass) | Utility / Token |
+|------|--------------------------------|----------------------------------|-----------------|
+| Ambient Backdrop | `#171917` + warm sage/stone radial blooms | `#E7EBE8` + sunlit pearl/sage blooms | `.lg-ambient-backdrop` |
+| Spatial Glass Shell | `rgba(32,35,32,0.62)` + `blur(28px) saturate(165%)` | `rgba(255,255,255,0.72)` + `blur(28px) saturate(165%)` | `.lg-glass-shell` |
+| Double-Bezel Card | `.lg-bezel-outer` + `.lg-bezel-inner` | `.lg-bezel-outer` + `.lg-bezel-inner` | `<DoubleBezelCard />` |
+| Scene Action Capsule | `rgba(42,45,42,0.44)` + 1px specular rim | `rgba(255,255,255,0.72)` + 1px specular rim | `.lg-scene-tile` / `<SpatialActionTile />` |
+| Luminous Focal Pill | `#F3F4F1` bg / `#141614` ink | `#181B19` bg / `#F7F9F7` ink | `.lg-luminous-pill` |
+| Recessed Input Well | `rgba(10,12,11,0.34)` + `rgba(255,255,255,0.09)` border | `rgba(20,26,22,0.045)` + `rgba(20,26,22,0.09)` border | `.lg-recessed-well` |
+| Icon Orb | `rgba(255,255,255,0.075)` + specular top rim | `rgba(20,26,22,0.055)` + specular top rim | `.lg-icon-orb` |
+| Positive / Owed | `#6EE7B7` / `emerald-300` | `#047857` / `emerald-800` | Semantic positive money |
+| Negative / Owe | `#FDA4AF` / `rose-300` | `#BE123C` / `rose-800` | Semantic negative / destructive |
 
-**Color Notes:** Trust blue + profit green on dark
+**Color Notes:** Warm architectural smoked-stone glass in dark mode and frosted pearl-alabaster glass in light mode, with luminous high-contrast focal pills and calm desaturated emerald/rose money semantics. Zero neon glows, zero AI-purple gradients, zero cold `#090D16` / `slate-950` blocks.
 
 ### Typography
 

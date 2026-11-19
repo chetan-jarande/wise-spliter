@@ -2,16 +2,106 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+ * Wise-Spliter Spatial Glass Design System
+ * Honest Web Approximation of Apple visionOS / Liquid Glass & Ombria Spatial Materials:
+ * Combines translucent multi-stop surface gradients, optical backdrop blur + saturation,
+ * 1px specular refraction rims, and recessed inner chambers with full Light & Dark parity
+ * and @media (prefers-reduced-transparency: reduce) solid fallbacks.
+ */
+
 @layer base {
   :root {
-    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, monospace;
+
+    /* Light Mode: Frosted Architectural Pearl & Smoked Alabaster */
+    --lg-bg-base: #e7ebe8;
+    --lg-text-primary: #141715;
+    --lg-text-secondary: #4a524d;
+    --lg-text-muted: #68726c;
+
+    --lg-shell-bg: linear-gradient(155deg, rgba(255, 255, 255, 0.78) 0%, rgba(246, 248, 246, 0.56) 100%);
+    --lg-shell-border: rgba(255, 255, 255, 0.88);
+    --lg-shell-outline: rgba(20, 26, 22, 0.07);
+    --lg-shell-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.96),
+      inset 0 -1px 0 rgba(20, 26, 22, 0.04),
+      0 24px 60px -18px rgba(18, 24, 20, 0.11),
+      0 0 0 1px rgba(20, 26, 22, 0.06);
+
+    --lg-card-outer-bg: rgba(255, 255, 255, 0.38);
+    --lg-card-outer-ring: rgba(20, 26, 22, 0.07);
+    --lg-card-inner-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.82) 0%, rgba(248, 250, 248, 0.64) 100%);
+    --lg-card-inner-border: rgba(255, 255, 255, 0.9);
+    --lg-card-inner-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.98),
+      0 10px 28px -12px rgba(18, 24, 20, 0.08);
+
+    --lg-tile-bg: linear-gradient(155deg, rgba(255, 255, 255, 0.72) 0%, rgba(245, 247, 245, 0.48) 100%);
+    --lg-tile-hover-bg: linear-gradient(155deg, rgba(255, 255, 255, 0.9) 0%, rgba(250, 252, 250, 0.68) 100%);
+    --lg-tile-border: rgba(20, 26, 22, 0.08);
+
+    --lg-well-bg: rgba(20, 26, 22, 0.045);
+    --lg-well-border: rgba(20, 26, 22, 0.09);
+
+    --lg-orb-bg: rgba(20, 26, 22, 0.055);
+    --lg-orb-border: rgba(20, 26, 22, 0.09);
+
+    --lg-luminous-bg: #181b19;
+    --lg-luminous-fg: #f7f9f7;
+    --lg-luminous-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.24),
+      0 10px 24px -6px rgba(18, 22, 20, 0.24);
+  }
+
+  .dark {
+    /* Dark Mode: Ombria / visionOS Smoked Stone & Warm Charcoal Glass */
+    --lg-bg-base: #181a18;
+    --lg-text-primary: #f3f5f3;
+    --lg-text-secondary: #b7beb9;
+    --lg-text-muted: #8a938d;
+
+    --lg-shell-bg: linear-gradient(155deg, rgba(255, 255, 255, 0.095) 0%, rgba(255, 255, 255, 0.035) 100%), rgba(32, 35, 32, 0.62);
+    --lg-shell-border: rgba(255, 255, 255, 0.14);
+    --lg-shell-outline: rgba(0, 0, 0, 0.45);
+    --lg-shell-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+      0 28px 72px -20px rgba(0, 0, 0, 0.62);
+
+    --lg-card-outer-bg: rgba(255, 255, 255, 0.035);
+    --lg-card-outer-ring: rgba(255, 255, 255, 0.11);
+    --lg-card-inner-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.085) 0%, rgba(255, 255, 255, 0.03) 100%), rgba(36, 39, 36, 0.54);
+    --lg-card-inner-border: rgba(255, 255, 255, 0.12);
+    --lg-card-inner-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      0 14px 34px -12px rgba(0, 0, 0, 0.42);
+
+    --lg-tile-bg: linear-gradient(155deg, rgba(255, 255, 255, 0.085) 0%, rgba(255, 255, 255, 0.028) 100%), rgba(42, 45, 42, 0.44);
+    --lg-tile-hover-bg: linear-gradient(155deg, rgba(255, 255, 255, 0.13) 0%, rgba(255, 255, 255, 0.05) 100%), rgba(48, 52, 48, 0.56);
+    --lg-tile-border: rgba(255, 255, 255, 0.13);
+
+    --lg-well-bg: rgba(10, 12, 11, 0.34);
+    --lg-well-border: rgba(255, 255, 255, 0.09);
+
+    --lg-orb-bg: rgba(255, 255, 255, 0.075);
+    --lg-orb-border: rgba(255, 255, 255, 0.15);
+
+    --lg-luminous-bg: #f3f4f1;
+    --lg-luminous-fg: #141614;
+    --lg-luminous-shadow:
+      inset 0 1px 0 #ffffff,
+      0 10px 28px -6px rgba(0, 0, 0, 0.45);
   }
 
   html {
     font-family: var(--font-sans);
+    background-color: var(--lg-bg-base);
+    color: var(--lg-text-primary);
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
     scroll-padding-top: 5.5rem;
     scroll-padding-bottom: 6rem;
   }
@@ -23,18 +113,248 @@
   }
 }
 
-/* Touch targets: at least 44x44px on phones and touch screens, unlayered so it beats compact utilities */
+/* Atmospheric multi-source backdrop behind translucent panes */
+.lg-ambient-backdrop {
+  background-color: var(--lg-bg-base);
+  background-image:
+    radial-gradient(ellipse 68% 54% at 18% 12%, rgba(212, 206, 190, 0.42), transparent 66%),
+    radial-gradient(ellipse 58% 48% at 84% 18%, rgba(168, 194, 180, 0.36), transparent 64%),
+    radial-gradient(ellipse 64% 56% at 52% 88%, rgba(190, 184, 170, 0.32), transparent 68%);
+}
+
+.dark .lg-ambient-backdrop {
+  background-color: #171917;
+  background-image:
+    radial-gradient(ellipse 65% 52% at 16% 10%, rgba(128, 134, 120, 0.24), transparent 64%),
+    radial-gradient(ellipse 54% 46% at 86% 16%, rgba(92, 114, 102, 0.20), transparent 62%),
+    radial-gradient(ellipse 62% 58% at 48% 92%, rgba(118, 106, 92, 0.18), transparent 68%),
+    radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.035), transparent 58%);
+}
+
+/* Primary Spatial Glass Shell (Sidebar Rail, Command Bar, Enclosed Stage, Bottom Dock) */
+.lg-glass-shell {
+  background: var(--lg-shell-bg);
+  border: 1px solid var(--lg-shell-border);
+  box-shadow: var(--lg-shell-shadow);
+  backdrop-filter: blur(28px) saturate(165%);
+  -webkit-backdrop-filter: blur(28px) saturate(165%);
+}
+
+/* Concentric Double-Bezel Card (GPU-friendly inside blurred stage) */
+.lg-bezel-outer {
+  background: var(--lg-card-outer-bg);
+  box-shadow: 0 0 0 1px var(--lg-card-outer-ring);
+}
+
+.lg-bezel-inner {
+  background: var(--lg-card-inner-bg);
+  border: 1px solid var(--lg-card-inner-border);
+  box-shadow: var(--lg-card-inner-shadow);
+}
+
+/* Tactile Scene / Quick-Action Pill Tile (Ombria Horizontal Action Capsules) */
+.lg-scene-tile {
+  background: var(--lg-tile-bg);
+  border: 1px solid var(--lg-tile-border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.20),
+    0 8px 22px -10px rgba(0, 0, 0, 0.18);
+  transition:
+    transform 280ms cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    background 260ms cubic-bezier(0.32, 0.72, 0, 1),
+    border-color 260ms cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 280ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.lg-scene-tile:hover {
+  background: var(--lg-tile-hover-bg);
+  transform: translate3d(0, -1.5px, 0);
+}
+
+.lg-scene-tile:active {
+  transform: scale3d(0.982, 0.982, 1);
+}
+
+/* Signature Luminous Pill (Active Sidebar Item & Primary High-Contrast Pill CTA) */
+.lg-luminous-pill {
+  background: var(--lg-luminous-bg);
+  color: var(--lg-luminous-fg);
+  box-shadow: var(--lg-luminous-shadow);
+  transition:
+    transform 260ms cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 200ms cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.lg-luminous-pill:hover {
+  opacity: 0.95;
+  transform: translate3d(0, -1px, 0);
+}
+
+.lg-luminous-pill:active {
+  transform: scale3d(0.98, 0.98, 1);
+}
+
+/* Circular Glass Icon Orb */
+.lg-icon-orb {
+  background: var(--lg-orb-bg);
+  border: 1px solid var(--lg-orb-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  transition:
+    transform 240ms cubic-bezier(0.32, 0.72, 0, 1),
+    background-color 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    border-color 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+button.lg-icon-orb:hover {
+  transform: translate3d(0, -1px, 0);
+}
+
+button.lg-icon-orb:active {
+  transform: scale3d(0.96, 0.96, 1);
+}
+
+/* Recessed Optical Glass Input / List Well */
+.lg-recessed-well {
+  background: var(--lg-well-bg);
+  border: 1px solid var(--lg-well-border);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.10);
+  transition:
+    border-color 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    background-color 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Apple Spatial Fluid Choreography (GPU-only transform + opacity) */
+@keyframes lg-stage-enter {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) scale3d(0.995, 0.995, 1);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale3d(1, 1, 1);
+  }
+}
+
+@keyframes lg-scrim-enter {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes lg-sheet-enter-desktop {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0) scale3d(0.97, 0.97, 1);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale3d(1, 1, 1);
+  }
+}
+
+@keyframes lg-sheet-enter-mobile {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 28px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lg-stage-reveal {
+    animation: lg-stage-enter 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .lg-stagger-1 {
+    animation: lg-stage-enter 440ms cubic-bezier(0.16, 1, 0.3, 1) 45ms both;
+  }
+
+  .lg-stagger-2 {
+    animation: lg-stage-enter 460ms cubic-bezier(0.16, 1, 0.3, 1) 90ms both;
+  }
+
+  .lg-modal-scrim {
+    animation: lg-scrim-enter 240ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  }
+
+  .lg-modal-surface {
+    animation: lg-sheet-enter-mobile 340ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  }
+
+  @media (min-width: 640px) {
+    .lg-modal-surface {
+      animation: lg-sheet-enter-desktop 340ms cubic-bezier(0.32, 0.72, 0, 1) both;
+    }
+  }
+}
+
+/* Modal Sheet Glass */
+.lg-modal-scrim {
+  background: rgba(12, 14, 13, 0.62);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.lg-modal-surface {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.92) 0%, rgba(244, 246, 244, 0.84) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 32px 80px -16px rgba(12, 16, 14, 0.28),
+    0 0 0 1px rgba(20, 26, 22, 0.08);
+  backdrop-filter: blur(32px) saturate(175%);
+  -webkit-backdrop-filter: blur(32px) saturate(175%);
+}
+
+.dark .lg-modal-surface {
+  background: linear-gradient(160deg, rgba(52, 56, 52, 0.88) 0%, rgba(30, 33, 30, 0.86) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 32px 88px -16px rgba(0, 0, 0, 0.72);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .lg-glass-shell,
+  .lg-bezel-inner,
+  .lg-scene-tile,
+  .lg-modal-surface {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  :root .lg-glass-shell,
+  :root .lg-bezel-inner,
+  :root .lg-modal-surface {
+    background: #f6f8f6 !important;
+  }
+  .dark .lg-glass-shell,
+  .dark .lg-bezel-inner,
+  .dark .lg-modal-surface {
+    background: #222522 !important;
+  }
+}
+
+/* Touch targets: at least 45x45px (>=44px after subpixel border rounding) on phones and touch screens */
 @media (max-width: 640px), (pointer: coarse) {
   button,
   [role='button'],
   summary,
   select,
   input:not([type='checkbox']):not([type='radio']):not([type='hidden']):not([type='range']) {
-    min-height: 44px;
+    min-height: 45px;
   }
   button,
   [role='button'] {
-    min-width: 44px;
+    min-width: 45px;
   }
   summary {
     display: flex;

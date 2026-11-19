@@ -27,6 +27,9 @@ import {
   CurrencyAmount,
   CurrencyPrecisionPill,
   DoubleBezelCard,
+  SpatialFilterPill,
+  SpatialMetricTile,
+  SpatialPageHeader,
   StatusBadge,
 } from '../primitives/DesignPrimitives';
 import {
@@ -57,6 +60,61 @@ import {
   exportFileCrossPlatform,
   isNativeCapacitorApp,
 } from '../../utils/native-platform';
+
+const EXPLICIT_TRANSITION =
+  'transition-[transform,opacity,background-color,border-color,box-shadow] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)]';
+
+const BTN_BASE = `min-h-[44px] max-w-full inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-xs font-semibold tracking-tight leading-snug text-left sm:text-center cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 disabled:opacity-50 disabled:cursor-not-allowed ${EXPLICIT_TRANSITION}`;
+
+const BTN_LUMINOUS = `${BTN_BASE} lg-luminous-pill`;
+const BTN_GLASS = `${BTN_BASE} lg-scene-tile text-[#141715] dark:text-[#F3F5F3]`;
+const BTN_EMERALD_GLASS = `${BTN_BASE} bg-emerald-500/14 hover:bg-emerald-500/22 active:scale-[0.98] text-emerald-900 dark:bg-emerald-400/15 dark:hover:bg-emerald-400/24 dark:text-emerald-200 ring-1 ring-emerald-600/28 dark:ring-emerald-300/28 shadow-[inset_0_1px_0_rgba(255,255,255,0.20)]`;
+const BTN_AMBER_GLASS = `${BTN_BASE} bg-amber-500/14 hover:bg-amber-500/22 active:scale-[0.98] text-amber-900 dark:bg-amber-400/15 dark:hover:bg-amber-400/24 dark:text-amber-200 ring-1 ring-amber-600/30 dark:ring-amber-300/28 shadow-[inset_0_1px_0_rgba(255,255,255,0.20)]`;
+const BTN_ROSE_GLASS = `${BTN_BASE} bg-rose-500/12 hover:bg-rose-500/20 active:scale-[0.98] text-rose-800 dark:bg-rose-400/14 dark:hover:bg-rose-400/22 dark:text-rose-200 ring-1 ring-rose-600/25 dark:ring-rose-300/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]`;
+const BTN_ROSE_SOLID = `${BTN_BASE} bg-rose-600 hover:bg-rose-500 active:scale-[0.98] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_10px_22px_-8px_rgba(225,29,72,0.45)]`;
+
+const GLASS_FIELD_LABEL =
+  'block text-[11px] font-medium tracking-wide text-[#5C6660] dark:text-[#9CA69F] mb-1.5';
+
+const GLASS_INPUT =
+  'lg-recessed-well min-h-[44px] w-full max-w-full min-w-0 rounded-2xl px-3.5 py-2.5 text-xs text-[#141715] dark:text-[#F3F5F3] placeholder:text-[#68726C] dark:placeholder:text-[#8A938D] [color-scheme:light] dark:[color-scheme:dark] focus:outline-none focus:ring-2 focus:ring-emerald-500/50';
+
+const GLASS_CODE_WELL =
+  'lg-recessed-well w-full max-w-full min-w-0 rounded-[20px] p-3.5 font-mono text-xs leading-relaxed text-[#141715] dark:text-[#E5EAE6] placeholder:text-[#68726C] dark:placeholder:text-[#8A938D] focus:outline-none focus:ring-2 focus:ring-emerald-500/50';
+
+function SpatialPanelHeader({
+  icon,
+  title,
+  subtitle,
+  aside,
+}: {
+  icon: React.ReactNode;
+  title: React.ReactNode;
+  subtitle: React.ReactNode;
+  aside?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-black/[0.07] dark:border-white/[0.08] pb-4 min-w-0">
+      <div className="flex items-start gap-3 min-w-0 flex-1">
+        <span
+          aria-hidden="true"
+          className="lg-icon-orb h-10 w-10 rounded-full flex items-center justify-center shrink-0 text-[#1F2421] dark:text-[#E5EAE6]"
+        >
+          {icon}
+        </span>
+        <div className="min-w-0 flex-1 space-y-1">
+          <h2 className="text-base sm:text-lg font-semibold tracking-tight text-[#141715] dark:text-[#F3F5F3] [overflow-wrap:anywhere]">
+            {title}
+          </h2>
+          <p className="text-xs text-[#4A524D] dark:text-[#B7BEB9] leading-relaxed [overflow-wrap:anywhere]">
+            {subtitle}
+          </p>
+        </div>
+      </div>
+      {aside && <div className="shrink-0 max-w-full">{aside}</div>}
+    </div>
+  );
+}
 
 export function PortabilityAndSyncPage() {
   const {
@@ -357,325 +415,319 @@ export function PortabilityAndSyncPage() {
   };
 
   return (
-    <div className="space-y-8">
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1">
-            <Database className="w-4 h-4" weight="duotone" />
-            <span>100% Yours - Zero Lock-In &amp; Works Offline</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Cloud Sync, Exports &amp; Switch from Splitwise
-          </h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-            Your bills save on this device first (even on flights without Wi-Fi), sync automatically when online, and export cleanly to Excel, PDF, CSV, or encrypted backups anytime.
-          </p>
-        </div>
+    <div data-testid="portability-and-sync-page" className="space-y-6 min-w-0 lg-stage-reveal">
+      {/* Ombria Spatial Stage Header */}
+      <SpatialPageHeader
+        eyebrow="100% Yours / Zero Lock-In & Offline-First"
+        badges={
+          <>
+            <StatusBadge tone={isOnline ? 'emerald' : 'amber'}>
+              {isOnline ? (
+                <>
+                  <CloudCheck className="w-3.5 h-3.5 shrink-0" weight="bold" aria-hidden="true" />
+                  <span>Cloud Synced</span>
+                </>
+              ) : (
+                <>
+                  <CloudSlash className="w-3.5 h-3.5 shrink-0" weight="bold" aria-hidden="true" />
+                  <span>Saved Offline</span>
+                </>
+              )}
+            </StatusBadge>
+            <StatusBadge tone="slate">
+              <Database className="w-3.5 h-3.5 shrink-0" weight="duotone" aria-hidden="true" />
+              <span>PBKDF2 + AES-256-GCM</span>
+            </StatusBadge>
+            <CurrencyPrecisionPill currencyCode={activeGroup.baseCurrency} />
+          </>
+        }
+        title="Cloud Sync, Exports & Switch from Splitwise"
+        subtitle="Your bills save on this device first (even on flights without Wi-Fi), sync automatically when online, and export cleanly to Excel, PDF, CSV, or encrypted backups anytime."
+      />
 
-        {/* Active Group Target Selector */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-            Target Group:
-          </span>
-          {activeGroups.map((grp) => (
-            <button
-              key={grp.id}
-              type="button"
-              onClick={() => {
-                setActiveGroupId(grp.id);
-                setExportDirect(false);
-              }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                grp.id === activeGroup.id
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              {grp.name} ({grp.baseCurrency})
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Active Group Target Capsule Strip */}
+      <section
+        aria-label="Target group selector"
+        className="flex flex-wrap items-center gap-2 min-w-0"
+      >
+        <span className="text-xs font-medium tracking-wide text-[#5C6660] dark:text-[#9CA69F] mr-1">
+          Target Group:
+        </span>
+        {activeGroups.map((grp) => (
+          <SpatialFilterPill
+            key={grp.id}
+            active={grp.id === activeGroup.id}
+            onClick={() => {
+              setActiveGroupId(grp.id);
+              setExportDirect(false);
+            }}
+          >
+            {grp.name} ({grp.baseCurrency})
+          </SpatialFilterPill>
+        ))}
+      </section>
 
       {/* Top Row: Cloud Sync Center + Splitwise Importer */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-w-0 lg-stagger-1">
         {/* 1. Supabase Custom Schema (wise_spliter) & Google OAuth Sync Center */}
-        <div className="lg:col-span-6">
+        <div className="lg:col-span-6 min-w-0">
           <DoubleBezelCard
             testId="cloud-sync-panel"
-            className="h-full"
-            innerClassName="flex flex-col justify-between space-y-5"
+            className="h-full min-w-0"
+            innerClassName="flex flex-col justify-between gap-5 min-w-0"
           >
-            <div className="space-y-4">
-              <div className="flex items-start justify-between gap-3 border-b border-slate-200/70 dark:border-white/[0.06] pb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    {isOnline ? (
-                      <CloudCheck
-                        className="w-5 h-5 text-emerald-500"
-                        weight="duotone"
-                      />
-                    ) : (
-                      <CloudSlash
-                        className="w-5 h-5 text-amber-500"
-                        weight="duotone"
-                      />
-                    )}
-                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                      Offline Storage &amp; Cloud Sync
-                    </h2>
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Every bill saves immediately on your device and syncs automatically to your private cloud account when online.
-                  </p>
-                </div>
-                <StatusBadge tone={isOnline ? 'emerald' : 'amber'}>
-                  {isOnline ? 'Cloud Synced' : 'Saved Offline'}
-                </StatusBadge>
-              </div>
+            <div className="space-y-4 min-w-0">
+              <SpatialPanelHeader
+                icon={
+                  isOnline ? (
+                    <CloudCheck className="w-5 h-5 text-emerald-700 dark:text-emerald-300" weight="duotone" />
+                  ) : (
+                    <CloudSlash className="w-5 h-5 text-amber-700 dark:text-amber-300" weight="duotone" />
+                  )
+                }
+                title="Offline Storage & Cloud Sync"
+                subtitle="Every bill saves immediately on your device and syncs automatically to your private cloud account when online."
+                aside={
+                  <StatusBadge tone={isOnline ? 'emerald' : 'amber'}>
+                    {isOnline ? 'Cloud Synced' : 'Saved Offline'}
+                  </StatusBadge>
+                }
+              />
 
-              {/* Authenticated Identity Card */}
-              <div className="p-4 rounded-2xl bg-slate-50/90 dark:bg-slate-900/70 border border-slate-200/70 dark:border-white/[0.06] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-2xl bg-emerald-600 text-white font-bold flex items-center justify-center text-sm shadow-sm">
+              {/* Authenticated Identity Chamber */}
+              <div className="lg-recessed-well rounded-[20px] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-w-0">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    aria-hidden="true"
+                    className="lg-icon-orb w-11 h-11 rounded-2xl text-emerald-800 dark:text-emerald-200 font-semibold flex items-center justify-center text-sm shrink-0"
+                  >
                     {dataset.currentUser.avatarInitials}
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-slate-900 dark:text-white">
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
+                      <span className="text-sm font-semibold tracking-tight text-[#141715] dark:text-[#F3F5F3] [overflow-wrap:anywhere]">
                         {dataset.currentUser.fullName}
                       </span>
-                      <StatusBadge tone="emerald">
-                        Signed In
-                      </StatusBadge>
+                      <StatusBadge tone="emerald">Signed In</StatusBadge>
                     </div>
-                    <div className="text-xs font-mono text-slate-600 dark:text-slate-400">
+                    <div className="text-xs font-mono text-[#4A524D] dark:text-[#B7BEB9] [overflow-wrap:anywhere]">
                       {dataset.currentUser.email}
                     </div>
-                    <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                    <div className="text-[11px] font-mono text-[#5C6660] dark:text-[#9CA69F] [overflow-wrap:anywhere]">
                       UPI ID: {dataset.currentUser.upiId}
                     </div>
                   </div>
                 </div>
-                <div className="text-left sm:text-right font-mono text-xs">
-                  <div className="text-slate-500 dark:text-slate-400">
+                <div className="text-left sm:text-right font-mono text-xs min-w-0 shrink-0">
+                  <div className="text-[#5C6660] dark:text-[#9CA69F]">
                     Cloud Vault
                   </div>
-                  <div className="font-bold text-emerald-600 dark:text-emerald-400">
+                  <div className="font-semibold text-emerald-700 dark:text-emerald-300 [overflow-wrap:anywhere]">
                     {dataset.currentUser.supabaseSchema}
                   </div>
                 </div>
               </div>
 
-              {/* Sync Confidence Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <div className="p-3 rounded-xl border border-slate-200/70 dark:border-white/[0.06] bg-white dark:bg-slate-900/40">
-                  <div className="text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400">
-                    On-Device Copy
-                  </div>
-                  <div className="text-sm font-bold text-slate-900 dark:text-white mt-1">
-                    100% Offline Ready
-                  </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    {dataset.expenses.length} bills saved locally
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-xl border border-slate-200/70 dark:border-white/[0.06] bg-white dark:bg-slate-900/40">
-                  <div className="text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400">
-                    Cloud Protection
-                  </div>
-                  <div className="text-sm font-bold font-mono text-slate-900 dark:text-white mt-1">
-                    wise_spliter
-                  </div>
-                  <div className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5">
-                    Private per-group access
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-xl border border-slate-200/70 dark:border-white/[0.06] bg-white dark:bg-slate-900/40 col-span-2 sm:col-span-1">
-                  <div className="text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400">
-                    Offline Queue
-                  </div>
-                  <div className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-white mt-0.5">
-                    {pendingOutboxCount}{' '}
-                    <span className="text-xs font-normal text-slate-500">
-                      waiting
+              {/* Sync Confidence Metrics Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 min-w-0">
+                <SpatialMetricTile
+                  label="On-Device Copy"
+                  value={<span className="text-sm sm:text-base">100% Offline Ready</span>}
+                  sublabel={`${dataset.expenses.length} bills saved locally`}
+                  icon={<Database className="w-3.5 h-3.5" weight="duotone" />}
+                  tone="emerald"
+                />
+                <SpatialMetricTile
+                  label="Cloud Protection"
+                  value={<span className="text-sm sm:text-base font-mono">wise_spliter</span>}
+                  sublabel="Private per-group access"
+                  icon={<ShieldCheck className="w-3.5 h-3.5" weight="duotone" />}
+                  tone="neutral"
+                />
+                <SpatialMetricTile
+                  label="Offline Queue"
+                  value={
+                    <span className="text-base sm:text-lg font-mono tabular-nums">
+                      {pendingOutboxCount}{' '}
+                      <span className="text-xs font-sans font-normal text-[#5C6660] dark:text-[#9CA69F]">
+                        waiting
+                      </span>
                     </span>
-                  </div>
-                  <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">
-                    Last sync: {dataset.currentUser.lastSyncedAt.slice(0, 19).replace('T', ' ')}
-                  </div>
-                </div>
+                  }
+                  sublabel={`Last sync: ${dataset.currentUser.lastSyncedAt.slice(0, 19).replace('T', ' ')}`}
+                  icon={
+                    isOnline ? (
+                      <CloudCheck className="w-3.5 h-3.5" weight="duotone" />
+                    ) : (
+                      <CloudSlash className="w-3.5 h-3.5" weight="duotone" />
+                    )
+                  }
+                  tone={pendingOutboxCount > 0 ? 'amber' : 'neutral'}
+                />
               </div>
             </div>
 
-            {/* Action Controls */}
-            <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-200/70 dark:border-white/[0.06]">
-              <button
-                data-testid="toggle-offline-btn"
-                type="button"
-                onClick={toggleOfflineMode}
-                className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer inline-flex items-center gap-2 ${
-                  isOnline
-                    ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/30 hover:bg-amber-500/25'
-                    : 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-500/30 hover:bg-emerald-500/25'
-                }`}
-              >
-                {isOnline ? (
-                  <>
-                    <CloudSlash className="w-4 h-4" weight="bold" />
-                    <span>Test Airplane / Offline Mode</span>
-                  </>
-                ) : (
-                  <>
-                    <CloudCheck className="w-4 h-4" weight="bold" />
-                    <span>Reconnect Online</span>
-                  </>
-                )}
-              </button>
+            <div className="space-y-3 min-w-0">
+              {/* Action Controls */}
+              <div className="flex flex-wrap items-center gap-2.5 pt-3 border-t border-black/[0.07] dark:border-white/[0.08] min-w-0">
+                <button
+                  data-testid="trigger-sync-btn"
+                  type="button"
+                  onClick={triggerCloudSync}
+                  className={BTN_LUMINOUS}
+                >
+                  <CloudArrowUp className="w-4 h-4 shrink-0" weight="bold" aria-hidden="true" />
+                  <span className="[overflow-wrap:anywhere]">Sync to Cloud Now</span>
+                </button>
 
-              <button
-                data-testid="trigger-sync-btn"
-                type="button"
-                onClick={triggerCloudSync}
-                className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-colors cursor-pointer inline-flex items-center gap-2"
-              >
-                <CloudArrowUp className="w-4 h-4" weight="bold" />
-                <span>Sync to Cloud Now</span>
-              </button>
+                <button
+                  data-testid="toggle-offline-btn"
+                  type="button"
+                  onClick={toggleOfflineMode}
+                  className={isOnline ? BTN_AMBER_GLASS : BTN_EMERALD_GLASS}
+                >
+                  {isOnline ? (
+                    <>
+                      <CloudSlash className="w-4 h-4 shrink-0" weight="bold" aria-hidden="true" />
+                      <span className="[overflow-wrap:anywhere]">Test Airplane / Offline Mode</span>
+                    </>
+                  ) : (
+                    <>
+                      <CloudCheck className="w-4 h-4 shrink-0" weight="bold" aria-hidden="true" />
+                      <span className="[overflow-wrap:anywhere]">Reconnect Online</span>
+                    </>
+                  )}
+                </button>
 
-              <button
-                data-testid="google-oauth-btn"
-                type="button"
-                onClick={handleVerifyGoogleOAuth}
-                className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-300 ring-1 ring-sky-500/30 hover:bg-sky-500/25 transition-colors cursor-pointer inline-flex items-center gap-2"
-              >
-                <GoogleLogo className="w-4 h-4" weight="bold" />
-                <span>Check Google Account Sync</span>
-              </button>
-            </div>
+                <button
+                  data-testid="google-oauth-btn"
+                  type="button"
+                  onClick={handleVerifyGoogleOAuth}
+                  className={BTN_GLASS}
+                >
+                  <GoogleLogo className="w-4 h-4 shrink-0 text-emerald-700 dark:text-emerald-300" weight="bold" aria-hidden="true" />
+                  <span className="[overflow-wrap:anywhere]">Check Google Account Sync</span>
+                </button>
+              </div>
 
-            {isSignedIn && (
-              <div
-                data-testid="delete-account-panel"
-                className="pt-3 border-t border-slate-200/70 dark:border-white/[0.06] space-y-3"
-              >
-                {isConfirmingDelete ? (
-                  <>
-                    <p className="text-xs text-slate-600 dark:text-slate-300">
-                      This permanently deletes your account, signs you out and clears this device. This cannot be undone.
-                    </p>
-                    <div className="flex flex-wrap gap-3">
+              {isSignedIn && (
+                <div
+                  data-testid="delete-account-panel"
+                  className="pt-3 border-t border-black/[0.07] dark:border-white/[0.08] space-y-3 min-w-0"
+                >
+                  {isConfirmingDelete ? (
+                    <div className="lg-recessed-well rounded-[20px] p-3.5 border-rose-500/25 dark:border-rose-400/25 bg-rose-500/[0.05] space-y-3 min-w-0">
+                      <p className="text-xs text-[#4A524D] dark:text-[#B7BEB9] leading-relaxed [overflow-wrap:anywhere]">
+                        This permanently deletes your account, signs you out and clears this device. This cannot be undone.
+                      </p>
+                      <div className="flex flex-wrap gap-2.5 min-w-0">
+                        <button
+                          data-testid="delete-account-confirm-btn"
+                          type="button"
+                          disabled={isDeletingAccount}
+                          onClick={() => void handleDeleteAccount()}
+                          className={BTN_ROSE_SOLID}
+                        >
+                          <Trash className="w-4 h-4 shrink-0" weight="bold" aria-hidden="true" />
+                          <span className="[overflow-wrap:anywhere]">
+                            {isDeletingAccount ? 'Deleting...' : 'Yes, delete my account'}
+                          </span>
+                        </button>
+                        <button
+                          data-testid="delete-account-cancel-btn"
+                          type="button"
+                          disabled={isDeletingAccount}
+                          onClick={() => setIsConfirmingDelete(false)}
+                          className={BTN_GLASS}
+                        >
+                          <span className="[overflow-wrap:anywhere]">Keep my account</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2.5 min-w-0">
                       <button
-                        data-testid="delete-account-confirm-btn"
+                        data-testid="sign-out-btn"
                         type="button"
-                        disabled={isDeletingAccount}
-                        onClick={() => void handleDeleteAccount()}
-                        className="min-h-[44px] px-4 py-2.5 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white transition-colors cursor-pointer inline-flex items-center gap-2"
+                        onClick={() =>
+                          void signOut().then((signedOut) => {
+                            if (signedOut) showToast('You are signed out. This device is back to the sample ledger.');
+                          })
+                        }
+                        className={BTN_GLASS}
                       >
-                        <Trash className="w-4 h-4" weight="bold" />
-                        <span>{isDeletingAccount ? 'Deleting...' : 'Yes, delete my account'}</span>
+                        <SignOut className="w-4 h-4 shrink-0" weight="bold" aria-hidden="true" />
+                        <span>Sign out</span>
                       </button>
                       <button
-                        data-testid="delete-account-cancel-btn"
+                        data-testid="delete-account-btn"
                         type="button"
-                        disabled={isDeletingAccount}
-                        onClick={() => setIsConfirmingDelete(false)}
-                        className="min-h-[44px] px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                        onClick={() => setIsConfirmingDelete(true)}
+                        className={BTN_ROSE_GLASS}
                       >
-                        Keep my account
+                        <Trash className="w-4 h-4 shrink-0" weight="bold" aria-hidden="true" />
+                        <span>Delete account</span>
                       </button>
                     </div>
-                  </>
-                ) : (
-                  <div className="flex flex-wrap gap-3">
-                    <button
-                      data-testid="sign-out-btn"
-                      type="button"
-                      onClick={() =>
-                        void signOut().then((signedOut) => {
-                          if (signedOut) showToast('You are signed out. This device is back to the sample ledger.');
-                        })
-                      }
-                      className="min-h-[44px] px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer inline-flex items-center gap-2"
-                    >
-                      <SignOut className="w-4 h-4" weight="bold" />
-                      <span>Sign out</span>
-                    </button>
-                    <button
-                      data-testid="delete-account-btn"
-                      type="button"
-                      onClick={() => setIsConfirmingDelete(true)}
-                      className="min-h-[44px] px-4 py-2.5 rounded-xl text-xs font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-rose-500/25 hover:bg-rose-500/20 transition-colors cursor-pointer inline-flex items-center gap-2"
-                    >
-                      <Trash className="w-4 h-4" weight="bold" />
-                      <span>Delete account</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              )}
+            </div>
           </DoubleBezelCard>
         </div>
 
         {/* 2. One-Click Splitwise CSV & JSON Importer */}
-        <div className="lg:col-span-6">
+        <div className="lg:col-span-6 min-w-0">
           <DoubleBezelCard
             testId="splitwise-importer-panel"
-            className="h-full"
-            innerClassName="flex flex-col justify-between space-y-4"
+            className="h-full min-w-0"
+            innerClassName="flex flex-col justify-between gap-4 min-w-0"
           >
-            <div className="space-y-4">
-              <div className="flex items-start justify-between gap-3 border-b border-slate-200/70 dark:border-white/[0.06] pb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <UploadSimple
-                      className="w-5 h-5 text-emerald-500"
-                      weight="bold"
-                    />
-                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                      One-Click Splitwise CSV & JSON Importer
-                    </h2>
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            <div className="space-y-4 min-w-0">
+              <SpatialPanelHeader
+                icon={<UploadSimple className="w-5 h-5 text-emerald-700 dark:text-emerald-300" weight="bold" />}
+                title="One-Click Splitwise CSV & JSON Importer"
+                subtitle={
+                  <>
                     Parse exported Splitwise spreadsheets and map member net columns into integer minor-unit splits in{' '}
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    <span className="font-semibold text-[#141715] dark:text-[#F3F5F3]">
                       {activeGroup.name}
                     </span>
                     .
-                  </p>
-                </div>
+                  </>
+                }
+              />
+
+              <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+                <label className={`${BTN_GLASS} focus-within:ring-2 focus-within:ring-emerald-500/60`}>
+                  <UploadSimple className="w-4 h-4 shrink-0 text-emerald-700 dark:text-emerald-300" weight="bold" aria-hidden="true" />
+                  <span className="[overflow-wrap:anywhere]">Choose Splitwise export (.csv or .json)</span>
+                  <input
+                    data-testid="splitwise-file-input"
+                    type="file"
+                    accept=".csv,.json,text/csv,application/json"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      void handleSplitwiseFile(file);
+                    }}
+                  />
+                </label>
+
                 <button
                   data-testid="load-sample-splitwise-btn"
                   type="button"
                   onClick={handleLoadSampleSplitwise}
-                  className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-300 ring-1 ring-sky-500/30 hover:bg-sky-500/25 transition-colors cursor-pointer shrink-0 inline-flex items-center gap-1.5"
+                  className={BTN_EMERALD_GLASS}
                 >
-                  <Sparkle className="w-4 h-4" weight="fill" />
-                  <span>Load Sample Splitwise CSV</span>
+                  <Sparkle className="w-4 h-4 shrink-0" weight="fill" aria-hidden="true" />
+                  <span className="[overflow-wrap:anywhere]">Load Sample Splitwise CSV</span>
                 </button>
               </div>
 
-              <label className="min-h-[44px] px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer inline-flex items-center gap-2 focus-within:ring-2 focus-within:ring-emerald-500">
-                <UploadSimple className="w-4 h-4" weight="bold" />
-                <span>Choose Splitwise export (.csv or .json)</span>
-                <input
-                  data-testid="splitwise-file-input"
-                  type="file"
-                  accept=".csv,.json,text/csv,application/json"
-                  className="sr-only"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    e.target.value = '';
-                    void handleSplitwiseFile(file);
-                  }}
-                />
-              </label>
-
-              <div>
-                <label className="block text-[11px] font-mono uppercase text-slate-500 dark:text-slate-400 mb-1">
+              <div className="min-w-0">
+                <label className={GLASS_FIELD_LABEL}>
                   Splitwise CSV Payload (Editable)
                 </label>
                 <textarea
@@ -683,66 +735,74 @@ export function PortabilityAndSyncPage() {
                   rows={3}
                   value={splitwiseCsvInput}
                   onChange={(e) => setSplitwiseCsvInput(e.target.value)}
-                  className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-white/10 font-mono text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className={`${GLASS_CODE_WELL} [overflow-wrap:anywhere]`}
                 />
               </div>
 
               {/* Live Parsed Preview */}
-              <div className="rounded-xl border border-slate-200/70 dark:border-white/[0.06] bg-slate-50/60 dark:bg-slate-900/50 p-3 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+              <div className="lg-recessed-well rounded-[20px] p-3.5 space-y-2.5 min-w-0">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs min-w-0">
+                  <span className="font-semibold text-[#141715] dark:text-[#F3F5F3] [overflow-wrap:anywhere]">
                     Live Parsed Preview ({parsedSplitwise.expenses.length} bills, {parsedSplitwise.payments.length} payments detected)
                   </span>
-                  <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                  <span className="font-mono text-[11px] text-[#5C6660] dark:text-[#9CA69F] [overflow-wrap:anywhere]">
                     Members: {parsedSplitwise.memberNames.join(', ') || 'None'}
                   </span>
                 </div>
 
-                <div className="divide-y divide-slate-200/60 dark:divide-white/[0.06]">
-                  {parsedSplitwise.expenses.map((item, idx) => (
-                    <div
-                      key={`${item.title}-${idx}`}
-                      className="py-2 flex items-center justify-between text-xs"
-                    >
-                      <div>
-                        <span className="font-semibold text-slate-900 dark:text-white">
-                          {item.title}
-                        </span>
-                        <span className="ml-2 font-mono text-[11px] text-slate-500">
-                          ({item.date} / Paid by {item.payers[0]?.memberName})
-                        </span>
+                {parsedSplitwise.expenses.length + parsedSplitwise.payments.length === 0 ? (
+                  <p className="text-xs text-[#5C6660] dark:text-[#9CA69F] py-1">
+                    Choose a Splitwise CSV or JSON file above, or load the sample payload to preview detected rows.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-black/[0.06] dark:divide-white/[0.07] max-h-48 overflow-y-auto pr-0.5 min-w-0">
+                    {parsedSplitwise.expenses.map((item, idx) => (
+                      <div
+                        key={`${item.title}-${idx}`}
+                        className="py-2 flex items-start justify-between gap-3 text-xs min-w-0"
+                      >
+                        <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                          <span className="font-semibold text-[#141715] dark:text-[#F3F5F3]">
+                            {item.title}
+                          </span>
+                          <span className="ml-1.5 font-mono text-[11px] text-[#5C6660] dark:text-[#9CA69F]">
+                            ({item.date} / Paid by {item.payers[0]?.memberName})
+                          </span>
+                        </div>
+                        <CurrencyAmount
+                          minorAmount={item.amountMinor}
+                          currencyCode={item.currency}
+                          className="font-semibold text-emerald-700 dark:text-emerald-300 shrink-0"
+                        />
                       </div>
-                      <CurrencyAmount
-                        minorAmount={item.amountMinor}
-                        currencyCode={item.currency}
-                        className="font-bold text-emerald-600 dark:text-emerald-400"
-                      />
-                    </div>
-                  ))}
-                  {parsedSplitwise.payments.map((pay, idx) => (
-                    <div
-                      key={`pay-${pay.date}-${idx}`}
-                      className="py-2 flex items-center justify-between text-xs"
-                    >
-                      <span className="text-slate-700 dark:text-slate-300">
-                        Payment: {pay.fromName} paid {pay.toName}
-                        <span className="ml-2 font-mono text-[11px] text-slate-500">({pay.date})</span>
-                      </span>
-                      <CurrencyAmount
-                        minorAmount={pay.amountMinor}
-                        currencyCode={pay.currency}
-                        className="font-bold text-slate-700 dark:text-slate-200"
-                      />
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                    {parsedSplitwise.payments.map((pay, idx) => (
+                      <div
+                        key={`pay-${pay.date}-${idx}`}
+                        className="py-2 flex items-start justify-between gap-3 text-xs min-w-0"
+                      >
+                        <span className="text-[#4A524D] dark:text-[#B7BEB9] min-w-0 flex-1 [overflow-wrap:anywhere]">
+                          Payment: {pay.fromName} paid {pay.toName}
+                          <span className="ml-1.5 font-mono text-[11px] text-[#5C6660] dark:text-[#9CA69F]">
+                            ({pay.date})
+                          </span>
+                        </span>
+                        <CurrencyAmount
+                          minorAmount={pay.amountMinor}
+                          currencyCode={pay.currency}
+                          className="font-semibold text-[#141715] dark:text-[#F3F5F3] shrink-0"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {parsedSplitwise.error && (
                 <p
                   data-testid="splitwise-parse-error"
                   role="alert"
-                  className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-medium text-rose-700 dark:text-rose-300"
+                  className="lg-recessed-well rounded-2xl p-3 border-rose-500/30 dark:border-rose-400/28 bg-rose-500/10 text-xs font-medium text-rose-800 dark:text-rose-200 [overflow-wrap:anywhere]"
                 >
                   {parsedSplitwise.error}
                 </p>
@@ -751,12 +811,12 @@ export function PortabilityAndSyncPage() {
               {skippedRows.length > 0 && (
                 <div
                   data-testid="splitwise-skipped-rows"
-                  className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-1 text-xs text-amber-800 dark:text-amber-300"
+                  className="lg-recessed-well rounded-2xl border-amber-500/30 dark:border-amber-400/28 bg-amber-500/10 p-3 space-y-1 text-xs text-amber-900 dark:text-amber-200 min-w-0"
                 >
                   <p className="font-semibold">
                     {skippedRows.length === 1 ? '1 row was' : `${skippedRows.length} rows were`} not imported:
                   </p>
-                  <ul className="list-disc pl-5 space-y-0.5">
+                  <ul className="list-disc pl-5 space-y-0.5 [overflow-wrap:anywhere]">
                     {skippedRows.map((x) => (
                       <li key={`${x.line}-${x.title}`}>
                         Line {x.line}, {x.title}: {x.reason}.
@@ -770,12 +830,12 @@ export function PortabilityAndSyncPage() {
                 <div
                   data-testid="splitwise-balance-mismatch"
                   role="alert"
-                  className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 space-y-1 text-xs text-rose-700 dark:text-rose-300"
+                  className="lg-recessed-well rounded-2xl border-rose-500/30 dark:border-rose-400/28 bg-rose-500/10 p-3 space-y-1 text-xs text-rose-800 dark:text-rose-200 min-w-0"
                 >
                   <p className="font-semibold">
                     These balances would not match the Total balance in your Splitwise file:
                   </p>
-                  <ul className="list-disc pl-5 space-y-0.5">
+                  <ul className="list-disc pl-5 space-y-0.5 [overflow-wrap:anywhere]">
                     {parsedSplitwise.balanceMismatches.map((m) => (
                       <li key={`${m.currency}-${m.memberName}`}>
                         {m.memberName} ({m.currency}): Splitwise says {formatMinorToMajor(m.expectedMinor, m.currency, false)}, this import gives {formatMinorToMajor(m.importedMinor, m.currency, false)}.
@@ -788,17 +848,19 @@ export function PortabilityAndSyncPage() {
               {unmatchedNames.length > 0 && (
                 <div
                   data-testid="splitwise-member-mapping"
-                  className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-2"
+                  className="lg-recessed-well rounded-2xl border-amber-500/30 dark:border-amber-400/28 bg-amber-500/[0.08] p-3.5 space-y-2.5 min-w-0"
                 >
-                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                  <p className="text-xs font-semibold text-amber-900 dark:text-amber-200 [overflow-wrap:anywhere]">
                     {unmatchedNames.length === 1 ? 'This name is' : 'These names are'} not in {activeGroup.name} yet. Choose who each one is, or add them as new members.
                   </p>
                   {unmatchedNames.map((name, idx) => (
                     <label
                       key={name}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs min-w-0"
                     >
-                      <span className="font-semibold text-slate-900 dark:text-white">{name}</span>
+                      <span className="font-semibold text-[#141715] dark:text-[#F3F5F3] [overflow-wrap:anywhere]">
+                        {name}
+                      </span>
                       <select
                         data-testid={`splitwise-map-${idx}`}
                         aria-label={`Who is ${name} in ${activeGroup.name}?`}
@@ -806,7 +868,7 @@ export function PortabilityAndSyncPage() {
                         onChange={(e) =>
                           setNameMapping((prev) => ({ ...prev, [name]: e.target.value }))
                         }
-                        className="min-h-[44px] px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-300/80 dark:border-white/10 text-xs text-slate-900 dark:text-white"
+                        className={`${GLASS_INPUT} sm:w-auto sm:min-w-[13rem]`}
                       >
                         <option value="">Add {name} as a new member</option>
                         {pickableMembers(activeGroup.members).map((m) => (
@@ -823,18 +885,18 @@ export function PortabilityAndSyncPage() {
               {currenciesNeedingRate.length > 0 && (
                 <div
                   data-testid="splitwise-fx-rates"
-                  className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-2"
+                  className="lg-recessed-well rounded-2xl border-amber-500/30 dark:border-amber-400/28 bg-amber-500/[0.08] p-3.5 space-y-2.5 min-w-0"
                 >
-                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                  <p className="text-xs font-semibold text-amber-900 dark:text-amber-200 [overflow-wrap:anywhere]">
                     No exchange rate is available for {currenciesNeedingRate.join(', ')}. Enter the rate into {activeGroup.baseCurrency} to import.
                   </p>
                   {currenciesNeedingRate.map((code) => (
                     <label
                       key={code}
-                      className="flex items-center justify-between gap-2 text-xs text-slate-900 dark:text-white"
+                      className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#141715] dark:text-[#F3F5F3] min-w-0"
                     >
-                      <span className="font-semibold">1 {code} =</span>
-                      <span className="flex items-center gap-2">
+                      <span className="font-semibold font-mono">1 {code} =</span>
+                      <span className="flex items-center gap-2 min-w-0">
                         <input
                           type="number"
                           step="any"
@@ -843,9 +905,11 @@ export function PortabilityAndSyncPage() {
                           aria-label={`Exchange rate for 1 ${code} in ${activeGroup.baseCurrency}`}
                           value={manualRates[code] ?? ''}
                           onChange={(e) => setManualRates((prev) => ({ ...prev, [code]: e.target.value }))}
-                          className="min-h-[44px] w-32 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-300/80 dark:border-white/10 font-mono tabular-nums"
+                          className={`${GLASS_INPUT} w-28 sm:w-32 font-mono tabular-nums`}
                         />
-                        <span className="font-mono">{activeGroup.baseCurrency}</span>
+                        <span className="font-mono text-[#4A524D] dark:text-[#B7BEB9] shrink-0">
+                          {activeGroup.baseCurrency}
+                        </span>
                       </span>
                     </label>
                   ))}
@@ -853,12 +917,12 @@ export function PortabilityAndSyncPage() {
               )}
             </div>
 
-            <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-200/70 dark:border-white/[0.06]">
-              <div className="text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-black/[0.07] dark:border-white/[0.08] min-w-0">
+              <div className="text-xs text-[#4A524D] dark:text-[#B7BEB9] min-w-0 flex-1 [overflow-wrap:anywhere]">
                 {lastImport !== null ? (
                   <span
                     data-testid="splitwise-import-result"
-                    className="text-emerald-600 dark:text-emerald-400 font-semibold"
+                    className="text-emerald-700 dark:text-emerald-300 font-semibold"
                   >
                     Imported {lastImport.expenses} bills and {lastImport.payments} payments into {activeGroup.name}.
                     {lastImport.skipped.length > 0 &&
@@ -873,10 +937,10 @@ export function PortabilityAndSyncPage() {
                 type="button"
                 onClick={handleConfirmSplitwiseImport}
                 disabled={stillMissingRates.length > 0}
-                className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-colors cursor-pointer inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className={BTN_LUMINOUS}
               >
-                <UploadSimple className="w-4 h-4" weight="bold" />
-                <span>Import into Active Group</span>
+                <UploadSimple className="w-4 h-4 shrink-0" weight="bold" aria-hidden="true" />
+                <span className="[overflow-wrap:anywhere]">Import into Active Group</span>
               </button>
             </div>
           </DoubleBezelCard>
@@ -884,40 +948,33 @@ export function PortabilityAndSyncPage() {
       </div>
 
       {/* Bottom Row: CSV & Printable Statement Exporter + Encrypted .wisesplit Backup & Restore */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-w-0 lg-stagger-2">
         {/* 3. CSV & Printable Statement Exporter */}
-        <div className="lg:col-span-6">
+        <div className="lg:col-span-6 min-w-0">
           <DoubleBezelCard
             testId="csv-export-panel"
-            className="h-full"
-            innerClassName="flex flex-col justify-between space-y-4"
+            className="h-full min-w-0"
+            innerClassName="flex flex-col justify-between gap-4 min-w-0"
           >
-            <div className="space-y-4">
-              <div className="flex items-start justify-between gap-3 border-b border-slate-200/70 dark:border-white/[0.06] pb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <FileCsv
-                      className="w-5 h-5 text-emerald-500"
-                      weight="duotone"
-                    />
-                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                      CSV & Printable Statement Exporter
-                    </h2>
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            <div className="space-y-4 min-w-0">
+              <SpatialPanelHeader
+                icon={<FileCsv className="w-5 h-5 text-emerald-700 dark:text-emerald-300" weight="duotone" />}
+                title="CSV & Printable Statement Exporter"
+                subtitle={
+                  <>
                     Live accounting export for{' '}
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    <span className="font-semibold text-[#141715] dark:text-[#F3F5F3]">
                       {exportName}
                     </span>{' '}
                     including member net columns and recorded settlements.
-                  </p>
-                </div>
-                <CurrencyPrecisionPill currencyCode={exportSelection.scope.baseCurrency} />
-              </div>
+                  </>
+                }
+                aside={<CurrencyPrecisionPill currencyCode={exportSelection.scope.baseCurrency} />}
+              />
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400">What to export</span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs min-w-0">
+                <label className="flex flex-col min-w-0">
+                  <span className={GLASS_FIELD_LABEL}>What to export</span>
                   <select
                     data-testid="export-scope-select"
                     value={exportDirect ? DIRECT_EXPORT_SCOPE : activeGroup.id}
@@ -929,7 +986,7 @@ export function PortabilityAndSyncPage() {
                         setActiveGroupId(e.target.value);
                       }
                     }}
-                    className="min-h-[44px] px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300/80 dark:border-white/10 text-slate-900 dark:text-white"
+                    className={GLASS_INPUT}
                   >
                     {activeGroups.map((grp) => (
                       <option key={grp.id} value={grp.id}>
@@ -939,131 +996,123 @@ export function PortabilityAndSyncPage() {
                     <option value={DIRECT_EXPORT_SCOPE}>Direct bills (no group)</option>
                   </select>
                 </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400">From</span>
+                <label className="flex flex-col min-w-0">
+                  <span className={GLASS_FIELD_LABEL}>From</span>
                   <input
                     data-testid="export-from-date"
                     type="date"
                     value={exportFrom}
                     onChange={(e) => setExportFrom(e.target.value)}
-                    className="min-h-[44px] px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300/80 dark:border-white/10 text-slate-900 dark:text-white"
+                    className={GLASS_INPUT}
                   />
                 </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400">To</span>
+                <label className="flex flex-col min-w-0">
+                  <span className={GLASS_FIELD_LABEL}>To</span>
                   <input
                     data-testid="export-to-date"
                     type="date"
                     value={exportTo}
                     onChange={(e) => setExportTo(e.target.value)}
-                    className="min-h-[44px] px-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300/80 dark:border-white/10 text-slate-900 dark:text-white"
+                    className={GLASS_INPUT}
                   />
                 </label>
               </div>
               {exportRangeInvalid && (
-                <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                <p className="lg-recessed-well rounded-2xl p-3 border-amber-500/30 dark:border-amber-400/28 bg-amber-500/10 text-xs font-medium text-amber-900 dark:text-amber-200 [overflow-wrap:anywhere]">
                   The start date is after the end date, so nothing falls in this range.
                 </p>
               )}
 
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] font-mono uppercase text-slate-500 dark:text-slate-400">
+              <div className="min-w-0 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 min-w-0">
+                  <span className="text-[11px] font-mono text-[#5C6660] dark:text-[#9CA69F] [overflow-wrap:anywhere]">
                     Live Generated CSV Stream ({exportSelection.expenses.length} expenses, {exportSelection.settlements.length} settlements)
                   </span>
                   <button
                     type="button"
                     onClick={handleCopyCsv}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                    className={`lg-scene-tile min-h-[36px] inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-[#141715] dark:text-[#F3F5F3] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 ${EXPLICIT_TRANSITION}`}
                   >
-                    <Copy className="w-3.5 h-3.5" />
+                    <Copy className="w-3.5 h-3.5 shrink-0 text-emerald-700 dark:text-emerald-300" aria-hidden="true" />
                     <span>Copy CSV</span>
                   </button>
                 </div>
                 <pre
                   data-testid="csv-export-preview"
-                  className="p-3.5 rounded-xl bg-slate-900 text-slate-100 font-mono text-xs overflow-x-auto max-h-56 leading-relaxed border border-slate-800"
+                  className={`${GLASS_CODE_WELL} overflow-x-auto max-h-56`}
                 >
                   {csvExportText}
                 </pre>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-200/70 dark:border-white/[0.06]">
+            <div className="flex flex-wrap items-center gap-2.5 pt-3 border-t border-black/[0.07] dark:border-white/[0.08] min-w-0">
               <button
                 type="button"
                 onClick={handleDownloadCsv}
-                className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-colors cursor-pointer inline-flex items-center gap-2"
+                className={BTN_LUMINOUS}
               >
-                <DownloadSimple className="w-4 h-4" weight="bold" />
-                <span>Download .CSV Spreadsheet</span>
+                <DownloadSimple className="w-4 h-4 shrink-0" weight="bold" aria-hidden="true" />
+                <span className="[overflow-wrap:anywhere]">Download .CSV Spreadsheet</span>
               </button>
 
               <button
                 data-testid="download-xlsx-btn"
                 type="button"
                 onClick={handleDownloadExcel}
-                className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white shadow-sm transition-colors cursor-pointer inline-flex items-center gap-2"
+                className={BTN_GLASS}
               >
-                <FileXls className="w-4 h-4" weight="bold" />
-                <span>Download Excel (.xlsx)</span>
+                <FileXls className="w-4 h-4 shrink-0 text-emerald-700 dark:text-emerald-300" weight="bold" aria-hidden="true" />
+                <span className="[overflow-wrap:anywhere]">Download Excel (.xlsx)</span>
               </button>
 
               <button
                 data-testid="download-pdf-btn"
                 type="button"
                 onClick={handleDownloadPdf}
-                className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition-colors cursor-pointer inline-flex items-center gap-2"
+                className={BTN_GLASS}
               >
-                <FilePdf className="w-4 h-4" weight="bold" />
-                <span>Download PDF (.pdf)</span>
+                <FilePdf className="w-4 h-4 shrink-0 text-rose-700 dark:text-rose-300" weight="bold" aria-hidden="true" />
+                <span className="[overflow-wrap:anywhere]">Download PDF (.pdf)</span>
               </button>
 
               <button
                 type="button"
                 onClick={handlePrintStatement}
-                className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer inline-flex items-center gap-2"
+                className={BTN_GLASS}
               >
-                <Printer className="w-4 h-4" weight="duotone" />
-                <span>Print / Save PDF Statement</span>
+                <Printer className="w-4 h-4 shrink-0 text-[#4A524D] dark:text-[#B7BEB9]" weight="duotone" aria-hidden="true" />
+                <span className="[overflow-wrap:anywhere]">Print / Save PDF Statement</span>
               </button>
             </div>
           </DoubleBezelCard>
         </div>
 
         {/* 4. PBKDF2 + AES-256-GCM Encrypted .wisesplit Backup & Restore */}
-        <div className="lg:col-span-6">
+        <div className="lg:col-span-6 min-w-0">
           <DoubleBezelCard
             testId="encrypted-backup-panel"
-            className="h-full"
-            innerClassName="flex flex-col justify-between space-y-4"
+            className="h-full min-w-0"
+            innerClassName="flex flex-col justify-between gap-4 min-w-0"
           >
-            <div className="space-y-4">
-              <div className="flex items-start justify-between gap-3 border-b border-slate-200/70 dark:border-white/[0.06] pb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck
-                      className="w-5 h-5 text-emerald-500"
-                      weight="duotone"
-                    />
-                    <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                      Password-Protected Backup File (.wisesplit)
-                    </h2>
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Lock a private backup of all your groups, bills, and settlements with your own passphrase (AES-256-GCM encrypted in your browser).
-                  </p>
-                </div>
-                <StatusBadge tone="emerald">Encrypted Vault</StatusBadge>
-              </div>
+            <div className="space-y-4 min-w-0">
+              <SpatialPanelHeader
+                icon={<ShieldCheck className="w-5 h-5 text-emerald-700 dark:text-emerald-300" weight="duotone" />}
+                title="Password-Protected Backup File (.wisesplit)"
+                subtitle="Lock a private backup of all your groups, bills, and settlements with your own passphrase (AES-256-GCM encrypted in your browser)."
+                aside={<StatusBadge tone="emerald">Encrypted Vault</StatusBadge>}
+              />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label className="block">
-                  <span className="block text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
+                <label className="block min-w-0">
+                  <span className={GLASS_FIELD_LABEL}>
                     Backup Passphrase
                   </span>
-                  <span className="relative block">
-                    <Key className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <span className="relative block min-w-0">
+                    <Key
+                      className="w-4 h-4 text-[#68726C] dark:text-[#8A938D] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                      aria-hidden="true"
+                    />
                     <input
                       data-testid="backup-passphrase-input"
                       type="password"
@@ -1071,12 +1120,12 @@ export function PortabilityAndSyncPage() {
                       value={passphrase}
                       onChange={(e) => setPassphrase(e.target.value)}
                       placeholder={`At least ${MIN_BACKUP_PASSPHRASE_LENGTH} characters`}
-                      className="w-full min-h-[44px] pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300/80 dark:border-white/10 font-mono text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      className={`${GLASS_INPUT} pl-10 font-mono`}
                     />
                   </span>
                 </label>
-                <label className="block">
-                  <span className="block text-[11px] font-semibold uppercase text-slate-500 dark:text-slate-400 mb-1">
+                <label className="block min-w-0">
+                  <span className={GLASS_FIELD_LABEL}>
                     Confirm Passphrase
                   </span>
                   <input
@@ -1086,33 +1135,39 @@ export function PortabilityAndSyncPage() {
                     value={passphraseConfirm}
                     onChange={(e) => setPassphraseConfirm(e.target.value)}
                     placeholder="Type it again (not needed to restore)"
-                    className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300/80 dark:border-white/10 font-mono text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    className={`${GLASS_INPUT} font-mono`}
                   />
                 </label>
               </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              <p className="text-[11px] text-[#5C6660] dark:text-[#9CA69F] [overflow-wrap:anywhere]">
                 Nobody can recover this passphrase for you. Without it the backup cannot be opened.
               </p>
 
-              <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300 cursor-pointer min-h-[44px]">
+              <label className="lg-recessed-well rounded-2xl px-3.5 py-2.5 flex items-center gap-3 text-xs text-[#2B312D] dark:text-[#DCE2DD] cursor-pointer min-h-[44px] min-w-0">
                 <input
                   data-testid="backup-include-receipts-toggle"
                   type="checkbox"
                   checked={includeReceipts}
                   onChange={(e) => setIncludeReceipts(e.target.checked)}
-                  className="w-4 h-4 accent-emerald-600"
+                  className="w-4 h-4 shrink-0 accent-emerald-600"
                 />
-                <span>Include receipt photos stored on this device (makes the file larger)</span>
+                <span className="min-w-0 [overflow-wrap:anywhere]">
+                  Include receipt photos stored on this device (makes the file larger)
+                </span>
               </label>
 
-              <div>
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                  <span className="block text-[11px] font-mono uppercase text-slate-500 dark:text-slate-400">
+              <div className="min-w-0 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 min-w-0">
+                  <span className="block text-[11px] font-mono text-[#5C6660] dark:text-[#9CA69F] [overflow-wrap:anywhere]">
                     Encrypted .wisesplit Ciphertext Bundle
                   </span>
-                  <label className="min-h-[44px] inline-flex items-center gap-1.5 text-xs font-semibold text-sky-700 dark:text-sky-300 cursor-pointer hover:underline focus-within:ring-2 focus-within:ring-emerald-500 rounded-lg px-2">
-                    <UploadSimple className="w-4 h-4" weight="bold" />
-                    <span>{restoreFileName ? `Using ${restoreFileName}` : 'Choose a backup file to restore (.wisesplit or .json)'}</span>
+                  <label
+                    className={`lg-scene-tile min-h-[40px] max-w-full inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold text-[#141715] dark:text-[#F3F5F3] cursor-pointer focus-within:ring-2 focus-within:ring-emerald-500/60 ${EXPLICIT_TRANSITION}`}
+                  >
+                    <UploadSimple className="w-4 h-4 shrink-0 text-emerald-700 dark:text-emerald-300" weight="bold" aria-hidden="true" />
+                    <span className="min-w-0 [overflow-wrap:anywhere]">
+                      {restoreFileName ? `Using ${restoreFileName}` : 'Choose a backup file to restore (.wisesplit or .json)'}
+                    </span>
                     <input
                       data-testid="restore-backup-file-input"
                       type="file"
@@ -1136,46 +1191,54 @@ export function PortabilityAndSyncPage() {
                     setEncryptedOutput(e.target.value);
                     setRestoreFileName(null);
                   }}
-                  placeholder='Generate a backup here, or choose a .wisesplit file to restore it.'
-                  className="w-full p-3 rounded-xl bg-slate-900 text-emerald-300 font-mono text-xs border border-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="Generate a backup here, or choose a .wisesplit file to restore it."
+                  className={`${GLASS_CODE_WELL} [overflow-wrap:anywhere] break-all`}
                 />
               </div>
 
               {isPlainBackup && (
                 <p
                   data-testid="backup-plain-note"
-                  className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs font-medium text-amber-800 dark:text-amber-300"
+                  className="lg-recessed-well rounded-2xl p-3 border-amber-500/30 dark:border-amber-400/28 bg-amber-500/10 text-xs font-medium text-amber-900 dark:text-amber-200 [overflow-wrap:anywhere]"
                 >
                   This backup file is not encrypted, so anyone who has the file can read it. It restores without a passphrase. Delete the file once you no longer need it.
                 </p>
               )}
 
               {restoreVerificationMessage && (
-                <div data-testid="backup-restore-success" role="status" className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs font-medium text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 shrink-0" weight="fill" />
-                  <span>{restoreVerificationMessage}</span>
+                <div
+                  data-testid="backup-restore-success"
+                  role="status"
+                  className="lg-recessed-well rounded-2xl p-3 border-emerald-500/30 dark:border-emerald-400/28 bg-emerald-500/10 text-xs font-medium text-emerald-800 dark:text-emerald-200 flex items-start gap-2 min-w-0"
+                >
+                  <CheckCircle className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" weight="fill" aria-hidden="true" />
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{restoreVerificationMessage}</span>
                 </div>
               )}
 
               {backupError && (
-                <div data-testid="backup-error" role="alert" className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs font-medium text-rose-700 dark:text-rose-300 flex items-center gap-2">
-                  <WarningCircle className="w-4 h-4 shrink-0" weight="fill" />
-                  <span>{backupError}</span>
+                <div
+                  data-testid="backup-error"
+                  role="alert"
+                  className="lg-recessed-well rounded-2xl p-3 border-rose-500/30 dark:border-rose-400/28 bg-rose-500/10 text-xs font-medium text-rose-800 dark:text-rose-200 flex items-start gap-2 min-w-0"
+                >
+                  <WarningCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" weight="fill" aria-hidden="true" />
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{backupError}</span>
                 </div>
               )}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/70 dark:border-white/[0.06]">
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2.5 pt-3 border-t border-black/[0.07] dark:border-white/[0.08] min-w-0">
+              <div className="flex flex-wrap items-center gap-2.5 min-w-0">
                 <button
                   data-testid="generate-encrypted-backup-btn"
                   type="button"
                   disabled={isEncrypting}
                   onClick={handleGenerateEncryptedBackup}
-                  className="px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                  className={BTN_LUMINOUS}
                 >
-                  <LockKey className="w-4 h-4" weight="bold" />
-                  <span>Generate AES-256-GCM Encrypted Backup</span>
+                  <LockKey className="w-4 h-4 shrink-0" weight="bold" aria-hidden="true" />
+                  <span className="[overflow-wrap:anywhere]">Generate AES-256-GCM Encrypted Backup</span>
                 </button>
 
                 {encryptedOutput && (
@@ -1192,10 +1255,10 @@ export function PortabilityAndSyncPage() {
                         showToast('Exported encrypted .wisesplit backup file.');
                       });
                     }}
-                    className="px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                    className={BTN_EMERALD_GLASS}
                   >
-                    <DownloadSimple className="w-4 h-4" weight="bold" />
-                    <span>Download / Share .wisesplit</span>
+                    <DownloadSimple className="w-4 h-4 shrink-0" weight="bold" aria-hidden="true" />
+                    <span className="[overflow-wrap:anywhere]">Download / Share .wisesplit</span>
                   </button>
                 )}
 
@@ -1204,10 +1267,10 @@ export function PortabilityAndSyncPage() {
                   type="button"
                   disabled={isRestoring}
                   onClick={handleDecryptAndRestore}
-                  className="px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-300 ring-1 ring-sky-500/30 hover:bg-sky-500/25 transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                  className={BTN_GLASS}
                 >
-                  <ShieldCheck className="w-4 h-4" weight="bold" />
-                  <span>Decrypt & Verify Restore</span>
+                  <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-700 dark:text-emerald-300" weight="bold" aria-hidden="true" />
+                  <span className="[overflow-wrap:anywhere]">Decrypt & Verify Restore</span>
                 </button>
               </div>
 
@@ -1215,10 +1278,10 @@ export function PortabilityAndSyncPage() {
                 data-testid="reset-mock-data-btn"
                 type="button"
                 onClick={resetToInitialMockData}
-                className="px-3 py-2 rounded-xl text-xs font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-rose-500/25 hover:bg-rose-500/20 transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                className={BTN_ROSE_GLASS}
               >
-                <ArrowCounterClockwise className="w-4 h-4" weight="bold" />
-                <span>Reset Demo to Initial mock-ledger-data.json</span>
+                <ArrowCounterClockwise className="w-4 h-4 shrink-0" weight="bold" aria-hidden="true" />
+                <span className="[overflow-wrap:anywhere]">Reset Demo to Initial mock-ledger-data.json</span>
               </button>
             </div>
           </DoubleBezelCard>

@@ -608,140 +608,155 @@ export function FriendsAndSettlePage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Top Cross-Group Net Position Banner */}
-      <DoubleBezelCard
-        innerClassName="p-5 sm:p-6 bg-gradient-to-br from-white via-slate-50/70 to-emerald-500/[0.04] dark:from-[#111827] dark:via-[#111827] dark:to-emerald-950/20"
-      >
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
-          <div className="space-y-2 max-w-2xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge tone="emerald">
-                <ShieldCheck size={14} weight="duotone" />
-                Smart Cross-Group Netting
-              </StatusBadge>
-              <StatusBadge tone="blue">
-                <Lightning size={14} weight="duotone" />
-                Instant UPI QR &amp; WhatsApp Share
-              </StatusBadge>
-            </div>
-            <h1
-              data-testid="friends-plain-english-summary"
-              className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white"
-            >
-              {crossGroupTotals.netOverallMinor > 0 ? (
-                <>
-                  Friends owe you{' '}
-                  <span className="text-emerald-600 dark:text-emerald-400 font-mono tabular-nums whitespace-nowrap">
-                    +{formatMinorToMajor(crossGroupTotals.netOverallMinor, displayCurrency)}
-                  </span>{' '}
-                  overall
-                </>
-              ) : crossGroupTotals.netOverallMinor < 0 ? (
-                <>
-                  You owe friends{' '}
-                  <span className="text-rose-600 dark:text-rose-400 font-mono tabular-nums whitespace-nowrap">
-                    {formatMinorToMajor(Math.abs(crossGroupTotals.netOverallMinor), displayCurrency)}
-                  </span>{' '}
-                  overall
-                </>
-              ) : (
-                <span className="text-emerald-600 dark:text-emerald-400">
-                  You and your friends are all settled up!
-                </span>
-              )}
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-              Shared group balances with the same friend combine automatically (without ever mixing strangers from different groups). Settle all shared groups in 1 tap, scan a UPI QR code, or send a clean WhatsApp summary.
-            </p>
-            {crossGroupTotals.rateLabel && (
-              <p data-testid="friends-fx-label" className="text-[11px] text-slate-500 dark:text-slate-400">
-                {crossGroupTotals.rateLabel}
-              </p>
-            )}
-            {crossGroupTotals.unconvertedTotals.length > 0 && (
-              <p data-testid="friends-unconverted-balances" className="text-[11px] text-amber-700 dark:text-amber-300">
-                Not included in the {displayCurrency} totals (no exchange rate):{' '}
-                {crossGroupTotals.unconvertedTotals
-                  .map(([code, minor]) => `${minor > 0 ? '+' : ''}${formatMinorToMajor(minor, code)} ${code}`)
-                  .join(', ')}
-              </p>
-            )}
+    <div className="space-y-6 min-w-0">
+      {/* Editorial Spatial Header */}
+      <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pt-1 min-w-0">
+        <div className="space-y-2 max-w-3xl min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge tone="emerald">
+              <ShieldCheck size={14} weight="duotone" aria-hidden="true" />
+              <span>Smart cross-group netting</span>
+            </StatusBadge>
+            <StatusBadge tone="blue">
+              <Lightning size={14} weight="duotone" aria-hidden="true" />
+              <span>Instant UPI QR &amp; WhatsApp share</span>
+            </StatusBadge>
+            <CurrencyPrecisionPill currencyCode={displayCurrency} />
           </div>
 
-          <div data-testid="friends-stat-tiles" className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 shrink-0">
-            <div className="rounded-xl bg-emerald-500/[0.07] dark:bg-emerald-500/[0.08] border border-emerald-500/20 px-3.5 py-2.5 min-w-0 flex items-center justify-between gap-3 sm:block">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-                Friends Owe You
-              </div>
-              <div className="sm:mt-1 shrink-0 whitespace-nowrap text-base sm:text-sm lg:text-lg font-bold">
-                <CurrencyAmount
-                  minorAmount={crossGroupTotals.owedToMeMinor}
-                  currencyCode={displayCurrency}
-                  colorize
-                  showPlusSign
-                />
-              </div>
-            </div>
+          <h1
+            data-testid="friends-plain-english-summary"
+            className="text-2xl sm:text-3xl lg:text-[34px] font-medium tracking-tight leading-[1.15] text-[#141715] dark:text-[#F3F5F3] break-words"
+          >
+            {crossGroupTotals.netOverallMinor > 0 ? (
+              <>
+                Friends owe you{' '}
+                <span className="text-emerald-700 dark:text-emerald-300 font-semibold font-mono tabular-nums whitespace-nowrap">
+                  +{formatMinorToMajor(crossGroupTotals.netOverallMinor, displayCurrency)}
+                </span>{' '}
+                overall
+              </>
+            ) : crossGroupTotals.netOverallMinor < 0 ? (
+              <>
+                You owe friends{' '}
+                <span className="text-rose-700 dark:text-rose-300 font-semibold font-mono tabular-nums whitespace-nowrap">
+                  {formatMinorToMajor(Math.abs(crossGroupTotals.netOverallMinor), displayCurrency)}
+                </span>{' '}
+                overall
+              </>
+            ) : (
+              <span className="text-emerald-700 dark:text-emerald-300">
+                You and your friends are all settled up
+              </span>
+            )}
+          </h1>
 
-            <div className="rounded-xl bg-rose-500/[0.07] dark:bg-rose-500/[0.08] border border-rose-500/20 px-3.5 py-2.5 min-w-0 flex items-center justify-between gap-3 sm:block">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-rose-700 dark:text-rose-300">
-                You Owe Friends
-              </div>
-              <div className="sm:mt-1 shrink-0 whitespace-nowrap text-base sm:text-sm lg:text-lg font-bold">
-                <CurrencyAmount
-                  minorAmount={-crossGroupTotals.iOweMinor}
-                  currencyCode={displayCurrency}
-                  colorize
-                />
-              </div>
-            </div>
+          <p className="text-xs sm:text-sm text-[#4A524D] dark:text-[#B7BEB9] leading-relaxed">
+            Shared group balances with the same friend combine automatically without ever mixing strangers across groups. Settle all shared tabs in one tap, scan a UPI QR code, or copy a verified WhatsApp summary.
+          </p>
 
-            <div className="rounded-xl bg-slate-900/[0.04] dark:bg-white/[0.04] border border-slate-200/80 dark:border-white/10 px-3.5 py-2.5 min-w-0 flex items-center justify-between gap-3 sm:block">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
-                Net Position ({displayCurrency})
-              </div>
-              <div className="sm:mt-1 shrink-0 whitespace-nowrap text-base sm:text-sm lg:text-lg font-bold">
-                <CurrencyAmount
-                  minorAmount={crossGroupTotals.netOverallMinor}
-                  currencyCode={displayCurrency}
-                  colorize
-                  showPlusSign
-                />
-              </div>
+          {crossGroupTotals.rateLabel && (
+            <p
+              data-testid="friends-fx-label"
+              className="text-[11px] text-[#5C6660] dark:text-[#9CA69F]"
+            >
+              {crossGroupTotals.rateLabel}
+            </p>
+          )}
+          {crossGroupTotals.unconvertedTotals.length > 0 && (
+            <p
+              data-testid="friends-unconverted-balances"
+              className="text-[11px] text-amber-800 dark:text-amber-200 break-words"
+            >
+              Not included in the {displayCurrency} totals (no exchange rate):{' '}
+              {crossGroupTotals.unconvertedTotals
+                .map(([code, minor]) => `${minor > 0 ? '+' : ''}${formatMinorToMajor(minor, code)} ${code}`)
+                .join(', ')}
+            </p>
+          )}
+        </div>
+      </header>
+
+      {/* 3 Sculpted Glass Metric Tiles */}
+      <DoubleBezelCard innerClassName="p-4 sm:p-5 min-w-0">
+        <div
+          data-testid="friends-stat-tiles"
+          className="grid grid-cols-1 md:grid-cols-3 gap-3 min-w-0"
+        >
+          <div className="lg-recessed-well rounded-[1.25rem] px-4 py-3.5 min-w-0 flex items-center justify-between gap-3 md:flex-col md:items-start md:justify-between border-emerald-600/20 dark:border-emerald-400/20">
+            <div className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
+              Friends Owe You
+            </div>
+            <div className="md:mt-2 shrink-0 whitespace-nowrap text-base md:text-sm xl:text-xl font-semibold">
+              <CurrencyAmount
+                minorAmount={crossGroupTotals.owedToMeMinor}
+                currencyCode={displayCurrency}
+                colorize
+                showPlusSign
+              />
+            </div>
+          </div>
+
+          <div className="lg-recessed-well rounded-[1.25rem] px-4 py-3.5 min-w-0 flex items-center justify-between gap-3 md:flex-col md:items-start md:justify-between border-rose-600/20 dark:border-rose-400/20">
+            <div className="text-xs font-medium text-rose-800 dark:text-rose-300">
+              You Owe Friends
+            </div>
+            <div className="md:mt-2 shrink-0 whitespace-nowrap text-base md:text-sm xl:text-xl font-semibold">
+              <CurrencyAmount
+                minorAmount={-crossGroupTotals.iOweMinor}
+                currencyCode={displayCurrency}
+                colorize
+              />
+            </div>
+          </div>
+
+          <div className="lg-recessed-well rounded-[1.25rem] px-4 py-3.5 min-w-0 flex items-center justify-between gap-3 md:flex-col md:items-start md:justify-between">
+            <div className="text-xs font-medium text-[#4A524D] dark:text-[#B7BEB9]">
+              Combined Net ({displayCurrency})
+            </div>
+            <div className="md:mt-2 shrink-0 whitespace-nowrap text-base md:text-sm xl:text-xl font-semibold">
+              <CurrencyAmount
+                minorAmount={crossGroupTotals.netOverallMinor}
+                currencyCode={displayCurrency}
+                colorize
+                showPlusSign
+              />
             </div>
           </div>
         </div>
       </DoubleBezelCard>
 
-      {/* Main 12-Column Responsive Workspace */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* LEFT 7 COLUMNS: Cross-Group Friend Net Balances */}
-        <div className="lg:col-span-7 space-y-6">
+      {/* Main 12-Column Responsive Spatial Workspace */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start min-w-0">
+        {/* LEFT 7 COLUMNS: Cross-Group Friend Net Balances & WhatsApp Studio */}
+        <div className="lg:col-span-7 space-y-5 min-w-0">
           <DoubleBezelCard
             testId="friends-cross-group-list"
-            innerClassName="p-5 sm:p-6 space-y-5"
+            innerClassName="p-4 sm:p-6 space-y-5 min-w-0"
           >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/70 dark:border-white/[0.07] pb-4">
-              <div>
-                <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-black/[0.07] dark:border-white/[0.08] pb-4 min-w-0">
+              <div className="flex items-start gap-3 min-w-0">
+                <span className="lg-icon-orb h-9 w-9 rounded-full flex items-center justify-center shrink-0 mt-0.5">
                   <UsersThree
-                    size={20}
+                    size={18}
                     weight="duotone"
-                    className="text-emerald-600 dark:text-emerald-400"
+                    className="text-emerald-700 dark:text-emerald-300"
+                    aria-hidden="true"
                   />
-                  <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
-                    Cross-Group Friend Net Balances
+                </span>
+                <div className="min-w-0">
+                  <h2 className="text-base sm:text-lg font-semibold tracking-tight text-[#141715] dark:text-[#F3F5F3]">
+                    Cross-group friend balances
                   </h2>
+                  <p className="text-xs text-[#5C6660] dark:text-[#9CA69F] mt-0.5">
+                    Per-friend aggregation across {activeGroups.length} active {activeGroups.length === 1 ? 'group' : 'groups'} normalized to {displayCurrency}
+                  </p>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Per-friend aggregation across {activeGroups.length} active groups normalized to {displayCurrency}
-                </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Batch Method:
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs font-medium text-[#5C6660] dark:text-[#9CA69F]">
+                  Batch method:
                 </span>
                 <select
                   aria-label="Cross-group batch payment method"
@@ -751,10 +766,10 @@ export function FriendsAndSettlePage() {
                       e.target.value as SettlementItem['paymentMethod']
                     )
                   }
-                  className="rounded-lg bg-slate-100 dark:bg-slate-800/90 border border-slate-300/70 dark:border-white/10 px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  className="lg-recessed-well min-h-[44px] rounded-full px-3.5 py-1.5 text-xs font-semibold text-[#141715] dark:text-[#F3F5F3] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 cursor-pointer"
                 >
                   {PAYMENT_METHODS.map((pm) => (
-                    <option key={pm.key} value={pm.key}>
+                    <option key={pm.key} value={pm.key} className="bg-[#F6F8F6] dark:bg-[#222522]">
                       {pm.label} ({pm.key.toUpperCase()})
                     </option>
                   ))}
@@ -762,288 +777,319 @@ export function FriendsAndSettlePage() {
               </div>
             </div>
 
-            <div className="space-y-4">
-              {friendsSummary.map((friend) => {
-                const hasOpenBalances = friend.groupBreakdowns.length > 0;
-                const fx = crossGroupTotals.byFriend.get(friend.friendKey) ?? { netMinor: 0, unconverted: [] };
-                const hasMultipleGroups = friend.groupBreakdowns.length > 1;
-
-                const directRow = friend.groupBreakdowns.find(
-                  (b) => b.groupId === null
-                );
-
-                return (
-                  <div
-                    key={friend.friendKey}
-                    data-testid={`friend-card-${friend.friendKey}`}
-                    className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-slate-50/60 dark:bg-slate-900/50 p-4 sm:p-5 transition-all hover:border-slate-300 dark:hover:border-white/15"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      {/* Friend Identity & Badges */}
-                      <div className="flex items-start gap-3.5">
-                        <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-500/20 to-sky-500/20 dark:from-emerald-500/25 dark:to-sky-500/25 border border-emerald-500/30 flex items-center justify-center text-sm font-bold text-emerald-800 dark:text-emerald-200 shrink-0">
-                          {friend.avatarInitials}
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-                              {friend.displayName}
-                            </h3>
-                            {friend.isClaimedAccount ? (
-                              <StatusBadge tone="emerald">
-                                <CheckCircle size={12} weight="fill" />
-                                Joined
-                              </StatusBadge>
-                            ) : (
-                              <StatusBadge tone="amber">
-                                <Info size={12} weight="bold" />
-                                Invite Pending
-                              </StatusBadge>
-                            )}
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                            {friend.email && <span>{friend.email}</span>}
-                            {friend.upiId && (
-                              <span
-                                data-testid={`friend-upi-${friend.friendKey}`}
-                                className="inline-flex items-center gap-1 rounded-md bg-slate-200/70 dark:bg-slate-800 px-2 py-0.5 font-mono text-[11px] text-slate-700 dark:text-slate-300"
-                              >
-                                <QrCode size={12} weight="duotone" />
-                                {friend.upiId}
-                              </span>
-                            )}
-                            {friend.upiIdVaries && (
-                              <span
-                                data-testid={`friend-upi-varies-${friend.friendKey}`}
-                                className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-800 dark:text-amber-300"
-                              >
-                                <QrCode size={12} weight="duotone" />
-                                UPI varies by bill. Check the "Paying" line before you pay.
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Overall net balance + 1-Tap Settle Up */}
-                      <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between gap-2 border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-200/60 dark:border-white/[0.06]">
-                        <div className="text-left sm:text-right">
-                          <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                            {fx.netMinor > 0
-                              ? `Owes you net (${displayCurrency})`
-                              : fx.netMinor < 0
-                              ? `You owe net (${displayCurrency})`
-                              : fx.unconverted.length > 0
-                              ? 'Open balances'
-                              : 'Settled across all groups'}
-                          </div>
-                          <div className="text-lg sm:text-xl font-bold">
-                            <CurrencyAmount
-                              minorAmount={fx.netMinor}
-                              currencyCode={displayCurrency}
-                              colorize
-                              showPlusSign
-                            />
-                          </div>
-                          {fx.unconverted.map(([code, minor]) => (
-                            <div
-                              key={code}
-                              data-testid={`friend-unconverted-${friend.friendKey}-${code}`}
-                              className="text-[11px] font-mono text-amber-700 dark:text-amber-300"
-                            >
-                              {minor > 0 ? '+' : ''}
-                              {formatMinorToMajor(minor, code)} {code} (no rate)
-                            </div>
-                          ))}
-                        </div>
-
-                        <button
-                          type="button"
-                          data-testid={`settle-all-groups-${friend.friendKey}`}
-                          disabled={!hasOpenBalances}
-                          onClick={() =>
-                            settleAllAcrossGroupsWithFriend(
-                              friend,
-                              selectedPaymentMethod
-                            )
-                          }
-                          className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all ${
-                            hasOpenBalances
-                              ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm shadow-emerald-600/20 cursor-pointer'
-                              : 'bg-slate-200/70 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 cursor-not-allowed'
-                          }`}
-                        >
-                          <Lightning size={14} weight="fill" />
-                          {hasOpenBalances
-                            ? `1-Tap Settle All (${friend.groupBreakdowns.length} ${
-                                friend.groupBreakdowns.length === 1
-                                  ? 'Group'
-                                  : 'Groups'
-                              })`
-                            : 'All Groups Settled'}
-                        </button>
-                        {directRow && (
-                          <button
-                            type="button"
-                            data-testid={`direct-payback-${friend.friendKey}`}
-                            onClick={() =>
-                              openDirectPayback(
-                                friend.friendKey,
-                                directRow.currency,
-                                null
-                              )
-                            }
-                            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl border border-sky-500/30 bg-sky-500/10 hover:bg-sky-500/20 px-3.5 py-2 text-xs font-semibold text-sky-800 dark:text-sky-300 transition-colors cursor-pointer"
-                          >
-                            <Money size={14} weight="duotone" />
-                            Record a payment
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Per-Group Breakdown List */}
-                    <div className="mt-4 pt-3 border-t border-slate-200/70 dark:border-white/[0.06]">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                          Per-Group Breakdown
-                        </span>
-                        {hasMultipleGroups && (
-                          <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-                            Offsetting group balances net out without mixing strangers
-                          </span>
-                        )}
-                      </div>
-
-                      {friend.groupBreakdowns.length === 0 ? (
-                        <div className="rounded-xl bg-white/70 dark:bg-slate-950/40 border border-slate-200/60 dark:border-white/[0.05] px-3.5 py-2.5 text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between">
-                          <span>
-                            Zero unsettled balance with {friend.displayName} in any shared group.
-                          </span>
-                          <StatusBadge tone="emerald">0.00 Net</StatusBadge>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                          {friend.groupBreakdowns.map((gb) => (
-                            <div
-                              key={gb.expenseId ?? gb.groupId ?? gb.groupName}
-                              className="rounded-xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-white/[0.07] p-3 flex items-center justify-between gap-2"
-                            >
-                              <div className="min-w-0">
-                                <div className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
-                                  {gb.groupName}
-                                </div>
-                                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1.5">
-                                  <span>
-                                    {gb.netMinor > 0
-                                      ? `${friend.displayName.split(' ')[0]} owes you`
-                                      : `You owe ${friend.displayName.split(' ')[0]}`}
-                                  </span>
-                                  <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                                    {gb.currency}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="text-right shrink-0 flex flex-col items-end gap-1">
-                                <CurrencyAmount
-                                  minorAmount={gb.netMinor}
-                                  currencyCode={gb.currency}
-                                  colorize
-                                  showPlusSign
-                                  className="text-xs sm:text-sm font-bold"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleLoadGroupBreakdownIntoStudio(
-                                      friend.friendKey,
-                                      gb
-                                    )
-                                  }
-                                  className="min-h-[44px] px-2 text-[11px] font-semibold text-sky-600 dark:text-sky-400 hover:underline cursor-pointer"
-                                >
-                                  Load in Studio
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+            <div className="space-y-4 min-w-0">
+              {friendsSummary.length === 0 ? (
+                <div className="lg-recessed-well rounded-[1.25rem] p-6 text-center space-y-2">
+                  <span className="lg-icon-orb h-10 w-10 rounded-full flex items-center justify-center mx-auto">
+                    <UsersThree size={18} weight="duotone" className="text-[#4A524D] dark:text-[#B7BEB9]" aria-hidden="true" />
+                  </span>
+                  <div className="text-sm font-semibold text-[#141715] dark:text-[#F3F5F3]">
+                    No shared friend balances yet
                   </div>
-                );
-              })}
+                  <p className="text-xs text-[#5C6660] dark:text-[#9CA69F] max-w-md mx-auto">
+                    Add friends to a group or record a direct 1-on-1 split to track cross-group balances here.
+                  </p>
+                </div>
+              ) : (
+                friendsSummary.map((friend) => {
+                  const hasOpenBalances = friend.groupBreakdowns.length > 0;
+                  const fx = crossGroupTotals.byFriend.get(friend.friendKey) ?? { netMinor: 0, unconverted: [] };
+                  const hasMultipleGroups = friend.groupBreakdowns.length > 1;
+
+                  const directRow = friend.groupBreakdowns.find(
+                    (b) => b.groupId === null
+                  );
+
+                  return (
+                    <div
+                      key={friend.friendKey}
+                      data-testid={`friend-card-${friend.friendKey}`}
+                      className="lg-recessed-well rounded-[1.375rem] p-4 sm:p-5 transition-colors min-w-0"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 min-w-0">
+                        {/* Friend Identity & Badges */}
+                        <div className="flex items-start gap-3.5 min-w-0">
+                          <div className="lg-icon-orb h-11 w-11 rounded-full flex items-center justify-center text-sm font-mono font-semibold text-emerald-800 dark:text-emerald-200 shrink-0">
+                            {friend.avatarInitials}
+                          </div>
+
+                          <div className="space-y-1.5 min-w-0">
+                            <div className="flex flex-wrap items-center gap-2 min-w-0">
+                              <h3
+                                dir="auto"
+                                title={friend.displayName}
+                                className="text-sm sm:text-base font-semibold text-[#141715] dark:text-[#F3F5F3] truncate max-w-full"
+                              >
+                                {friend.displayName}
+                              </h3>
+                              {friend.isClaimedAccount ? (
+                                <StatusBadge tone="emerald">
+                                  <CheckCircle size={12} weight="fill" aria-hidden="true" />
+                                  <span>Joined</span>
+                                </StatusBadge>
+                              ) : (
+                                <StatusBadge tone="amber">
+                                  <Info size={12} weight="bold" aria-hidden="true" />
+                                  <span>Invite Pending</span>
+                                </StatusBadge>
+                              )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-[#5C6660] dark:text-[#9CA69F] min-w-0">
+                              {friend.email && <span className="break-all">{friend.email}</span>}
+                              {friend.upiId && (
+                                <span
+                                  data-testid={`friend-upi-${friend.friendKey}`}
+                                  className="lg-scene-tile inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-mono text-[11px] text-[#2B312D] dark:text-[#DCE2DD] break-all"
+                                >
+                                  <QrCode size={12} weight="duotone" aria-hidden="true" />
+                                  <span>{friend.upiId}</span>
+                                </span>
+                              )}
+                              {friend.upiIdVaries && (
+                                <span
+                                  data-testid={`friend-upi-varies-${friend.friendKey}`}
+                                  className="inline-flex items-center gap-1 rounded-full bg-amber-500/14 ring-1 ring-amber-600/25 dark:ring-amber-300/25 px-2.5 py-0.5 text-[11px] text-amber-900 dark:text-amber-200"
+                                >
+                                  <QrCode size={12} weight="duotone" aria-hidden="true" />
+                                  <span>UPI varies by bill. Check the &ldquo;Paying&rdquo; line before you pay.</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Overall net balance + 1-Tap Settle Up */}
+                        <div className="flex flex-wrap sm:flex-col items-center sm:items-end justify-between gap-2 border-t sm:border-t-0 pt-3 sm:pt-0 border-black/[0.07] dark:border-white/[0.08] shrink-0">
+                          <div className="text-left sm:text-right">
+                            <div className="text-[11px] font-medium text-[#5C6660] dark:text-[#9CA69F]">
+                              {fx.netMinor > 0
+                                ? `Owes you net (${displayCurrency})`
+                                : fx.netMinor < 0
+                                ? `You owe net (${displayCurrency})`
+                                : fx.unconverted.length > 0
+                                ? 'Open balances'
+                                : 'Settled across all groups'}
+                            </div>
+                            <div className="text-lg sm:text-xl font-semibold whitespace-nowrap">
+                              <CurrencyAmount
+                                minorAmount={fx.netMinor}
+                                currencyCode={displayCurrency}
+                                colorize
+                                showPlusSign
+                              />
+                            </div>
+                            {fx.unconverted.map(([code, minor]) => (
+                              <div
+                                key={code}
+                                data-testid={`friend-unconverted-${friend.friendKey}-${code}`}
+                                className="text-[11px] font-mono text-amber-800 dark:text-amber-200"
+                              >
+                                {minor > 0 ? '+' : ''}
+                                {formatMinorToMajor(minor, code)} {code} (no rate)
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              data-testid={`settle-all-groups-${friend.friendKey}`}
+                              disabled={!hasOpenBalances}
+                              onClick={() =>
+                                settleAllAcrossGroupsWithFriend(
+                                  friend,
+                                  selectedPaymentMethod
+                                )
+                              }
+                              className={`min-h-[44px] inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-[transform,opacity,background-color,color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 ${
+                                hasOpenBalances
+                                  ? 'lg-luminous-pill cursor-pointer'
+                                  : 'bg-black/[0.05] dark:bg-white/[0.05] text-[#68726C] dark:text-[#8A938D] cursor-not-allowed opacity-65'
+                              }`}
+                            >
+                              <Lightning size={14} weight="fill" aria-hidden="true" />
+                              <span>
+                                {hasOpenBalances
+                                  ? `1-Tap Settle All (${friend.groupBreakdowns.length} ${
+                                      friend.groupBreakdowns.length === 1
+                                        ? 'Group'
+                                        : 'Groups'
+                                    })`
+                                  : 'All Groups Settled'}
+                              </span>
+                            </button>
+                            {directRow && (
+                              <button
+                                type="button"
+                                data-testid={`direct-payback-${friend.friendKey}`}
+                                onClick={() =>
+                                  openDirectPayback(
+                                    friend.friendKey,
+                                    directRow.currency,
+                                    null
+                                  )
+                                }
+                                className="lg-scene-tile inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold text-[#141715] dark:text-[#F3F5F3] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
+                              >
+                                <Money size={14} weight="duotone" className="text-emerald-700 dark:text-emerald-300" aria-hidden="true" />
+                                <span>Record a payment</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Per-Group Breakdown List */}
+                      <div className="mt-4 pt-3 border-t border-black/[0.07] dark:border-white/[0.08]">
+                        <div className="flex flex-wrap items-center justify-between gap-1 mb-2.5">
+                          <span className="text-xs font-medium text-[#5C6660] dark:text-[#9CA69F]">
+                            Per-group breakdown
+                          </span>
+                          {hasMultipleGroups && (
+                            <span className="text-[11px] font-medium text-emerald-800 dark:text-emerald-300">
+                              Offsetting group balances net out without mixing strangers
+                            </span>
+                          )}
+                        </div>
+
+                        {friend.groupBreakdowns.length === 0 ? (
+                          <div className="lg-scene-tile rounded-2xl px-3.5 py-2.5 text-xs text-[#5C6660] dark:text-[#9CA69F] flex items-center justify-between gap-2">
+                            <span className="min-w-0 break-words">
+                              Zero unsettled balance with {friend.displayName} in any shared group.
+                            </span>
+                            <StatusBadge tone="emerald" className="shrink-0">0.00 Net</StatusBadge>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            {friend.groupBreakdowns.map((gb) => (
+                              <div
+                                key={gb.expenseId ?? gb.groupId ?? gb.groupName}
+                                className="lg-scene-tile rounded-2xl p-3 flex items-center justify-between gap-2 min-w-0"
+                              >
+                                <div className="min-w-0">
+                                  <div
+                                    dir="auto"
+                                    title={gb.groupName}
+                                    className="text-xs font-semibold text-[#141715] dark:text-[#F3F5F3] truncate"
+                                  >
+                                    {gb.groupName}
+                                  </div>
+                                  <div className="text-[11px] text-[#5C6660] dark:text-[#9CA69F] mt-0.5 flex flex-wrap items-center gap-1.5">
+                                    <span className="truncate">
+                                      {gb.netMinor > 0
+                                        ? `${friend.displayName.split(' ')[0]} owes you`
+                                        : `You owe ${friend.displayName.split(' ')[0]}`}
+                                    </span>
+                                    <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-black/[0.055] dark:bg-white/[0.08] text-[#2B312D] dark:text-[#DCE2DD]">
+                                      {gb.currency}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                                  <CurrencyAmount
+                                    minorAmount={gb.netMinor}
+                                    currencyCode={gb.currency}
+                                    colorize
+                                    showPlusSign
+                                    className="text-xs sm:text-sm font-semibold whitespace-nowrap"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleLoadGroupBreakdownIntoStudio(
+                                        friend.friendKey,
+                                        gb
+                                      )
+                                    }
+                                    className="min-h-[44px] rounded-full px-2.5 text-[11px] font-semibold text-emerald-800 dark:text-emerald-300 hover:underline cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
+                                  >
+                                    Load in Studio
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </DoubleBezelCard>
 
           {/* 3. One-Tap WhatsApp / Chat Summary Card & Text Generator */}
           <DoubleBezelCard
             testId="whatsapp-summary-panel"
-            innerClassName="p-5 sm:p-6 space-y-5"
+            innerClassName="p-4 sm:p-6 space-y-5 min-w-0"
           >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/70 dark:border-white/[0.07] pb-4">
-              <div>
-                <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-black/[0.07] dark:border-white/[0.08] pb-4 min-w-0">
+              <div className="flex items-start gap-3 min-w-0">
+                <span className="lg-icon-orb h-9 w-9 rounded-full flex items-center justify-center shrink-0 mt-0.5">
                   <WhatsappLogo
-                    size={20}
+                    size={18}
                     weight="duotone"
-                    className="text-emerald-600 dark:text-emerald-400"
+                    className="text-emerald-700 dark:text-emerald-300"
+                    aria-hidden="true"
                   />
-                  <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
-                    One-Tap WhatsApp / Chat Summary Studio
+                </span>
+                <div className="min-w-0">
+                  <h2 className="text-base sm:text-lg font-semibold tracking-tight text-[#141715] dark:text-[#F3F5F3]">
+                    WhatsApp &amp; chat summary studio
                   </h2>
+                  <p className="text-xs text-[#5C6660] dark:text-[#9CA69F] mt-0.5">
+                    Spatial card preview and ready-to-paste markdown with embedded UPI payment links
+                  </p>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  High-contrast visual card preview and ready-to-paste WhatsApp markdown with embedded UPI pay links
-                </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
                   data-testid="copy-whatsapp-summary-btn"
                   onClick={handleCopyWhatsAppSummary}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 text-xs font-semibold shadow-sm shadow-emerald-600/20 transition-all cursor-pointer"
+                  className="lg-luminous-pill min-h-[44px] inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
                 >
                   {copiedWhatsApp ? (
                     <>
-                      <Check size={15} weight="bold" />
-                      Copied for WhatsApp!
+                      <Check size={15} weight="bold" aria-hidden="true" />
+                      <span>Copied for WhatsApp</span>
                     </>
                   ) : (
                     <>
-                      <Copy size={15} weight="duotone" />
-                      Copy Summary for WhatsApp
+                      <Copy size={15} weight="duotone" aria-hidden="true" />
+                      <span>Copy Summary</span>
                     </>
                   )}
                 </button>
               </div>
             </div>
 
-            {/* Visual High-Contrast Summary Card Preview */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950 text-white p-4 sm:p-5 border border-emerald-500/30 shadow-lg flex flex-col justify-between space-y-4">
-                <div className="space-y-3">
+            {/* Spatial Glass Summary Card Preview + Markdown */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 min-w-0">
+              <div className="lg-recessed-well rounded-[1.375rem] p-4 sm:p-5 flex flex-col justify-between space-y-4 min-w-0">
+                <div className="space-y-3 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300">
-                      <Sparkle size={12} weight="fill" />
-                      Wise-Spliter Verified Ledger
-                    </span>
-                    <span className="font-mono text-xs text-slate-300">
-                      {activeGroup.baseCurrency}
-                    </span>
+                    <StatusBadge tone="emerald">
+                      <Sparkle size={12} weight="fill" aria-hidden="true" />
+                      <span>Verified Ledger</span>
+                    </StatusBadge>
+                    <CurrencyPrecisionPill currencyCode={activeGroup.baseCurrency} />
                   </div>
 
-                  <div>
-                    <h3 className="text-base font-bold text-white">
+                  <div className="min-w-0">
+                    <h3
+                      dir="auto"
+                      title={activeGroup.name}
+                      className="text-base font-semibold text-[#141715] dark:text-[#F3F5F3] truncate"
+                    >
                       {activeGroup.name}
                     </h3>
-                    <div className="text-xs text-slate-300 mt-0.5">
-                      Total Group Spend:{' '}
-                      <span className="font-mono font-semibold text-emerald-300">
+                    <div className="text-xs text-[#4A524D] dark:text-[#B7BEB9] mt-0.5">
+                      Total group spend:{' '}
+                      <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
                         {formatMinorToMajor(
                           totalGroupSpendMinor,
                           activeGroup.baseCurrency
@@ -1052,27 +1098,31 @@ export function FriendsAndSettlePage() {
                     </div>
                   </div>
 
-                  <div className="space-y-1.5 pt-2 border-t border-white/10">
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                      Net Member Positions
+                  <div className="space-y-1.5 pt-2.5 border-t border-black/[0.07] dark:border-white/[0.08]">
+                    <div className="text-[11px] font-medium text-[#5C6660] dark:text-[#9CA69F]">
+                      Net member positions
                     </div>
                     {activeGroup.members.map((m) => {
                       const net = groupNetBalancesMap.get(m.id) ?? 0;
                       return (
                         <div
                           key={m.id}
-                          className="flex items-center justify-between text-xs"
+                          className="flex items-center justify-between gap-2 text-xs min-w-0"
                         >
-                          <span className="text-slate-200 font-medium">
+                          <span
+                            dir="auto"
+                            title={m.displayName}
+                            className="text-[#141715] dark:text-[#F3F5F3] font-medium truncate"
+                          >
                             {m.displayName}
                           </span>
                           <span
-                            className={`font-mono font-semibold ${
+                            className={`font-mono tabular-nums font-semibold shrink-0 whitespace-nowrap ${
                               net > 0
-                                ? 'text-emerald-400'
+                                ? 'text-emerald-700 dark:text-emerald-300'
                                 : net < 0
-                                ? 'text-rose-400'
-                                : 'text-slate-400'
+                                ? 'text-rose-700 dark:text-rose-300'
+                                : 'text-[#68726C] dark:text-[#8A938D]'
                             }`}
                           >
                             {net > 0 ? '+' : ''}
@@ -1084,23 +1134,23 @@ export function FriendsAndSettlePage() {
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-white/10 flex items-center justify-between text-[11px] text-slate-300">
-                  <span>
+                <div className="pt-3 border-t border-black/[0.07] dark:border-white/[0.08] flex items-center justify-between gap-2 text-[11px] text-[#5C6660] dark:text-[#9CA69F]">
+                  <span className="truncate">
                     {activeGroup.simplifyDebts
-                      ? 'Simplified Minimum Transfers'
-                      : 'Direct Pairwise Balances'}
+                      ? 'Simplified minimum transfers'
+                      : 'Direct pairwise balances'}
                   </span>
-                  <span className="font-mono text-emerald-300">
+                  <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-300 shrink-0">
                     {groupSuggestedTransfers.length} transfer(s)
                   </span>
                 </div>
               </div>
 
               {/* Formatted WhatsApp Markdown Text */}
-              <div className="flex flex-col h-full">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Formatted WhatsApp / Telegram Markdown
+              <div className="flex flex-col h-full min-w-0">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <span className="text-xs font-medium text-[#4A524D] dark:text-[#B7BEB9]">
+                    Formatted chat markdown
                   </span>
                   <a
                     href={`https://wa.me/?text=${encodeURIComponent(
@@ -1108,15 +1158,15 @@ export function FriendsAndSettlePage() {
                     )}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="min-h-[44px] inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
+                    className="min-h-[44px] inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:underline"
                   >
-                    <WhatsappLogo size={14} weight="fill" />
-                    Open in WhatsApp
+                    <WhatsappLogo size={14} weight="fill" aria-hidden="true" />
+                    <span>Open in WhatsApp</span>
                   </a>
                 </div>
                 <pre
                   data-testid="whatsapp-summary-markdown"
-                  className="flex-1 rounded-2xl bg-slate-100 dark:bg-slate-950/90 border border-slate-200/80 dark:border-white/10 p-3.5 text-xs font-mono text-slate-800 dark:text-slate-200 whitespace-pre-wrap break-words overflow-x-auto leading-relaxed"
+                  className="lg-recessed-well flex-1 rounded-[1.25rem] p-3.5 text-xs font-mono text-[#141715] dark:text-[#F3F5F3] whitespace-pre-wrap break-words overflow-x-auto leading-relaxed"
                 >
                   {whatsappSummaryText}
                 </pre>
@@ -1126,26 +1176,29 @@ export function FriendsAndSettlePage() {
         </div>
 
         {/* RIGHT 5 COLUMNS: Interactive Settle Up & UPI Deep-Link / QR Studio */}
-        <div className="lg:col-span-5 space-y-6">
+        <div className="lg:col-span-5 space-y-5 min-w-0">
           <DoubleBezelCard
             testId="settle-up-studio"
-            innerClassName="p-5 sm:p-6 space-y-5"
+            innerClassName="p-4 sm:p-6 space-y-5 min-w-0"
           >
-            <div className="flex items-center justify-between gap-2 border-b border-slate-200/70 dark:border-white/[0.07] pb-4">
-              <div>
-                <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between gap-2 border-b border-black/[0.07] dark:border-white/[0.08] pb-4 min-w-0">
+              <div className="flex items-start gap-3 min-w-0">
+                <span className="lg-icon-orb h-9 w-9 rounded-full flex items-center justify-center shrink-0 mt-0.5">
                   <ArrowsLeftRight
-                    size={20}
+                    size={18}
                     weight="duotone"
-                    className="text-sky-600 dark:text-sky-400"
+                    className="text-emerald-700 dark:text-emerald-300"
+                    aria-hidden="true"
                   />
-                  <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
-                    Settle Up & UPI QR Studio
+                </span>
+                <div className="min-w-0">
+                  <h2 className="text-base sm:text-lg font-semibold tracking-tight text-[#141715] dark:text-[#F3F5F3]">
+                    Settle up &amp; UPI QR studio
                   </h2>
+                  <p className="text-xs text-[#5C6660] dark:text-[#9CA69F] mt-0.5">
+                    Record full or partial settlements and generate NPCI UPI QR codes
+                  </p>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Record full or partial settlements and generate NPCI UPI QR codes
-                </p>
               </div>
               <CurrencyPrecisionPill currencyCode={studioCurrency} />
             </div>
@@ -1153,18 +1206,18 @@ export function FriendsAndSettlePage() {
             {direct ? (
               <div
                 data-testid="direct-payback-panel"
-                className="rounded-2xl border border-sky-500/30 bg-sky-500/[0.06] p-3.5 space-y-2"
+                className="lg-recessed-well rounded-[1.25rem] p-3.5 space-y-2.5 min-w-0"
               >
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start justify-between gap-2 min-w-0">
                   <div className="min-w-0">
-                    <div className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                    <div className="text-xs sm:text-sm font-semibold text-[#141715] dark:text-[#F3F5F3] break-words">
                       {directPlan && directPlan.maxMinor > 0n
                         ? directPlan.friendPays
                           ? `${directFriend?.displayName ?? 'Your friend'} owes you ${formatMinorToMajor(directPlan.maxMinor, studioCurrency)}`
                           : `You owe ${directFriend?.displayName ?? 'your friend'} ${formatMinorToMajor(directPlan.maxMinor, studioCurrency)}`
                         : `You and ${directFriend?.displayName ?? 'your friend'} are settled up in ${studioCurrency}.`}
                     </div>
-                    <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
+                    <p className="text-[11px] text-[#5C6660] dark:text-[#9CA69F] mt-0.5 break-words">
                       {directBillTitle
                         ? `Only the bill "${directBillTitle}".`
                         : 'Direct bills outside groups. A payment clears the oldest bill first.'}
@@ -1177,7 +1230,7 @@ export function FriendsAndSettlePage() {
                       setDirect(null);
                       resetForm();
                     }}
-                    className="min-h-[44px] shrink-0 rounded-xl px-3 text-xs font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-500/10 cursor-pointer"
+                    className="lg-scene-tile min-h-[44px] shrink-0 rounded-full px-3.5 text-xs font-semibold text-[#141715] dark:text-[#F3F5F3] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
                   >
                     Back to groups
                   </button>
@@ -1188,10 +1241,10 @@ export function FriendsAndSettlePage() {
                     data-testid="direct-payback-currency-select"
                     value={direct.currency}
                     onChange={(e) => openDirectPayback(direct.friendKey, e.target.value, null)}
-                    className="min-h-[44px] w-full rounded-xl bg-white dark:bg-slate-900 border border-slate-300/80 dark:border-white/10 px-3 text-xs font-semibold text-slate-900 dark:text-white"
+                    className="lg-recessed-well min-h-[44px] w-full rounded-xl px-3 text-xs font-semibold text-[#141715] dark:text-[#F3F5F3] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
                   >
                     {directCurrencies.map((c) => (
-                      <option key={c} value={c}>
+                      <option key={c} value={c} className="bg-[#F6F8F6] dark:bg-[#222522]">
                         {c}
                       </option>
                     ))}
@@ -1200,199 +1253,198 @@ export function FriendsAndSettlePage() {
               </div>
             ) : (
               <>
-            {/* Group Selector inside Studio */}
-            <div className="space-y-1.5">
-              <label
-                htmlFor="studio-group-select"
-                className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
-              >
-                Active Group for Settlement & WhatsApp Summary
-              </label>
-              <select
-                id="studio-group-select"
-                data-testid="settle-group-select"
-                value={activeGroup.id}
-                onChange={(e) => setActiveGroupId(e.target.value)}
-                className="w-full rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300/80 dark:border-white/10 px-3 py-2 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/40"
-              >
-                {activeGroups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name} ({g.baseCurrency})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Suggested Transfers Quick Fill Pills */}
-            {groupSuggestedTransfers.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Suggested Transfers (Click to Pre-fill)
-                  </span>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                    {activeGroup.simplifyDebts
-                      ? 'Simplified Mode'
-                      : 'Pairwise Mode'}
-                  </span>
-                </div>
+                {/* Group Selector inside Studio */}
                 <div className="space-y-1.5">
-                  {groupSuggestedTransfers.map((t, idx) => {
-                    const fromM = activeGroup.members.find(
-                      (m) => m.id === t.fromMemberId
-                    );
-                    const toM = activeGroup.members.find(
-                      (m) => m.id === t.toMemberId
-                    );
-                    const isSelected =
-                      fromMemberId === t.fromMemberId &&
-                      toMemberId === t.toMemberId;
-                    return (
-                      <div
-                        key={`${t.fromMemberId}-${t.toMemberId}-${idx}`}
-                        className={`rounded-xl border p-2.5 flex items-center justify-between gap-2 transition-colors ${
-                          isSelected
-                            ? 'bg-sky-500/10 border-sky-500/40 dark:bg-sky-500/15'
-                            : 'bg-slate-50/80 dark:bg-slate-900/50 border-slate-200/70 dark:border-white/[0.07]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
-                          <span>{fromM?.displayName ?? 'Member'}</span>
-                          <ArrowRight size={13} className="text-slate-400 shrink-0" />
-                          <span>{toM?.displayName ?? 'Member'}</span>
-                          <span className="font-mono text-emerald-600 dark:text-emerald-400 ml-1">
-                            {formatMinorToMajor(
-                              t.amountMinor,
-                              activeGroup.baseCurrency
-                            )}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleSelectSuggestedTransfer(
-                                t.fromMemberId,
-                                t.toMemberId,
-                                t.amountMinor,
-                                1
-                              )
-                            }
-                            className="rounded-lg bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-2 py-1 text-[11px] font-semibold cursor-pointer"
-                          >
-                            Full
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleSelectSuggestedTransfer(
-                                t.fromMemberId,
-                                t.toMemberId,
-                                t.amountMinor,
-                                0.5
-                              )
-                            }
-                            className="rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-2 py-1 text-[11px] font-semibold cursor-pointer"
-                          >
-                            50% Partial
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  <label
+                    htmlFor="studio-group-select"
+                    className="block text-xs font-medium text-[#2B312D] dark:text-[#DCE2DD]"
+                  >
+                    Active group for settlement &amp; WhatsApp summary
+                  </label>
+                  <select
+                    id="studio-group-select"
+                    data-testid="settle-group-select"
+                    value={activeGroup.id}
+                    onChange={(e) => setActiveGroupId(e.target.value)}
+                    className="lg-recessed-well min-h-[44px] w-full rounded-xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-[#141715] dark:text-[#F3F5F3] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 cursor-pointer"
+                  >
+                    {activeGroups.map((g) => (
+                      <option key={g.id} value={g.id} className="bg-[#F6F8F6] dark:bg-[#222522]">
+                        {g.name} ({g.baseCurrency})
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              </div>
-            )}
 
+                {/* Suggested Transfers Quick Fill Pills */}
+                {groupSuggestedTransfers.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-[#5C6660] dark:text-[#9CA69F]">
+                        Suggested transfers (tap to pre-fill)
+                      </span>
+                      <span className="text-[11px] text-[#5C6660] dark:text-[#9CA69F]">
+                        {activeGroup.simplifyDebts
+                          ? 'Simplified mode'
+                          : 'Pairwise mode'}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {groupSuggestedTransfers.map((t, idx) => {
+                        const fromM = activeGroup.members.find(
+                          (m) => m.id === t.fromMemberId
+                        );
+                        const toM = activeGroup.members.find(
+                          (m) => m.id === t.toMemberId
+                        );
+                        const isSelected =
+                          fromMemberId === t.fromMemberId &&
+                          toMemberId === t.toMemberId;
+                        return (
+                          <div
+                            key={`${t.fromMemberId}-${t.toMemberId}-${idx}`}
+                            className={`rounded-2xl p-2.5 flex flex-wrap items-center justify-between gap-2 transition-colors min-w-0 ${
+                              isSelected
+                                ? 'lg-scene-tile ring-1 ring-emerald-600/35 dark:ring-emerald-400/35'
+                                : 'lg-recessed-well'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1.5 text-xs font-semibold text-[#141715] dark:text-[#F3F5F3] min-w-0 truncate">
+                              <span className="truncate">{fromM?.displayName ?? 'Member'}</span>
+                              <ArrowRight size={13} className="text-[#68726C] dark:text-[#8A938D] shrink-0" aria-hidden="true" />
+                              <span className="truncate">{toM?.displayName ?? 'Member'}</span>
+                              <span className="font-mono tabular-nums text-emerald-700 dark:text-emerald-300 ml-1 shrink-0 whitespace-nowrap">
+                                {formatMinorToMajor(
+                                  t.amountMinor,
+                                  activeGroup.baseCurrency
+                                )}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleSelectSuggestedTransfer(
+                                    t.fromMemberId,
+                                    t.toMemberId,
+                                    t.amountMinor,
+                                    1
+                                  )
+                                }
+                                className="lg-luminous-pill min-h-[36px] rounded-full px-3 py-1 text-[11px] font-semibold cursor-pointer"
+                              >
+                                Full
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleSelectSuggestedTransfer(
+                                    t.fromMemberId,
+                                    t.toMemberId,
+                                    t.amountMinor,
+                                    0.5
+                                  )
+                                }
+                                className="lg-scene-tile min-h-[36px] rounded-full px-3 py-1 text-[11px] font-semibold text-[#141715] dark:text-[#F3F5F3] cursor-pointer"
+                              >
+                                50%
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </>
             )}
 
             {/* Settlement Form */}
             <form onSubmit={handleRecordSettlementSubmit} className="space-y-4">
               {editingId && (
-                <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-900 dark:text-amber-200">
+                <div className="flex items-center justify-between gap-2 rounded-2xl border border-amber-600/30 bg-amber-500/12 px-3.5 py-2 text-xs text-amber-900 dark:text-amber-200">
                   <span>Editing a recorded payment. Who paid whom stays the same.</span>
                   <button
                     type="button"
                     data-testid="cancel-edit-settlement-btn"
                     onClick={resetForm}
-                    className="min-h-[44px] rounded-lg px-3 font-semibold hover:bg-amber-500/15 cursor-pointer"
+                    className="min-h-[44px] rounded-full px-3 font-semibold hover:bg-amber-500/15 cursor-pointer"
                   >
                     Cancel
                   </button>
                 </div>
               )}
               {!direct && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label
-                    htmlFor="settle-from-member"
-                    className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1"
-                  >
-                    Payer (From Member)
-                  </label>
-                  <select
-                    id="settle-from-member"
-                    data-testid="settle-from-member-select"
-                    value={fromMember?.id ?? ''}
-                    disabled={!!editingId}
-                    onChange={(e) => setFromMemberId(e.target.value)}
-                    className="w-full rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300/80 dark:border-white/10 px-3 py-2 text-xs sm:text-sm font-medium text-slate-900 dark:text-white disabled:opacity-60"
-                  >
-                    {settleMembers.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.displayName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label
+                      htmlFor="settle-from-member"
+                      className="block text-xs font-medium text-[#2B312D] dark:text-[#DCE2DD] mb-1.5"
+                    >
+                      Payer (from member)
+                    </label>
+                    <select
+                      id="settle-from-member"
+                      data-testid="settle-from-member-select"
+                      value={fromMember?.id ?? ''}
+                      disabled={!!editingId}
+                      onChange={(e) => setFromMemberId(e.target.value)}
+                      className="lg-recessed-well min-h-[44px] w-full rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-[#141715] dark:text-[#F3F5F3] disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
+                    >
+                      {settleMembers.map((m) => (
+                        <option key={m.id} value={m.id} className="bg-[#F6F8F6] dark:bg-[#222522]">
+                          {m.displayName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div>
-                  <label
-                    htmlFor="settle-to-member"
-                    className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1"
-                  >
-                    Recipient (To Member)
-                  </label>
-                  <select
-                    id="settle-to-member"
-                    data-testid="settle-to-member-select"
-                    value={toMember?.id ?? ''}
-                    disabled={!!editingId}
-                    onChange={(e) => setToMemberId(e.target.value)}
-                    className="w-full rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300/80 dark:border-white/10 px-3 py-2 text-xs sm:text-sm font-medium text-slate-900 dark:text-white disabled:opacity-60"
-                  >
-                    {settleMembers.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.displayName}
-                      </option>
-                    ))}
-                  </select>
+                  <div>
+                    <label
+                      htmlFor="settle-to-member"
+                      className="block text-xs font-medium text-[#2B312D] dark:text-[#DCE2DD] mb-1.5"
+                    >
+                      Recipient (to member)
+                    </label>
+                    <select
+                      id="settle-to-member"
+                      data-testid="settle-to-member-select"
+                      value={toMember?.id ?? ''}
+                      disabled={!!editingId}
+                      onChange={(e) => setToMemberId(e.target.value)}
+                      className="lg-recessed-well min-h-[44px] w-full rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-[#141715] dark:text-[#F3F5F3] disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
+                    >
+                      {settleMembers.map((m) => (
+                        <option key={m.id} value={m.id} className="bg-[#F6F8F6] dark:bg-[#222522]">
+                          {m.displayName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              </div>
               )}
 
               {/* Editable Full or Partial Amount */}
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex flex-wrap items-center justify-between gap-1 mb-1.5">
                   <label
                     htmlFor="settle-amount-input"
-                    className="text-xs font-semibold text-slate-700 dark:text-slate-300"
+                    className="text-xs font-medium text-[#2B312D] dark:text-[#DCE2DD]"
                   >
                     Amount ({studioCurrency}), full or partial
                   </label>
                   {owedLimit > 0n && (
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
                         data-testid="settle-amount-full-btn"
                         onClick={() => setAmountMajorInput(toMajorInput(owedLimit, studioCurrency))}
-                        className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                        className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:underline cursor-pointer"
                       >
                         Full ({formatMinorToMajor(owedLimit, studioCurrency)})
                       </button>
-                      <span className="text-slate-300 dark:text-slate-600">|</span>
+                      <span className="text-[#68726C] dark:text-[#8A938D]">/</span>
                       <button
                         type="button"
                         onClick={() =>
@@ -1400,7 +1452,7 @@ export function FriendsAndSettlePage() {
                             toMajorInput(owedLimit > 1n ? owedLimit / 2n : owedLimit, studioCurrency)
                           )
                         }
-                        className="text-[11px] font-semibold text-sky-600 dark:text-sky-400 hover:underline cursor-pointer"
+                        className="text-[11px] font-semibold text-[#4A524D] dark:text-[#B7BEB9] hover:underline cursor-pointer"
                       >
                         Half
                       </button>
@@ -1417,14 +1469,14 @@ export function FriendsAndSettlePage() {
                   placeholder="0.00"
                   aria-invalid={showAmountProblem}
                   aria-describedby={showAmountProblem ? 'settle-amount-error' : undefined}
-                  className="w-full rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300/80 dark:border-white/10 px-3.5 py-2.5 font-mono text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  className="lg-recessed-well min-h-[44px] w-full rounded-xl px-3.5 py-2.5 font-mono tabular-nums text-sm font-semibold text-[#141715] dark:text-[#F3F5F3] placeholder:text-[#68726C] dark:placeholder:text-[#8A938D] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
                 />
                 {showAmountProblem && (
                   <p
                     id="settle-amount-error"
                     data-testid="settle-amount-error"
                     role="alert"
-                    className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-300"
+                    className="mt-1.5 text-[11px] font-medium text-amber-800 dark:text-amber-200"
                   >
                     {amountProblem}
                   </p>
@@ -1433,10 +1485,10 @@ export function FriendsAndSettlePage() {
 
               {/* Payment Method Selector */}
               <div>
-                <span className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Payment Method
+                <span className="block text-xs font-medium text-[#2B312D] dark:text-[#DCE2DD] mb-1.5">
+                  Payment method
                 </span>
-                <div className="grid grid-cols-5 gap-1.5">
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                   {PAYMENT_METHODS.map((pm) => {
                     const active = selectedPaymentMethod === pm.key;
                     return (
@@ -1445,22 +1497,22 @@ export function FriendsAndSettlePage() {
                         type="button"
                         data-testid={`payment-method-${pm.key}`}
                         onClick={() => setSelectedPaymentMethod(pm.key)}
-                        className={`rounded-xl py-2 px-2 text-center border text-xs font-semibold transition-all cursor-pointer ${
+                        className={`min-h-[48px] min-w-0 rounded-2xl py-2 px-2 text-center text-xs font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 ${
                           active
-                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                            : 'bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200/80 dark:border-white/10 hover:border-slate-300'
+                            ? 'lg-luminous-pill'
+                            : 'lg-scene-tile text-[#141715] dark:text-[#F3F5F3]'
                         }`}
                       >
                         <div className="flex items-center justify-center mb-0.5">
-                          {pm.key === 'upi' && <QrCode size={15} weight="duotone" />}
-                          {pm.key === 'cash' && <Money size={15} weight="duotone" />}
-                          {pm.key === 'bank' && <Bank size={15} weight="duotone" />}
+                          {pm.key === 'upi' && <QrCode size={15} weight="duotone" aria-hidden="true" />}
+                          {pm.key === 'cash' && <Money size={15} weight="duotone" aria-hidden="true" />}
+                          {pm.key === 'bank' && <Bank size={15} weight="duotone" aria-hidden="true" />}
                           {pm.key === 'paypal' && (
-                            <CreditCard size={15} weight="duotone" />
+                            <CreditCard size={15} weight="duotone" aria-hidden="true" />
                           )}
-                          {pm.key === 'venmo' && <Wallet size={15} weight="duotone" />}
+                          {pm.key === 'venmo' && <Wallet size={15} weight="duotone" aria-hidden="true" />}
                         </div>
-                        <span className="uppercase text-[11px]">{pm.key}</span>
+                        <span className="uppercase text-[11px] block truncate">{pm.key}</span>
                       </button>
                     );
                   })}
@@ -1472,7 +1524,7 @@ export function FriendsAndSettlePage() {
                 <div>
                   <label
                     htmlFor="settle-date-input"
-                    className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1"
+                    className="block text-xs font-medium text-[#2B312D] dark:text-[#DCE2DD] mb-1.5"
                   >
                     Date paid
                   </label>
@@ -1485,13 +1537,13 @@ export function FriendsAndSettlePage() {
                     max={todayIso}
                     aria-invalid={!!dateProblem}
                     onChange={(e) => setSettledDate(e.target.value)}
-                    className="w-full min-h-[44px] rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300/80 dark:border-white/10 px-3 py-2 text-xs font-mono text-slate-900 dark:text-white"
+                    className="lg-recessed-well w-full min-h-[44px] rounded-xl px-3 py-2 text-xs font-mono text-[#141715] dark:text-[#F3F5F3] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
                   />
                   {dateProblem && (
                     <p
                       data-testid="settle-date-error"
                       role="alert"
-                      className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-300"
+                      className="mt-1 text-[11px] font-medium text-amber-800 dark:text-amber-200"
                     >
                       {dateProblem}
                     </p>
@@ -1501,7 +1553,7 @@ export function FriendsAndSettlePage() {
                 <div>
                   <label
                     htmlFor="settle-ref-input"
-                    className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1"
+                    className="block text-xs font-medium text-[#2B312D] dark:text-[#DCE2DD] mb-1.5"
                   >
                     Reference (optional)
                   </label>
@@ -1512,15 +1564,15 @@ export function FriendsAndSettlePage() {
                     type="text"
                     value={paymentReference}
                     onChange={(e) => setPaymentReference(e.target.value)}
-                    placeholder="UPI or bank reference"
-                    className="w-full min-h-[44px] rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300/80 dark:border-white/10 px-3 py-2 text-xs font-mono text-slate-900 dark:text-white"
+                    placeholder="UPI or bank ref"
+                    className="lg-recessed-well w-full min-h-[44px] rounded-xl px-3 py-2 text-xs font-mono text-[#141715] dark:text-[#F3F5F3] placeholder:text-[#68726C] dark:placeholder:text-[#8A938D] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
                   />
                 </div>
 
                 <div>
                   <label
                     htmlFor="settle-notes-input"
-                    className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1"
+                    className="block text-xs font-medium text-[#2B312D] dark:text-[#DCE2DD] mb-1.5"
                   >
                     Note (optional)
                   </label>
@@ -1532,7 +1584,7 @@ export function FriendsAndSettlePage() {
                     value={settlementNotes}
                     onChange={(e) => setSettlementNotes(e.target.value)}
                     placeholder="What it was for"
-                    className="w-full min-h-[44px] rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300/80 dark:border-white/10 px-3 py-2 text-xs text-slate-900 dark:text-white"
+                    className="lg-recessed-well w-full min-h-[44px] rounded-xl px-3 py-2 text-xs text-[#141715] dark:text-[#F3F5F3] placeholder:text-[#68726C] dark:placeholder:text-[#8A938D] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
                   />
                 </div>
               </div>
@@ -1540,37 +1592,42 @@ export function FriendsAndSettlePage() {
               <button
                 type="submit"
                 data-testid="record-settlement-submit-btn"
-                className="w-full min-h-[44px] rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 px-4 text-xs sm:text-sm shadow-sm shadow-emerald-600/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                className="lg-luminous-pill w-full min-h-[48px] rounded-full font-semibold py-2.5 px-5 text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
               >
-                <CheckCircle size={18} weight="fill" />
-                {editingId ? 'Save changes' : 'Record payment'} ({payerFirst}{' '}
-                {payerFirst === 'You' ? 'pay' : 'pays'} {payeeFirst}{' '}
-                {formatMinorToMajor(amountMinor > 0n ? amountMinor : 0n, studioCurrency)})
+                <CheckCircle size={18} weight="fill" className="shrink-0" aria-hidden="true" />
+                <span className="truncate">
+                  {editingId ? 'Save changes' : 'Record payment'} ({payerFirst}{' '}
+                  {payerFirst === 'You' ? 'pay' : 'pays'} {payeeFirst}{' '}
+                  {formatMinorToMajor(amountMinor > 0n ? amountMinor : 0n, studioCurrency)})
+                </span>
               </button>
             </form>
 
             {/* Live UPI Deep-Link & QR Code Generator */}
             <div
               data-testid="upi-deep-link-box"
-              className="rounded-2xl bg-slate-50/90 dark:bg-slate-900/70 border border-slate-200/80 dark:border-white/10 p-4 space-y-4"
+              className="lg-recessed-well rounded-[1.375rem] p-4 space-y-4 min-w-0"
             >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <QrCode
-                    size={18}
-                    weight="duotone"
-                    className="text-emerald-600 dark:text-emerald-400"
-                  />
-                  <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+              <div className="flex items-center justify-between gap-2 min-w-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="lg-icon-orb h-8 w-8 rounded-full flex items-center justify-center shrink-0">
+                    <QrCode
+                      size={16}
+                      weight="duotone"
+                      className="text-emerald-700 dark:text-emerald-300"
+                      aria-hidden="true"
+                    />
+                  </span>
+                  <span className="text-xs sm:text-sm font-semibold text-[#141715] dark:text-[#F3F5F3] truncate">
                     Pay {payee.name} by UPI
                   </span>
                 </div>
                 {upiUri && <StatusBadge tone="emerald">Ready</StatusBadge>}
               </div>
 
-              <div className="flex flex-col sm:flex-row items-center gap-4">
+              <div className="flex flex-col sm:flex-row items-center gap-4 min-w-0">
                 {upiUri && (
-                  <div className="rounded-2xl bg-white p-3 border border-slate-200 shadow-sm shrink-0">
+                  <div className="rounded-2xl bg-white p-3 ring-1 ring-black/10 shadow-sm shrink-0">
                     <QRCodeSVG value={upiUri} size={132} level="M" marginSize={0} />
                   </div>
                 )}
@@ -1580,18 +1637,18 @@ export function FriendsAndSettlePage() {
                     <p
                       id="upi-hint"
                       data-testid="upi-missing-hint"
-                      className="rounded-lg bg-amber-500/10 border border-amber-500/25 px-2.5 py-1.5 text-[11px] text-amber-800 dark:text-amber-300"
+                      className="rounded-xl bg-amber-500/12 border border-amber-600/25 px-3 py-2 text-[11px] text-amber-900 dark:text-amber-200"
                     >
                       {upiHint}
                     </p>
                   )}
                   <div>
-                    <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                    <div className="text-[11px] font-medium text-[#5C6660] dark:text-[#9CA69F] mb-1">
                       Payment link
                     </div>
                     <div
                       data-testid="upi-uri-text"
-                      className="rounded-lg bg-slate-900 text-emerald-300 font-mono text-[11px] p-2 break-all select-all border border-slate-800"
+                      className="lg-scene-tile rounded-xl font-mono text-[11px] text-emerald-800 dark:text-emerald-300 p-2.5 break-all select-all"
                     >
                       {upiUri ?? 'No link yet'}
                     </div>
@@ -1601,12 +1658,12 @@ export function FriendsAndSettlePage() {
 
               <div
                 data-testid="upi-payee-id"
-                className="rounded-xl bg-white dark:bg-slate-950/60 border border-slate-200/80 dark:border-white/10 px-3 py-2 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white"
+                className="lg-scene-tile rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-[#141715] dark:text-[#F3F5F3] break-words"
               >
                 {payeeUpiId ? (
                   <>
                     Paying <span className="font-mono break-all">{payeeUpiId}</span>{' '}
-                    <span className="font-normal text-slate-500 dark:text-slate-400">({payee.name})</span>
+                    <span className="font-normal text-[#5C6660] dark:text-[#9CA69F]">({payee.name})</span>
                   </>
                 ) : (
                   `No UPI id for ${payee.name} yet`
@@ -1614,7 +1671,7 @@ export function FriendsAndSettlePage() {
               </div>
 
               {/* 1-Tap UPI App Launchers + Copy URI */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-0.5">
                 {(
                   [
                     ['gpay', 'Google Pay', 'GPay'],
@@ -1629,10 +1686,10 @@ export function FriendsAndSettlePage() {
                     disabled={!upiUri}
                     aria-describedby={upiHint ? 'upi-hint' : undefined}
                     onClick={() => handleLaunchUpiApp(appName)}
-                    className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-white/10 py-2 px-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                    className="lg-scene-tile inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-full py-2 px-2.5 text-xs font-semibold text-[#141715] dark:text-[#F3F5F3] cursor-pointer disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
                   >
-                    <DeviceMobile size={14} weight="duotone" />
-                    {label}
+                    <DeviceMobile size={14} weight="duotone" aria-hidden="true" />
+                    <span>{label}</span>
                   </button>
                 ))}
                 <button
@@ -1640,29 +1697,29 @@ export function FriendsAndSettlePage() {
                   data-testid="copy-upi-uri-btn"
                   disabled={!upiUri}
                   onClick={handleCopyUpiUri}
-                  className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-500/30 py-2 px-2.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-full bg-emerald-500/14 hover:bg-emerald-500/22 border border-emerald-600/30 dark:border-emerald-400/30 py-2 px-2.5 text-xs font-semibold text-emerald-800 dark:text-emerald-200 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
                 >
                   {copiedUpi ? (
                     <>
-                      <Check size={14} weight="bold" />
-                      Copied
+                      <Check size={14} weight="bold" aria-hidden="true" />
+                      <span>Copied</span>
                     </>
                   ) : (
                     <>
-                      <Copy size={14} weight="duotone" />
-                      Copy link
+                      <Copy size={14} weight="duotone" aria-hidden="true" />
+                      <span>Copy link</span>
                     </>
                   )}
                 </button>
               </div>
 
               {launchedUpiApp && upiUri && (
-                <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/25 px-3 py-2 text-[11px] text-emerald-800 dark:text-emerald-300 flex items-center justify-between">
-                  <span>
+                <div className="rounded-xl bg-emerald-500/12 border border-emerald-600/25 px-3 py-2 text-[11px] text-emerald-900 dark:text-emerald-200 flex items-center justify-between gap-2">
+                  <span className="min-w-0 break-words">
                     Opening <strong>{launchedUpiApp}</strong> to pay{' '}
-                    <code className="font-mono">{payeeUpiId}</code>
+                    <code className="font-mono break-all">{payeeUpiId}</code>
                   </span>
-                  <a href={upiUri} className="font-bold underline ml-2">
+                  <a href={upiUri} className="font-semibold underline shrink-0">
                     Open link
                   </a>
                 </div>
@@ -1671,109 +1728,109 @@ export function FriendsAndSettlePage() {
 
             {/* Recent Recorded Settlements in Active Group */}
             {!direct && (
-            <div className="pt-2 border-t border-slate-200/70 dark:border-white/[0.07] space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                  <Receipt size={15} weight="duotone" />
-                  Recorded Settlements ({activeGroup.name})
-                </span>
-                <span className="text-[11px] font-mono text-slate-500">
-                  {groupSettlements.length} record(s)
-                </span>
-              </div>
+              <div className="pt-2 border-t border-black/[0.07] dark:border-white/[0.08] space-y-2.5 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-[#141715] dark:text-[#F3F5F3] flex items-center gap-1.5 min-w-0 truncate">
+                    <Receipt size={15} weight="duotone" className="shrink-0 text-emerald-700 dark:text-emerald-300" aria-hidden="true" />
+                    <span className="truncate">Recorded settlements ({activeGroup.name})</span>
+                  </span>
+                  <span className="text-[11px] font-mono text-[#5C6660] dark:text-[#9CA69F] shrink-0">
+                    {groupSettlements.length} record(s)
+                  </span>
+                </div>
 
-              {groupSettlements.length === 0 ? (
-                <div className="text-xs text-slate-500 dark:text-slate-400 py-2">
-                  No settlements recorded for this group yet.
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                  {groupSettlements.map((stl) => {
-                    const fromName =
-                      activeGroup.members.find((m) => m.id === stl.fromMemberId)
-                        ?.displayName ?? stl.fromMemberId;
-                    const toName =
-                      activeGroup.members.find((m) => m.id === stl.toMemberId)
-                        ?.displayName ?? stl.toMemberId;
-                    const canChange = canChangeGroupSettlement(
-                      stl,
-                      activeGroup,
-                      dataset.currentUser.id,
-                      dataset.currentUser.email
-                    );
-                    return (
-                      <div
-                        key={stl.id}
-                        data-testid={`group-settlement-${stl.id}`}
-                        className={`rounded-xl border px-3 py-2 flex items-center justify-between gap-2 text-xs ${
-                          editingId === stl.id
-                            ? 'bg-amber-500/10 border-amber-500/30'
-                            : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200/70 dark:border-white/[0.06]'
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <div className="font-semibold text-slate-800 dark:text-slate-200 truncate">
-                            {fromName} paid {toName}
-                          </div>
-                          <div className="text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-1.5 mt-0.5">
-                            <span className="uppercase font-mono font-semibold text-emerald-600 dark:text-emerald-400">
-                              {stl.paymentMethod}
-                            </span>
-                            <span>on</span>
-                            <span className="font-mono">{stl.settledDate}</span>
-                            {stl.paymentReference && (
-                              <span className="font-mono text-[10px] bg-slate-200/70 dark:bg-slate-800 px-1.5 rounded">
-                                {stl.paymentReference}
-                              </span>
-                            )}
-                            {stl.batchSettlementId && (
-                              <span className="font-mono text-[10px] bg-sky-500/15 text-sky-700 dark:text-sky-300 px-1.5 rounded">
-                                Cross-Group Batch
-                              </span>
-                            )}
-                          </div>
-                          {stl.notes && (
-                            <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                              {stl.notes}
+                {groupSettlements.length === 0 ? (
+                  <div className="text-xs text-[#5C6660] dark:text-[#9CA69F] py-2">
+                    No settlements recorded for this group yet.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {groupSettlements.map((stl) => {
+                      const fromName =
+                        activeGroup.members.find((m) => m.id === stl.fromMemberId)
+                          ?.displayName ?? stl.fromMemberId;
+                      const toName =
+                        activeGroup.members.find((m) => m.id === stl.toMemberId)
+                          ?.displayName ?? stl.toMemberId;
+                      const canChange = canChangeGroupSettlement(
+                        stl,
+                        activeGroup,
+                        dataset.currentUser.id,
+                        dataset.currentUser.email
+                      );
+                      return (
+                        <div
+                          key={stl.id}
+                          data-testid={`group-settlement-${stl.id}`}
+                          className={`rounded-2xl px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs min-w-0 ${
+                            editingId === stl.id
+                              ? 'bg-amber-500/12 border border-amber-600/30'
+                              : 'lg-recessed-well'
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold text-[#141715] dark:text-[#F3F5F3] truncate">
+                              {fromName} paid {toName}
                             </div>
-                          )}
+                            <div className="text-[11px] text-[#5C6660] dark:text-[#9CA69F] flex flex-wrap items-center gap-1.5 mt-0.5">
+                              <span className="uppercase font-mono font-semibold text-emerald-700 dark:text-emerald-300">
+                                {stl.paymentMethod}
+                              </span>
+                              <span>on</span>
+                              <span className="font-mono">{stl.settledDate}</span>
+                              {stl.paymentReference && (
+                                <span className="font-mono text-[10px] bg-black/[0.06] dark:bg-white/[0.08] px-2 py-0.5 rounded-full">
+                                  {stl.paymentReference}
+                                </span>
+                              )}
+                              {stl.batchSettlementId && (
+                                <span className="font-mono text-[10px] bg-sky-500/14 text-sky-800 dark:text-sky-200 px-2 py-0.5 rounded-full">
+                                  Cross-group batch
+                                </span>
+                              )}
+                            </div>
+                            {stl.notes && (
+                              <div className="text-[11px] text-[#5C6660] dark:text-[#9CA69F] truncate">
+                                {stl.notes}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <CurrencyAmount
+                              minorAmount={stl.amountMinor}
+                              currencyCode={stl.currency}
+                              className="font-semibold text-emerald-700 dark:text-emerald-300 whitespace-nowrap"
+                            />
+                            {canChange && (
+                              <>
+                                <button
+                                  type="button"
+                                  data-testid={`edit-group-settlement-${stl.id}`}
+                                  onClick={() => startEditSettlement(stl)}
+                                  className="min-h-[44px] rounded-full px-2.5 font-semibold text-[#141715] dark:text-[#F3F5F3] hover:bg-black/[0.05] dark:hover:bg-white/[0.07] cursor-pointer"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  data-testid={`remove-group-settlement-${stl.id}`}
+                                  onClick={() => {
+                                    if (editingId === stl.id) resetForm();
+                                    deleteSettlement(stl.id);
+                                  }}
+                                  className="min-h-[44px] rounded-full px-2.5 font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-500/12 cursor-pointer"
+                                >
+                                  Remove
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <CurrencyAmount
-                            minorAmount={stl.amountMinor}
-                            currencyCode={stl.currency}
-                            className="font-bold text-emerald-600 dark:text-emerald-400"
-                          />
-                          {canChange && (
-                            <>
-                              <button
-                                type="button"
-                                data-testid={`edit-group-settlement-${stl.id}`}
-                                onClick={() => startEditSettlement(stl)}
-                                className="min-h-[44px] rounded-lg px-2 font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-500/10 cursor-pointer"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                data-testid={`remove-group-settlement-${stl.id}`}
-                                onClick={() => {
-                                  if (editingId === stl.id) resetForm();
-                                  deleteSettlement(stl.id);
-                                }}
-                                className="min-h-[44px] rounded-lg px-2 font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-500/10 cursor-pointer"
-                              >
-                                Remove
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             )}
           </DoubleBezelCard>
         </div>
